@@ -1,0 +1,15 @@
+[package]
+name = "service-bus-api"
+version = "0.1.0"
+authors = []
+edition = "2018"
+
+[features]
+default=[]
+
+[dependencies]
+serde="1.0.102"
+rmp-serde="0.14.0"
+
+
+
