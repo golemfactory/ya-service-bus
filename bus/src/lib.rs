@@ -1,3 +1,4 @@
+use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
 use std::future::Future;
 
@@ -26,6 +27,12 @@ pub trait RpcHandler<T: RpcMessage> {
     type Result: Future<Output = T::Reply>;
 
     fn handle(&mut self, caller: BusPath, msg: T) -> Self::Result;
+}
+
+pub trait RpcStreamHandler<T: RpcMessage> {
+    type Result: Stream<Item = T::Reply>;
+
+    fn handle(&mut self, caller: BusPath, msgs: Vec<T>) -> Self::Result;
 }
 
 pub struct Handle;
