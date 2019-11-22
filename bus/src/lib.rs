@@ -40,7 +40,7 @@ pub fn service<T: RpcMessage>(addr: &BusPath) -> impl RpcEndpoint<T> {
 
 struct MockEndpoint<T>(T);
 
-impl<M : RpcMessage> RpcEndpoint<M> for MockEndpoint<M> where {
+impl<M: RpcMessage> RpcEndpoint<M> for MockEndpoint<M> where {
     type Result = futures::future::Ready<M::Reply>;
 
     fn send(&self, msg: M) -> Self::Result {
