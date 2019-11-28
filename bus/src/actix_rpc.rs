@@ -18,6 +18,10 @@ where
     Handle { _inner: {} }
 }
 
+pub fn service(addr: &str) -> Endpoint {
+    Endpoint { _inner: () }
+}
+
 pub struct Endpoint {
     _inner: (),
 }
