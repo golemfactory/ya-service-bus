@@ -8,7 +8,10 @@ use ya_sb_api::*;
 
 lazy_static! {
     static ref MSG_HEADER_LENGTH: usize = {
-        let header = MessageHeader{msg_type: 0, msg_length: 0};
+        let header = MessageHeader {
+            msg_type: 0,
+            msg_length: 0,
+        };
         header.encoded_len()
     };
 }
@@ -17,7 +20,7 @@ pub enum IncomingGsbMessage {
     RegisterRequest(RegisterRequest),
     UnregisterRequest(UnregisterRequest),
     ServiceCallRequest(ServiceCallRequest),
-    CallReply(CallReply)
+    CallReply(CallReply),
 }
 
 fn parse_header(src: &mut BytesMut) -> failure::Fallible<Option<MessageHeader>> {
@@ -29,7 +32,10 @@ fn parse_header(src: &mut BytesMut) -> failure::Fallible<Option<MessageHeader>> 
     }
 }
 
-fn parse_message(src: &mut BytesMut, header: &MessageHeader) -> failure::Fallible<Option<IncomingGsbMessage>> {
+fn parse_message(
+    src: &mut BytesMut,
+    header: &MessageHeader,
+) -> failure::Fallible<Option<IncomingGsbMessage>> {
     let msg_length = header.msg_length.try_into()?;
     if src.len() < msg_length {
         Ok(None)
@@ -37,18 +43,24 @@ fn parse_message(src: &mut BytesMut, header: &MessageHeader) -> failure::Fallibl
         let buf = src.split_to(msg_length + 1);
         let msg_type = MessageType::from_i32(header.msg_type);
         let msg = match msg_type {
-            Some(MessageType::RegisterRequest) => IncomingGsbMessage::RegisterRequest(RegisterRequest::decode(buf)?),
-            Some(MessageType::UnregisterRequest) => IncomingGsbMessage::UnregisterRequest(UnregisterRequest::decode(buf)?),
-            Some(MessageType::ServiceCallRequest) => IncomingGsbMessage::ServiceCallRequest(ServiceCallRequest::decode(buf)?),
+            Some(MessageType::RegisterRequest) => {
+                IncomingGsbMessage::RegisterRequest(RegisterRequest::decode(buf)?)
+            }
+            Some(MessageType::UnregisterRequest) => {
+                IncomingGsbMessage::UnregisterRequest(UnregisterRequest::decode(buf)?)
+            }
+            Some(MessageType::ServiceCallRequest) => {
+                IncomingGsbMessage::ServiceCallRequest(ServiceCallRequest::decode(buf)?)
+            }
             Some(MessageType::CallReply) => IncomingGsbMessage::CallReply(CallReply::decode(buf)?),
-            _ => return Err(failure::err_msg("Unsupported message type"))
+            _ => return Err(failure::err_msg("Unsupported message type")),
         };
         Ok(Some(msg))
     }
 }
 
 pub struct GsbMessageDecoder {
-    msg_header: Option<MessageHeader>
+    msg_header: Option<MessageHeader>,
 }
 
 impl GsbMessageDecoder {
@@ -73,7 +85,7 @@ impl Decoder for GsbMessageDecoder {
                     self.msg_header = None;
                     Ok(Some(msg))
                 }
-            }
+            },
         }
     }
 }

@@ -12,17 +12,19 @@ fn main() {
     let listener = TcpListener::bind(&addr).expect("unable to bind TCP listener");
     let writers = Arc::new(Mutex::new(HashMap::new()));
 
-    let server = listener.incoming()
+    let server = listener
+        .incoming()
         .map_err(|e| eprintln!("accept failed = {:?}", e))
         .for_each(move |sock| {
             let (reader, writer) = sock.split();
             writers.lock().unwrap().insert(addr, writer);
             let reader = FramedRead::new(reader, GsbMessageDecoder::new());
-            tokio::spawn(reader
-                .map_err(|e| eprintln!("read failed = {:?}", e))
-                .for_each(|msg| {
-                    Ok(())  // TODO: Handle masseges
-                })
+            tokio::spawn(
+                reader
+                    .map_err(|e| eprintln!("read failed = {:?}", e))
+                    .for_each(|msg| {
+                        Ok(()) // TODO: Handle masseges
+                    }),
             )
         });
 
