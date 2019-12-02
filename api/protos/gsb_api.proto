@@ -1,0 +1,89 @@
+syntax = "proto3";
+
+package GSB_API;
+
+/* Exposed by Golem Service Bus API implementation */
+service Bus {
+  /* Register a service within the bus */
+  rpc Register (RegisterRequest) returns (RegisterReply);
+
+  /* Unregister a service from the bus */
+  rpc Unregister (UnregisterRequest) returns (UnregisterReply);
+
+  /* Call a local or remote service method */
+  rpc ServiceCall (CallRequest) returns (CallReply);
+}
+
+/* Exposed by registering services */
+service Service {
+  rpc Call (CallRequest) returns (CallReply);
+}
+
+enum RegisterReplyCode {
+  REGISTERED_OK = 0;
+  REGISTER_BAD_REQUEST = 400; // e.g. invalid name
+  REGISTER_CONFLICT = 409;  // already registered
+}
+
+enum UnregisterReplyCode {
+  UNREGISTERED_OK = 0;
+  NOT_REGISTERED = 404;
+}
+
+enum CallReplyCode {
+  CALL_REPLY_OK = 0;
+  CALL_REPLY_BAD_REQUEST = 400; // eg. duplicate request ID, service not found etc.
+  SERVICE_FAILURE = 500;  // e.g. service did not respond in time
+}
+
+enum CallReplyType {
+  FULL = 0;  // a single response or end of stream
+  PARTIAL = 1;  // i.e. a streaming response
+}
+
+message RegisterRequest {
+  string service_id = 1;
+}
+
+message RegisterReply {
+  RegisterReplyCode code = 1;
+  string message = 2;  // in case of errors
+}
+
+message UnregisterRequest {
+  string service_id = 1;
+}
+
+message UnregisterReply {
+  UnregisterReplyCode code = 1;
+}
+
+message CallRequest {
+  string caller = 1;
+  string address = 2;
+  string request_id = 3;
+  bytes data = 4;
+}
+
+message CallReply {
+  string request_id = 1;
+  CallReplyCode code = 2;
+  CallReplyType reply_type = 3;
+  bytes data = 4;
+}
+
+// Plumbing
+
+enum MessageType {
+  REGISTER_REQUEST = 0;
+  REGISTER_REPLY = 1;
+  UNREGISTER_REQUEST = 2;
+  UNREGISTER_REPLY = 3;
+  CALL_REQUEST = 4;
+  CALL_REPLY = 5;
+}
+
+message MessageHeader {
+  MessageType msg_type = 1;
+  uint32 msg_length = 2;
+}
