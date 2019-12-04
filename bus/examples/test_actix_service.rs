@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use ya_service_bus::{actix_rpc, Handle, RpcMessage};
+use ya_service_bus::{actix_rpc, Handle, RpcEnvelope, RpcMessage};
 
 const SERVICE_ID: &str = "/local/exe-unit";
 
@@ -31,12 +31,10 @@ enum Command {
 #[derive(Serialize, Deserialize, Debug)]
 struct Execute(Vec<Command>);
 
-impl Message for Execute {
-    type Result = Result<(), ()>;
-}
-
 impl RpcMessage for Execute {
     const ID: &'static str = "yg::exe_unit::execute";
+    type Item = ();
+    type Error = ();
 }
 
 #[derive(Default)]
@@ -53,11 +51,11 @@ impl Actor for ExeUnit {
     }
 }
 
-impl Handler<Execute> for ExeUnit {
+impl Handler<RpcEnvelope<Execute>> for ExeUnit {
     type Result = Result<(), ()>;
 
-    fn handle(&mut self, msg: Execute, _ctx: &mut Self::Context) -> Self::Result {
-        eprintln!("got {:?}", msg);
+    fn handle(&mut self, msg: RpcEnvelope<Execute>, _ctx: &mut Self::Context) -> Self::Result {
+        eprintln!("got {:?}", msg.as_ref());
         Ok(())
     }
 }

@@ -1,5 +1,5 @@
 use crate::error::Error;
-use crate::{RpcHandler, RpcMessage};
+use crate::{RpcEnvelope, RpcHandler, RpcMessage};
 use actix::Message;
 use failure::_core::marker::PhantomData;
 use failure::_core::pin::Pin;
@@ -69,11 +69,15 @@ impl Slot {
         }
     }
 
-    fn recipient<T: RpcMessage>(&mut self) -> Option<actix::Recipient<T>>
+    fn recipient<T: RpcMessage>(&mut self) -> Option<actix::Recipient<RpcEnvelope<T>>>
     where
-        <T as Message>::Result: Sync + Send + 'static,
+        <RpcEnvelope<T> as Message>::Result: Sync + Send + 'static,
     {
-        if let Some(r) = self.inner.recipient().downcast_ref::<actix::Recipient<T>>() {
+        if let Some(r) = self
+            .inner
+            .recipient()
+            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>()
+        {
             Some(r.clone())
         } else {
             None
@@ -104,10 +108,10 @@ impl Router {
         &mut self,
         addr: &str,
         msg: T,
-    ) -> Result<<T as Message>::Result, Error> {
+    ) -> Result<Result<T::Item, T::Error>, Error> {
         if let Some(slot) = self.handlers.get_mut(&format!("{}/{}", addr, T::ID)) {
             if let Some(h) = slot.recipient() {
-                return Ok(h.send(msg).compat().await?);
+                return Ok(h.send(RpcEnvelope::local(msg)).compat().await?);
             }
         }
         Err(Error::NoEndpoint)

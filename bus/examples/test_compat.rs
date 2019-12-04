@@ -5,7 +5,7 @@ use futures::{
 };
 use serde::{Deserialize, Serialize};
 use std::io;
-use ya_service_bus::{actix_rpc, Handle};
+use ya_service_bus::{actix_rpc, Handle, RpcEnvelope, RpcMessage};
 
 #[derive(Default)]
 struct Server(Option<Handle>);
@@ -21,24 +21,30 @@ impl Actor for Server {
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
 
-impl Message for Ping {
-    type Result = String;
+impl RpcMessage for Ping {
+    const ID: &'static str = "PING";
+    type Item = String;
+    type Error = ();
 }
 
-impl Handler<Ping> for Server {
-    type Result = MessageResult<Ping>;
+impl Handler<RpcEnvelope<Ping>> for Server {
+    type Result = Result<String, ()>;
 
-    fn handle(&mut self, msg: Ping, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RpcEnvelope<Ping>, _ctx: &mut Self::Context) -> Self::Result {
         eprintln!("got ping");
-        MessageResult(msg.0.into())
+        Ok(msg.into_inner().0.into())
     }
 }
 
 async fn start_server() {
     let server = Server::default().start();
 
-    let resp = server.send(Ping("test01".into())).compat().await.unwrap();
-    eprintln!("resp = {}", resp);
+    let resp = server
+        .send(RpcEnvelope::local(Ping("test01".into())))
+        .compat()
+        .await
+        .unwrap();
+    eprintln!("resp = {:?}", resp);
 }
 
 fn main() -> io::Result<()> {

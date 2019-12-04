@@ -19,7 +19,7 @@ lazy_static! {
 pub enum IncomingGsbMessage {
     RegisterRequest(RegisterRequest),
     UnregisterRequest(UnregisterRequest),
-    ServiceCallRequest(ServiceCallRequest),
+    ServiceCallRequest(CallRequest),
     CallReply(CallReply),
 }
 
@@ -49,8 +49,8 @@ fn parse_message(
             Some(MessageType::UnregisterRequest) => {
                 IncomingGsbMessage::UnregisterRequest(UnregisterRequest::decode(buf)?)
             }
-            Some(MessageType::ServiceCallRequest) => {
-                IncomingGsbMessage::ServiceCallRequest(ServiceCallRequest::decode(buf)?)
+            Some(MessageType::CallRequest) => {
+                IncomingGsbMessage::ServiceCallRequest(CallRequest::decode(buf)?)
             }
             Some(MessageType::CallReply) => IncomingGsbMessage::CallReply(CallReply::decode(buf)?),
             _ => return Err(failure::err_msg("Unsupported message type")),

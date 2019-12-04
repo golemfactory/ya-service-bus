@@ -1,11 +1,11 @@
 use crate::error::Error;
-use crate::RpcMessage;
+use crate::{RpcEnvelope, RpcMessage};
 use actix::prelude::*;
 use failure::_core::marker::PhantomData;
 
-pub struct RpcHandlerWrapper<T, H>(H, PhantomData<T>);
+pub struct RpcHandlerWrapper<T, H>(pub(super) H, PhantomData<T>);
 
-impl<T, H> Actor for RpcHandlerWrapper<T, H> {
+impl<T: 'static, H: 'static> Actor for RpcHandlerWrapper<T, H> {
     type Context = Context<Self>;
 }
 
@@ -15,10 +15,10 @@ impl<T, H> RpcHandlerWrapper<T, H> {
     }
 }
 
-impl<T: RpcMessage, H> Handler<T> for RpcHandlerWrapper<T, H> {
+impl<T: RpcMessage, H: 'static> Handler<RpcEnvelope<T>> for RpcHandlerWrapper<T, H> {
     type Result = ActorResponse<Self, T::Item, T::Error>;
 
-    fn handle(&mut self, msg: T, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RpcEnvelope<T>, ctx: &mut Self::Context) -> Self::Result {
         unimplemented!()
     }
 }
