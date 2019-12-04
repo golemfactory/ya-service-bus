@@ -1,10 +1,12 @@
 use actix::prelude::*;
-use futures_01::future;
+use failure::_core::time::Duration;
+use futures::{FutureExt, TryFutureExt};
+use futures_01::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use ya_service_bus::{actix_rpc, Handle, RpcEnvelope, RpcMessage};
+use ya_service_bus::{actix_rpc, send_untyped, Handle, RpcEnvelope, RpcMessage};
 
 const SERVICE_ID: &str = "/local/exe-unit";
 
@@ -32,9 +34,9 @@ enum Command {
 struct Execute(Vec<Command>);
 
 impl RpcMessage for Execute {
-    const ID: &'static str = "yg::exe_unit::execute";
-    type Item = ();
-    type Error = ();
+    const ID: &'static str = "execute";
+    type Item = String;
+    type Error = String;
 }
 
 #[derive(Default)]
@@ -52,11 +54,11 @@ impl Actor for ExeUnit {
 }
 
 impl Handler<RpcEnvelope<Execute>> for ExeUnit {
-    type Result = Result<(), ()>;
+    type Result = Result<String, String>;
 
     fn handle(&mut self, msg: RpcEnvelope<Execute>, _ctx: &mut Self::Context) -> Self::Result {
         eprintln!("got {:?}", msg.as_ref());
-        Ok(())
+        Ok(format!("{:?}", msg.into_inner()))
     }
 }
 
@@ -65,26 +67,76 @@ enum Args {
     /// Starts server that waits for commands on gsb://local/exe-unit
     Server {},
     /// Sends script to gsb://local/exe-unit service
-    Client { script: PathBuf },
+    Client {
+        script: PathBuf,
+    },
+    Local {
+        script: PathBuf,
+    },
+    LocalRaw {
+        script: PathBuf,
+    },
+}
+
+fn run_script(script: PathBuf) -> impl Future<Item = String, Error = failure::Error> {
+    (|| -> Result<_, std::io::Error> {
+        let commands: Vec<Command> =
+            serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
+        Ok(commands)
+    })()
+    .into_future()
+    .from_err()
+    .and_then(|commands| {
+        actix_rpc::service(SERVICE_ID)
+            .send(Execute(commands))
+            .from_err()
+            .and_then(|v| v.map_err(|e| failure::err_msg(e)))
+    })
+}
+
+async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failure::Error> {
+    let bytes = rmp_serde::to_vec(&serde_json::from_slice::<Vec<Command>>(
+        std::fs::read(script)?.as_slice(),
+    )?)?;
+
+    Ok(rmp_serde::from_slice(
+        send_untyped(&format!("{}/{}", SERVICE_ID, Execute::ID), bytes.as_ref())
+            .await?
+            .as_slice(),
+    )?)
 }
 
 fn main() -> failure::Fallible<()> {
+    let mut sys = System::new("test");
     let args = Args::from_args();
     match args {
         Args::Server { .. } => {
-            let sys = System::new("serv");
             let _ = ExeUnit::default().start();
             sys.run()?;
             eprintln!("done");
         }
         Args::Client { script } => {
-            let commands: Vec<Command> =
-                serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-            let mut sys = System::new("cli");
+            let result = sys.block_on(run_script(script))?;
+            eprintln!("got result: {:?}", result);
+        }
+        Args::Local { script } => {
+            let timer = tokio_timer::Timer::default();
+            let _ = ExeUnit::default().start();
+            let sleep = timer.sleep(Duration::from_millis(500));
 
-            let result = sys.block_on(future::lazy(|| {
-                actix_rpc::service(SERVICE_ID).send(Execute(commands))
-            }))?;
+            let result = sys.block_on(sleep.from_err().and_then(|_| run_script(script)))?;
+            eprintln!("got result: {:?}", result);
+        }
+        Args::LocalRaw { script } => {
+            let timer = tokio_timer::Timer::default();
+            let _ = ExeUnit::default().start();
+            let sleep = timer.sleep(Duration::from_millis(500));
+
+            let result = sys.block_on(
+                sleep
+                    .from_err()
+                    .and_then(|_| run_script_raw(script).boxed_local().compat()),
+            )?;
             eprintln!("got result: {:?}", result);
         }
     }

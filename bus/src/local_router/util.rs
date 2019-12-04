@@ -19,14 +19,25 @@ impl<'a> Iterator for RevPrefixes<'a> {
     }
 }
 
-#[derive(Default)]
 pub struct PrefixLookupBag<T> {
     dict: HashMap<String, T>,
+}
+
+impl<T> Default for PrefixLookupBag<T> {
+    fn default() -> Self {
+        PrefixLookupBag {
+            dict: HashMap::new(),
+        }
+    }
 }
 
 impl<T> PrefixLookupBag<T> {
     pub fn get(&self, key: &str) -> Option<&T> {
         RevPrefixes(key).find_map(|key| self.dict.get(key))
+    }
+
+    pub fn keys(&self) -> impl Iterator<Item = &String> {
+        self.dict.keys()
     }
 
     pub fn get_mut(&mut self, key: &str) -> Option<&mut T> {

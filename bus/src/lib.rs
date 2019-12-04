@@ -1,9 +1,9 @@
 use actix::Message;
-use failure::_core::marker::PhantomData;
-use failure::_core::ops::Deref;
 use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
+use std::fmt::Debug;
 use std::future::Future;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub mod actix_rpc;
@@ -15,7 +15,7 @@ pub trait BusMessage {}
 pub trait RpcMessage: Serialize + DeserializeOwned + 'static + Sync + Send {
     const ID: &'static str;
     type Item: Serialize + DeserializeOwned + 'static + Sync + Send;
-    type Error: Serialize + DeserializeOwned + 'static + Sync + Send;
+    type Error: Serialize + DeserializeOwned + 'static + Sync + Send + Debug;
 }
 
 pub struct RpcEnvelope<T: RpcMessage> {
@@ -40,6 +40,10 @@ impl<T: RpcMessage> RpcEnvelope<T> {
             caller: "local".into(),
             body,
         }
+    }
+
+    pub fn caller(&self) -> &str {
+        self.caller.as_str()
     }
 }
 
@@ -101,6 +105,16 @@ pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T>) -> Handle {
 
 pub fn service<T: RpcMessage>(addr: &str) -> impl RpcEndpoint<T> {
     MockEndpoint(PhantomData::default())
+}
+
+pub fn send_untyped(
+    addr: &str,
+    bytes: &[u8],
+) -> impl Future<Output = Result<Vec<u8>, error::Error>> {
+    local_router::router()
+        .lock()
+        .unwrap()
+        .forward_bytes(addr, "local", bytes)
 }
 
 struct MockEndpoint<T>(PhantomData<T>);

@@ -1,25 +1,28 @@
 use crate::error::Error;
 use crate::{RpcEnvelope, RpcHandler, RpcMessage};
-use actix::Message;
-use failure::_core::marker::PhantomData;
-use failure::_core::pin::Pin;
+use actix::{Message, Recipient};
 use futures::channel::mpsc;
-use futures::future;
 use futures::prelude::*;
 use futures::{
     compat::Future01CompatExt,
     future::{FutureExt, TryFutureExt},
     Future,
 };
+use futures::{future, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
+use std::marker::PhantomData;
+use std::pin::Pin;
 mod into_actix;
 mod util;
 
 use crate::local_router::into_actix::RpcHandlerWrapper;
 use crate::local_router::util::PrefixLookupBag;
 use actix::Actor;
+use futures::future::ErrInto;
+use futures_01::future::Future as _;
+use std::sync::{Arc, Mutex};
 
 trait RawEndpoint: Any {
     fn send(
@@ -58,6 +61,26 @@ impl<T: RpcMessage, H: RpcHandler<T> + 'static> RawEndpoint for RpcHandlerWrappe
     }
 }
 
+impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
+    fn send(
+        &mut self,
+        addr: &str,
+        from: &str,
+        msg: &[u8],
+    ) -> Pin<Box<Future<Output = Result<Vec<u8>, Error>>>> {
+        let msg: T = rmp_serde::decode::from_read(msg).unwrap();
+        Recipient::send(self, RpcEnvelope::with_caller(from, msg))
+            .map_err(|e| e.into())
+            .and_then(|r| rmp_serde::to_vec(&r).map_err(Error::from))
+            .compat()
+            .boxed_local()
+    }
+
+    fn recipient(&self) -> &dyn Any {
+        self
+    }
+}
+
 struct Slot {
     inner: Box<dyn RawEndpoint + 'static>,
 }
@@ -65,8 +88,16 @@ struct Slot {
 impl Slot {
     fn from_handler<T: RpcMessage, H: RpcHandler<T> + 'static>(handler: H) -> Self {
         Slot {
-            inner: Box::new(into_actix::RpcHandlerWrapper::new(handler)),
+            inner: Box::new(
+                into_actix::RpcHandlerWrapper::new(handler)
+                    .start()
+                    .recipient(),
+            ),
         }
+    }
+
+    fn from_actor<T: RpcMessage>(r: Recipient<RpcEnvelope<T>>) -> Self {
+        Slot { inner: Box::new(r) }
     }
 
     fn recipient<T: RpcMessage>(&mut self) -> Option<actix::Recipient<RpcEnvelope<T>>>
@@ -94,39 +125,67 @@ impl Slot {
     }
 }
 
-struct Router {
+pub struct Router {
     handlers: PrefixLookupBag<Slot>,
 }
 
 impl Router {
+    fn new() -> Self {
+        Router {
+            handlers: PrefixLookupBag::default(),
+        }
+    }
+
     pub fn bind<T: RpcMessage>(&mut self, addr: &str, endpoint: impl RpcHandler<T> + 'static) {
         let slot = Slot::from_handler(endpoint);
         let _ = self.handlers.insert(format!("{}/{}", addr, T::ID), slot);
     }
 
-    pub async fn forward<T: RpcMessage>(
+    pub fn bind_actor<T: RpcMessage>(&mut self, addr: &str, endpoint: Recipient<RpcEnvelope<T>>) {
+        let slot = Slot::from_actor(endpoint);
+        let _ = self.handlers.insert(format!("{}/{}", addr, T::ID), slot);
+    }
+
+    pub fn forward<T: RpcMessage>(
         &mut self,
         addr: &str,
         msg: T,
-    ) -> Result<Result<T::Item, T::Error>, Error> {
+    ) -> impl futures_01::future::Future<Item = Result<T::Item, T::Error>, Error = Error> {
+        eprintln!(
+            "keys={:?}",
+            self.handlers
+                .keys()
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+        );
         if let Some(slot) = self.handlers.get_mut(&format!("{}/{}", addr, T::ID)) {
             if let Some(h) = slot.recipient() {
-                return Ok(h.send(RpcEnvelope::local(msg)).compat().await?);
+                return futures_01::future::Either::A(
+                    h.send(RpcEnvelope::local(msg)).map_err(Error::from),
+                );
             }
         }
-        Err(Error::NoEndpoint)
+        futures_01::future::Either::B(futures_01::future::err(Error::NoEndpoint))
     }
 
-    pub async fn forward_bytes(
+    pub fn forward_bytes(
         &mut self,
         addr: &str,
         from: &str,
         msg: &[u8],
-    ) -> Result<Vec<u8>, Error> {
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
         if let Some(slot) = self.handlers.get_mut(addr) {
-            slot.send(addr, from, msg).await
+            future::Either::Left(slot.send(addr, from, msg))
         } else {
-            Err(Error::NoEndpoint)
+            future::Either::Right(future::ready(Err(Error::NoEndpoint)))
         }
     }
+}
+
+thread_local! {
+    pub static ROUTER: Arc<Mutex<Router>> = Arc::new(Mutex::new(Router::new()));
+}
+
+pub fn router() -> Arc<Mutex<Router>> {
+    ROUTER.with(|r| r.clone())
 }

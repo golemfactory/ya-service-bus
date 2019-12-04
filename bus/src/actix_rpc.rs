@@ -2,33 +2,43 @@
 
 use super::error::Error as BusError;
 use super::Handle;
+use crate::local_router::{router, Router};
 use crate::{RpcEnvelope, RpcMessage};
 use actix::prelude::*;
+use futures::compat::Future01CompatExt;
+use futures::{FutureExt, TryFutureExt};
 use futures_01::{future, Future};
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::sync::{Arc, Mutex};
 
 pub fn bind<M: RpcMessage>(addr: &str, actor: Recipient<RpcEnvelope<M>>) -> Handle
 where
     <RpcEnvelope<M> as Message>::Result: Serialize + DeserializeOwned + Sync + Send,
 {
     eprintln!("bind {} for {}", addr, std::any::type_name::<M>());
+    router().lock().unwrap().bind_actor(addr, actor);
     Handle { _inner: {} }
 }
 
 pub fn service(addr: &str) -> Endpoint {
-    Endpoint { _inner: () }
+    Endpoint {
+        addr: addr.into(),
+        router: router(),
+    }
 }
 
 pub struct Endpoint {
-    _inner: (),
+    addr: String,
+    router: Arc<Mutex<Router>>,
 }
 
 impl Endpoint {
     pub fn send<M: RpcMessage + Serialize + DeserializeOwned + Sync + Send>(
         &self,
         msg: M,
-    ) -> impl Future<Item = <RpcEnvelope<M> as Message>::Result, Error = BusError> {
-        future::err(BusError::Closed)
+    ) -> impl Future<Item = <RpcEnvelope<M> as Message>::Result, Error = BusError> + 'static {
+        let mut b = self.router.lock().unwrap();
+        b.forward(self.addr.as_ref(), msg)
     }
 }
