@@ -104,7 +104,7 @@ fn main() {
                     .for_each(move |msg| {
                         match msg {
                             GsbMessage::RegisterRequest(msg) => {
-                                println!("Received RegisterRequest from {} service_id = {}", addr, &msg.service_id);
+                                println!("Received RegisterRequest from {}. service_id = {}", addr, &msg.service_id);
                                 if !msg.service_id.chars().all(char::is_alphanumeric) {
                                     let msg = RegisterReply {
                                         code: RegisterReplyCode::RegisterBadRequest as i32,
@@ -134,7 +134,7 @@ fn main() {
                                 }
                             }
                             GsbMessage::UnregisterRequest(msg) => {
-                                println!("Received UnregisterRequest from {} service_id = {}", addr, &msg.service_id);
+                                println!("Received UnregisterRequest from {}. service_id = {}", addr, &msg.service_id);
                                 match registered_endpoints.lock().unwrap().get(&msg.service_id) {
                                     Some(listener_addr) if *listener_addr == addr => {
                                         registered_endpoints
@@ -157,7 +157,7 @@ fn main() {
                             }
                             GsbMessage::CallRequest(msg) => {
                                 // TODO: Handle remote services (currently assuming address == service_id)
-                                println!("Received CallRequest from {} caller = {} address = {} request_id = {}", addr, &msg.caller, &msg.address, &msg.request_id);
+                                println!("Received CallRequest from {}. caller = {}, address = {}, request_id = {}", addr, &msg.caller, &msg.address, &msg.request_id);
                                 match registered_endpoints.lock().unwrap().get(&msg.address) {
                                     Some(listener_addr) => {
                                         if pending_calls
@@ -201,18 +201,20 @@ fn main() {
                             }
                             GsbMessage::CallReply(msg) => {
                                 println!("Received CallReply from {} request_id = {}", addr, &msg.request_id);
-                                match pending_calls.lock().unwrap().get(&msg.request_id) {
-                                    Some(caller_addr) => {
-                                        println!("Forwarding reply to {}", &caller_addr);
-                                        if msg.reply_type == (CallReplyType::Full as i32) {
-                                            pending_calls.lock().unwrap().remove(&msg.request_id);
-                                        }
+                                match pending_calls.lock().unwrap().entry(msg.request_id.clone()) {
+                                    Entry::Occupied(entry) => {
+                                        let caller_addr = entry.get();
+                                        let reply_type = CallReplyType::from_i32(msg.reply_type).unwrap();
+                                        println!("Forwarding reply to {}", caller_addr);
                                         send_dispatcher
                                             .lock()
                                             .unwrap()
-                                            .send_message(&caller_addr, msg)?;
-                                    }
-                                    None => eprintln!("Unknown request ID: {}", msg.request_id),
+                                            .send_message(caller_addr, msg)?;
+                                        if reply_type == CallReplyType::Full {
+                                            entry.remove_entry();
+                                        }
+                                    },
+                                    Entry::Vacant(_) => eprintln!("Unknown request ID: {}", msg.request_id),
                                 }
                             }
                             _ => eprintln!("Unexpected message received"),
