@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use ya_service_bus::{actix_rpc, send_untyped, Handle, RpcEnvelope, RpcMessage};
+use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
 
 const SERVICE_ID: &str = "/local/exe-unit";
 
@@ -100,9 +100,13 @@ async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failu
     )?)?;
 
     Ok(rmp_serde::from_slice(
-        send_untyped(&format!("{}/{}", SERVICE_ID, Execute::ID), bytes.as_ref())
-            .await?
-            .as_slice(),
+        untyped::send(
+            &format!("{}/{}", SERVICE_ID, Execute::ID),
+            "local",
+            bytes.as_ref(),
+        )
+        .await?
+        .as_slice(),
     )?)
 }
 
