@@ -1,6 +1,6 @@
 use crate::error::Error;
-use crate::{RpcEnvelope, RpcHandler, RpcMessage};
-use actix::{Message, Recipient};
+use crate::{Handle, RpcEnvelope, RpcHandler, RpcMessage, RpcRawCall};
+use actix::{MailboxError, Message, Recipient};
 use futures::channel::mpsc;
 use futures::prelude::*;
 use futures::{
@@ -19,6 +19,7 @@ mod util;
 
 use crate::local_router::into_actix::RpcHandlerWrapper;
 use crate::local_router::util::PrefixLookupBag;
+use crate::untyped::RawHandler;
 use actix::Actor;
 use futures::future::ErrInto;
 use futures_01::future::Future as _;
@@ -81,8 +82,34 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
     }
 }
 
+impl RawEndpoint for Recipient<RpcRawCall> {
+    fn send(
+        &mut self,
+        addr: &str,
+        from: &str,
+        msg: &[u8],
+    ) -> Pin<Box<Future<Output = Result<Vec<u8>, Error>>>> {
+        Recipient::<RpcRawCall>::send(
+            self,
+            RpcRawCall {
+                caller: from.to_string(),
+                addr: addr.into(),
+                body: msg.into(),
+            },
+        )
+        .map_err(Error::from)
+        .flatten()
+        .compat()
+        .boxed_local()
+    }
+
+    fn recipient(&self) -> &Any {
+        self
+    }
+}
+
 struct Slot {
-    inner: Box<dyn RawEndpoint + 'static>,
+    inner: Box<dyn RawEndpoint + Send + 'static>,
 }
 
 impl Slot {
@@ -94,6 +121,10 @@ impl Slot {
                     .recipient(),
             ),
         }
+    }
+
+    fn from_raw(r: Recipient<RpcRawCall>) -> Self {
+        Slot { inner: Box::new(r) }
     }
 
     fn from_actor<T: RpcMessage>(r: Recipient<RpcEnvelope<T>>) -> Self {
@@ -146,6 +177,12 @@ impl Router {
         let _ = self.handlers.insert(format!("{}/{}", addr, T::ID), slot);
     }
 
+    pub fn bind_raw(&mut self, addr: &str, endpoint: Recipient<RpcRawCall>) -> Handle {
+        let slot = Slot::from_raw(endpoint);
+        let _ = self.handlers.insert(addr.to_string(), slot);
+        Handle { _inner: () }
+    }
+
     pub fn forward<T: RpcMessage>(
         &mut self,
         addr: &str,
@@ -182,10 +219,10 @@ impl Router {
     }
 }
 
-thread_local! {
-    pub static ROUTER: Arc<Mutex<Router>> = Arc::new(Mutex::new(Router::new()));
+lazy_static::lazy_static! {
+static ref ROUTER: Arc<Mutex<Router>> = Arc::new(Mutex::new(Router::new()));
 }
 
 pub fn router() -> Arc<Mutex<Router>> {
-    ROUTER.with(|r| r.clone())
+    ROUTER.clone()
 }

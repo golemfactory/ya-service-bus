@@ -14,6 +14,7 @@ rmp-serde="0.14.0"
 futures={version="0.3", features=["compat"]}
 actix="0.8.3"
 failure="0.1"
+lazy_static = "1.4"
 
 [dependencies.futures_01]
 version = "0.1.25"
