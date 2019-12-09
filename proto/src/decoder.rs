@@ -1,20 +1,13 @@
 use std::convert::TryInto;
 
+use crate::gsb_api::*;
+use crate::{MessageHeader, MessageType};
 use bytes::BytesMut;
 use prost::Message;
-use tokio::codec::Decoder;
+use std::mem::size_of;
+use tokio_codec::Decoder;
 
-use ya_sb_api::*;
-
-lazy_static! {
-    static ref MSG_HEADER_LENGTH: usize = {
-        let header = MessageHeader {
-            msg_type: 0,
-            msg_length: 0,
-        };
-        header.encoded_len()
-    };
-}
+const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
 pub enum IncomingGsbMessage {
     RegisterRequest(RegisterRequest),
@@ -24,10 +17,10 @@ pub enum IncomingGsbMessage {
 }
 
 fn parse_header(src: &mut BytesMut) -> failure::Fallible<Option<MessageHeader>> {
-    if src.len() < *MSG_HEADER_LENGTH {
+    if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
     } else {
-        let buf = src.split_to(*MSG_HEADER_LENGTH + 1);
+        let buf = src.split_to(MSG_HEADER_LENGTH + 1);
         Ok(Some(MessageHeader::decode(buf)?))
     }
 }

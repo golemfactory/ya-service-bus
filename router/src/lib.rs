@@ -1,7 +1,4 @@
-#[macro_use]
-extern crate lazy_static;
-
-pub mod codec;
+use ya_sb_proto::{codec, decoder};
 
 use std::net::SocketAddr;
 

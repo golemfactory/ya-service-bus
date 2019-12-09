@@ -3,8 +3,8 @@ use futures::{FutureExt, StreamExt, TryFutureExt, TryStreamExt};
 
 use tokio::prelude::*;
 
-use ya_sb_api::*;
-use ya_sb_router::codec::GsbMessage;
+use ya_sb_proto::codec::GsbMessage;
+use ya_sb_proto::*;
 use ya_sb_router::connect;
 
 async fn run_server() {

@@ -8,8 +8,10 @@ use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::sync::mpsc;
 
-use ya_sb_api::*;
-use ya_sb_router::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder};
+use ya_sb_proto::{
+    codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder},
+    *,
+};
 
 struct MessageDispatcher<A, B>
 where

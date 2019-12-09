@@ -5,8 +5,8 @@ use tokio::prelude::*;
 
 use uuid::Uuid;
 
-use ya_sb_api::*;
-use ya_sb_router::codec::GsbMessage;
+use ya_sb_proto::codec::GsbMessage;
+use ya_sb_proto::*;
 use ya_sb_router::connect;
 
 async fn run_client() {

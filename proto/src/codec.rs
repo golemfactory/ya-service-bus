@@ -1,15 +1,14 @@
 use std::convert::TryInto;
 use std::mem::size_of;
 
+use crate::gsb_api::*;
 use bytes::BytesMut;
 use prost::Message;
-use tokio::codec::{Decoder, Encoder};
+use tokio_codec::{Decoder, Encoder};
 
-use ya_sb_api::*;
+use crate::{MessageHeader, MessageType};
 
-lazy_static! {
-    static ref MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
-}
+const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
 trait Encodable {
     // This trait exists because prost::Message has template methods
@@ -87,10 +86,10 @@ impl Into<GsbMessage> for CallReply {
 }
 
 fn decode_header(src: &mut BytesMut) -> failure::Fallible<Option<MessageHeader>> {
-    if src.len() < *MSG_HEADER_LENGTH {
+    if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
     } else {
-        let buf = src.split_to(*MSG_HEADER_LENGTH);
+        let buf = src.split_to(MSG_HEADER_LENGTH);
         Ok(Some(MessageHeader::decode(buf)?))
     }
 }

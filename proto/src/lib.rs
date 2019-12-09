@@ -6,6 +6,11 @@ use bytes::BytesMut;
 use failure;
 use std::mem::size_of;
 
+#[cfg(feature = "with-codec")]
+pub mod codec;
+#[cfg(feature = "with-codec")]
+pub mod decoder;
+
 pub use gsb_api::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
