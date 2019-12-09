@@ -71,19 +71,3 @@ message CallReply {
   CallReplyType reply_type = 3;
   bytes data = 4;
 }
-
-// Plumbing
-
-enum MessageType {
-  REGISTER_REQUEST = 0;
-  REGISTER_REPLY = 1;
-  UNREGISTER_REQUEST = 2;
-  UNREGISTER_REPLY = 3;
-  CALL_REQUEST = 4;
-  CALL_REPLY = 5;
-}
-
-message MessageHeader {
-  MessageType msg_type = 1;
-  uint32 msg_length = 2;
-}
