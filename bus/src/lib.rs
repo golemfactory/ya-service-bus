@@ -9,8 +9,8 @@ use std::sync::Arc;
 pub mod actix_rpc;
 mod error;
 mod local_router;
-pub mod untyped;
 pub mod typed;
+pub mod untyped;
 
 pub trait BusMessage {}
 
@@ -110,5 +110,3 @@ pub trait RpcStreamHandler<T: RpcMessage> {
 pub struct Handle {
     pub(crate) _inner: (),
 }
-
-
