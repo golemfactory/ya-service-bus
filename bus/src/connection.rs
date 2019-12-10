@@ -5,6 +5,7 @@ use crate::error::Error;
 use crate::local_router::router;
 use crate::RpcRawCall;
 use futures::TryFutureExt;
+use futures_01::stream::SplitSink;
 use futures_01::unsync::oneshot;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
@@ -241,4 +242,60 @@ where
 
         ActorResponse::r#async(rx.flatten().into_actor(self))
     }
+}
+
+pub struct ConnectionRef<
+    Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
+>(Addr<Connection<SplitSink<Transport>>>);
+
+impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static>
+    ConnectionRef<Transport>
+{
+    pub fn bind(&self, addr: impl Into<String>) -> impl Future<Item = (), Error = Error> {
+        self.0.send(Bind { addr: addr.into() }).flatten()
+    }
+
+    pub fn call(
+        &self,
+        caller: impl Into<String>,
+        addr: impl Into<String>,
+        body: impl Into<Vec<u8>>,
+    ) -> impl Future<Item = Vec<u8>, Error = Error> {
+        self.0
+            .send(RpcRawCall {
+                caller: caller.into(),
+                addr: addr.into(),
+                body: body.into(),
+            })
+            .flatten()
+    }
+}
+
+pub fn connect<Transport>(transport: Transport) -> ConnectionRef<Transport>
+where
+    Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
+        + Stream<Item = GsbMessage, Error = ProtocolError>
+        + 'static,
+{
+    let (split_sink, split_stream) = transport.split();
+    ConnectionRef(Connection::create(move |ctx| {
+        Connection::add_stream(split_stream, ctx);
+        Connection::new(split_sink, ctx)
+    }))
+}
+
+pub fn tcp(
+    addr: &std::net::SocketAddr,
+) -> impl Future<
+    Item = impl Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
+               + Stream<Item = GsbMessage, Error = ProtocolError>
+               + 'static,
+    Error = std::io::Error,
+> {
+    tokio_tcp::TcpStream::connect(addr).and_then(|s| {
+        Ok(tokio_codec::Framed::new(
+            s,
+            ya_sb_proto::codec::GsbMessageCodec::default(),
+        ))
+    })
 }

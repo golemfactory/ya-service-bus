@@ -18,6 +18,8 @@ lazy_static = "1.4"
 ya-sb-proto = { path = "../proto" }
 rand="0.7.2"
 log="0.4"
+tokio-tcp="0.1"
+tokio-codec="0.1"
 
 [dependencies.futures_01]
 version = "0.1.25"
