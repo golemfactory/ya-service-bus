@@ -15,6 +15,9 @@ futures={version="0.3", features=["compat"]}
 actix="0.8.3"
 failure="0.1"
 lazy_static = "1.4"
+ya-sb-proto = { path = "../proto" }
+rand="0.7.2"
+log="0.4"
 
 [dependencies.futures_01]
 version = "0.1.25"

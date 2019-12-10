@@ -7,6 +7,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 pub mod actix_rpc;
+mod connection;
 mod error;
 mod local_router;
 pub mod typed;

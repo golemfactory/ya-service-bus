@@ -10,6 +10,8 @@ use crate::{MessageHeader, MessageType};
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
+pub type ProtocolError = failure::Error;
+
 trait Encodable {
     // This trait exists because prost::Message has template methods
 
@@ -27,6 +29,7 @@ impl<T: Message> Encodable for T {
     }
 }
 
+#[derive(Debug)]
 pub enum GsbMessage {
     RegisterRequest(RegisterRequest),
     RegisterReply(RegisterReply),

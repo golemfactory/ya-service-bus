@@ -1,3 +1,5 @@
+use failure::Fail;
+
 mod gsb_api {
     include!(concat!(env!("OUT_DIR"), "/gsb_api.rs"));
 }
@@ -12,6 +14,8 @@ pub mod codec;
 pub mod decoder;
 
 pub use gsb_api::*;
+use std::convert::TryFrom;
+use std::fs::read;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]
@@ -51,6 +55,35 @@ impl MessageHeader {
         Ok(MessageHeader {
             msg_type: i32::from_be_bytes(msg_type),
             msg_length: u32::from_be_bytes(msg_length),
+        })
+    }
+}
+
+#[derive(Fail, Debug)]
+#[fail(display = "invalid value: {}", _0)]
+pub struct EnumError(pub i32);
+
+impl TryFrom<i32> for CallReplyCode {
+    type Error = EnumError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => CallReplyCode::CallReplyOk,
+            400 => CallReplyCode::CallReplyBadRequest,
+            500 => CallReplyCode::ServiceFailure,
+            _ => return Err(EnumError(value)),
+        })
+    }
+}
+
+impl TryFrom<i32> for CallReplyType {
+    type Error = EnumError;
+
+    fn try_from(value: i32) -> Result<Self, Self::Error> {
+        Ok(match value {
+            0 => CallReplyType::Full,
+            1 => CallReplyType::Partial,
+            _ => return Err(EnumError(value)),
         })
     }
 }

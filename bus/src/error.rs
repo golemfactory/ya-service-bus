@@ -18,6 +18,12 @@ pub enum Error {
     EncodingProblem(String),
     #[fail(display = "Message delivery timed out")]
     Timeout,
+    #[fail(display = "bad request: {}", _0)]
+    GsbBadRequest(String),
+    #[fail(display = "already registered: {}", _0)]
+    GsbAlreadyRegistered(String),
+    #[fail(display = "{}", _0)]
+    GsbFailure(String),
 }
 
 impl From<MailboxError> for Error {

@@ -78,7 +78,7 @@ where
 }
 
 fn main() {
-    let listen_addr = "127.0.0.1:8080".parse().unwrap();
+    let listen_addr = "127.0.0.1:8245".parse().unwrap();
     let listener = TcpListener::bind(&listen_addr).expect("Unable to bind TCP listener");
     let dispatcher = Arc::new(Mutex::new(MessageDispatcher::new()));
     let registered_endpoints = Arc::new(Mutex::new(HashMap::new()));
