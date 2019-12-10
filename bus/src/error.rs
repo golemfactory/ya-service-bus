@@ -35,6 +35,12 @@ impl From<MailboxError> for Error {
     }
 }
 
+impl From<futures_01::sync::oneshot::Canceled> for Error {
+    fn from(_: futures_01::sync::oneshot::Canceled) -> Self {
+        Error::Closed
+    }
+}
+
 impl From<rmp_serde::decode::Error> for Error {
     fn from(e: rmp_serde::decode::Error) -> Self {
         Error::BadContent(e)
