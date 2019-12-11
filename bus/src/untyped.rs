@@ -5,7 +5,10 @@ use actix::Actor;
 use futures::Future;
 
 pub fn send(addr: &str, from: &str, bytes: &[u8]) -> impl Future<Output = Result<Vec<u8>, Error>> {
-    router().lock().unwrap().forward_bytes(addr, from, bytes)
+    router()
+        .lock()
+        .unwrap()
+        .forward_bytes(addr, from, bytes.into())
 }
 
 pub trait RawHandler {

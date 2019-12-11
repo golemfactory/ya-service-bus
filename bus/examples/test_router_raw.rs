@@ -1,8 +1,11 @@
 use actix::prelude::*;
 use failure::Fallible;
+use failure::_core::time::Duration;
+use futures::compat::Future01CompatExt;
 use futures_01::prelude::*;
 use std::path::PathBuf;
 use structopt::StructOpt;
+use tokio_timer::Timer;
 use ya_service_bus::connection;
 
 #[derive(StructOpt)]
@@ -26,7 +29,11 @@ fn main() -> Fallible<()> {
                         eprintln!("got msg from {} to {}", caller, addr);
                         eprintln!("body={}", String::from_utf8_lossy(msg));
                         let msg: Vec<u8> = msg.into();
-                        async move { Ok(msg.into()) }
+                        async move {
+                            let timer = Timer::default();
+                            let _ = timer.sleep(Duration::from_secs(20)).compat().await;
+                            Ok(msg.into())
+                        }
                     };
 
                     let _ = ya_service_bus::untyped::subscribe("/local/raw/echo", handle_echo);
@@ -43,19 +50,22 @@ fn main() -> Fallible<()> {
         }
         Args::Client { script } => {
             let data = std::fs::read(script).unwrap();
-            let a = connection::tcp(&bus_addr)
-                .map_err(|e| eprintln!("connect error={}", e))
-                .and_then(|tcp_connection| {
-                    let c = connection::connect(tcp_connection);
+            System::run(move || {
+                let a = connection::tcp(&bus_addr)
+                    .map_err(|e| eprintln!("connect error={}", e))
+                    .and_then(|tcp_connection| {
+                        let c = connection::connect(tcp_connection);
 
-                    c.call("me", "/local/raw/echo", data)
-                        .and_then(|msg| {
-                            eprintln!("body={}", String::from_utf8_lossy(msg.as_ref()));
-                            Ok(())
-                        })
-                        .map_err(|e| eprintln!("send error={}", e))
-                });
-            Arbiter::spawn(a)
+                        c.call("me", "/local/raw/echo", data)
+                            .and_then(|msg| {
+                                eprintln!("body={}", String::from_utf8_lossy(msg.as_ref()));
+                                Ok(())
+                            })
+                            .map_err(|e| eprintln!("send error={}", e))
+                    });
+                Arbiter::spawn(a)
+            })
+            .unwrap()
         }
     }
     Ok(())

@@ -10,6 +10,7 @@ pub mod actix_rpc;
 pub mod connection;
 mod error;
 mod local_router;
+mod remote_router;
 pub mod typed;
 pub mod untyped;
 

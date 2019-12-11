@@ -1,5 +1,4 @@
-#![allow(unused)]
-
+/// Using GSB with actix 0.8
 use super::error::Error as BusError;
 use super::Handle;
 use crate::local_router::{router, Router};
@@ -16,7 +15,6 @@ pub fn bind<M: RpcMessage>(addr: &str, actor: Recipient<RpcEnvelope<M>>) -> Hand
 where
     <RpcEnvelope<M> as Message>::Result: Serialize + DeserializeOwned + Sync + Send,
 {
-    eprintln!("bind {} for {}", addr, std::any::type_name::<M>());
     router().lock().unwrap().bind_actor(addr, actor);
     Handle { _inner: {} }
 }

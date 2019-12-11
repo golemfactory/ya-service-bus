@@ -19,62 +19,27 @@ mod util;
 
 use crate::local_router::into_actix::RpcHandlerWrapper;
 use crate::local_router::util::PrefixLookupBag;
+use crate::remote_router::{RemoteRouter, UpdateService};
 use crate::untyped::RawHandler;
-use actix::Actor;
+use actix::{Actor, SystemService};
 use futures::future::ErrInto;
-use futures_01::future::Future as _;
+use futures_01::future::Future as Future01;
 use std::sync::{Arc, Mutex};
 
 trait RawEndpoint: Any {
-    fn send(
-        &mut self,
-        addr: &str,
-        from: &str,
-        msg: &[u8],
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>>;
+    fn send(&self, msg: RpcRawCall) -> Box<dyn Future01<Item = Vec<u8>, Error = Error>>;
 
     fn recipient(&self) -> &dyn Any;
 }
 
-impl<T: RpcMessage, H: RpcHandler<T> + 'static> RawEndpoint for RpcHandlerWrapper<T, H> {
-    fn send(
-        &mut self,
-        addr: &str,
-        from: &str,
-        msg: &[u8],
-    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
-        let mut a = || {
-            let request_msg: T = match rmp_serde::from_read_ref(msg) {
-                Ok(v) => v,
-                Err(e) => return future::Either::Left(future::err(Error::from(e))),
-            };
-            future::Either::Right(
-                self.0
-                    .handle(from, request_msg)
-                    .map(|response_msg| rmp_serde::to_vec(&response_msg).map_err(Error::from)),
-            )
-        };
-        Box::pin(a())
-    }
-
-    fn recipient(&self) -> &dyn Any {
-        self
-    }
-}
-
 impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
-    fn send(
-        &mut self,
-        addr: &str,
-        from: &str,
-        msg: &[u8],
-    ) -> Pin<Box<Future<Output = Result<Vec<u8>, Error>>>> {
-        let msg: T = rmp_serde::decode::from_read(msg).unwrap();
-        Recipient::send(self, RpcEnvelope::with_caller(from, msg))
-            .map_err(|e| e.into())
-            .and_then(|r| rmp_serde::to_vec(&r).map_err(Error::from))
-            .compat()
-            .boxed_local()
+    fn send(&self, msg: RpcRawCall) -> Box<dyn Future01<Item = Vec<u8>, Error = Error>> {
+        let body: T = rmp_serde::decode::from_read(msg.body.as_slice()).unwrap();
+        Box::new(
+            Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
+                .map_err(|e| e.into())
+                .and_then(|r| rmp_serde::to_vec(&r).map_err(Error::from)),
+        )
     }
 
     fn recipient(&self) -> &dyn Any {
@@ -83,24 +48,12 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 }
 
 impl RawEndpoint for Recipient<RpcRawCall> {
-    fn send(
-        &mut self,
-        addr: &str,
-        from: &str,
-        msg: &[u8],
-    ) -> Pin<Box<Future<Output = Result<Vec<u8>, Error>>>> {
-        Recipient::<RpcRawCall>::send(
-            self,
-            RpcRawCall {
-                caller: from.to_string(),
-                addr: addr.into(),
-                body: msg.into(),
-            },
+    fn send(&self, msg: RpcRawCall) -> Box<dyn Future01<Item = Vec<u8>, Error = Error>> {
+        Box::new(
+            Recipient::<RpcRawCall>::send(self, msg)
+                .map_err(Error::from)
+                .flatten(),
         )
-        .map_err(Error::from)
-        .flatten()
-        .compat()
-        .boxed_local()
     }
 
     fn recipient(&self) -> &Any {
@@ -146,13 +99,8 @@ impl Slot {
         }
     }
 
-    fn send(
-        &mut self,
-        addr: &str,
-        from: &str,
-        msg: &[u8],
-    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
-        self.inner.send(addr, from, msg)
+    fn send(&self, msg: RpcRawCall) -> impl Future01<Item = Vec<u8>, Error = Error> {
+        self.inner.send(msg)
     }
 }
 
@@ -167,19 +115,29 @@ impl Router {
         }
     }
 
-    pub fn bind<T: RpcMessage>(&mut self, addr: &str, endpoint: impl RpcHandler<T> + 'static) {
+    pub fn bind<T: RpcMessage>(
+        &mut self,
+        addr: &str,
+        endpoint: impl RpcHandler<T> + 'static,
+    ) -> Handle {
         let slot = Slot::from_handler(endpoint);
-        let _ = self.handlers.insert(format!("{}/{}", addr, T::ID), slot);
+        let addr = format!("{}/{}", addr, T::ID);
+        let _ = self.handlers.insert(addr.clone(), slot);
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
+        Handle { _inner: () }
     }
 
     pub fn bind_actor<T: RpcMessage>(&mut self, addr: &str, endpoint: Recipient<RpcEnvelope<T>>) {
         let slot = Slot::from_actor(endpoint);
-        let _ = self.handlers.insert(format!("{}/{}", addr, T::ID), slot);
+        let addr = format!("{}/{}", addr, T::ID);
+        let _ = self.handlers.insert(addr.clone(), slot);
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr));
     }
 
     pub fn bind_raw(&mut self, addr: &str, endpoint: Recipient<RpcRawCall>) -> Handle {
         let slot = Slot::from_raw(endpoint);
         let _ = self.handlers.insert(addr.to_string(), slot);
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
         Handle { _inner: () }
     }
 
@@ -188,32 +146,83 @@ impl Router {
         addr: &str,
         msg: T,
     ) -> impl futures_01::future::Future<Item = Result<T::Item, T::Error>, Error = Error> {
-        eprintln!(
-            "keys={:?}",
-            self.handlers
-                .keys()
-                .map(|s| s.to_string())
-                .collect::<Vec<String>>()
-        );
-        if let Some(slot) = self.handlers.get_mut(&format!("{}/{}", addr, T::ID)) {
-            if let Some(h) = slot.recipient() {
-                return futures_01::future::Either::A(
-                    h.send(RpcEnvelope::local(msg)).map_err(Error::from),
-                );
-            }
+        let caller = "local";
+        let addr = format!("{}/{}", addr, T::ID);
+        if let Some(slot) = self.handlers.get_mut(&addr) {
+            futures_01::future::Either::A(if let Some(h) = slot.recipient() {
+                futures_01::future::Either::A(h.send(RpcEnvelope::local(msg)).map_err(Error::from))
+            } else {
+                let body = rmp_serde::to_vec(&msg).unwrap();
+                futures_01::future::Either::B(
+                    slot.send(RpcRawCall {
+                        caller: caller.into(),
+                        addr,
+                        body,
+                    })
+                    .and_then(|b| Ok(rmp_serde::from_read_ref(&b)?)),
+                )
+            })
+        } else {
+            let body = rmp_serde::to_vec(&msg).unwrap();
+            futures_01::future::Either::B(
+                RemoteRouter::from_registry()
+                    .send(RpcRawCall {
+                        caller: caller.into(),
+                        addr,
+                        body,
+                    })
+                    .flatten()
+                    .and_then(|b| Ok(rmp_serde::from_read_ref(&b)?)),
+            )
         }
-        futures_01::future::Either::B(futures_01::future::err(Error::NoEndpoint))
     }
 
     pub fn forward_bytes(
         &mut self,
         addr: &str,
         from: &str,
+        msg: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
+        if let Some(slot) = self.handlers.get_mut(addr) {
+            future::Either::Left(
+                slot.send(RpcRawCall {
+                    caller: from.into(),
+                    addr: addr.into(),
+                    body: msg,
+                })
+                .compat(),
+            )
+        } else {
+            future::Either::Right(
+                RemoteRouter::from_registry()
+                    .send(RpcRawCall {
+                        caller: from.into(),
+                        addr: addr.into(),
+                        body: msg,
+                    })
+                    .flatten()
+                    .compat(),
+            )
+        }
+    }
+
+    pub fn forward_bytes_local(
+        &mut self,
+        addr: &str,
+        from: &str,
         msg: &[u8],
     ) -> impl Future<Output = Result<Vec<u8>, Error>> {
         if let Some(slot) = self.handlers.get_mut(addr) {
-            future::Either::Left(slot.send(addr, from, msg))
+            future::Either::Left(
+                slot.send(RpcRawCall {
+                    caller: from.into(),
+                    addr: addr.into(),
+                    body: msg.into(),
+                })
+                .compat(),
+            )
         } else {
+            log::warn!("no endpoint: {}", addr);
             future::Either::Right(future::ready(Err(Error::NoEndpoint)))
         }
     }

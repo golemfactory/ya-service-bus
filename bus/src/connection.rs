@@ -77,10 +77,11 @@ where
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) {
+        log::debug!("got call request_id={}, address={}", request_id, address);
         let mut do_call = router()
             .lock()
             .unwrap()
-            .forward_bytes(&address, &caller, data.as_ref())
+            .forward_bytes_local(&address, &caller, data.as_ref())
             .compat()
             .into_actor(self)
             .then(move |r, act: &mut Self, ctx| {
@@ -143,6 +144,14 @@ where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
 {
     type Context = Context<Self>;
+
+    fn started(&mut self, ctx: &mut Self::Context) {
+        log::info!("started connection to gsb");
+    }
+
+    fn stopped(&mut self, ctx: &mut Self::Context) {
+        log::info!("stopped connection to gsb");
+    }
 }
 
 fn register_reply_code(code: i32) -> Option<RegisterReplyCode> {
@@ -248,10 +257,18 @@ pub struct ConnectionRef<
     Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
 >(Addr<Connection<SplitSink<Transport>>>);
 
+impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static> Clone
+    for ConnectionRef<Transport>
+{
+    fn clone(&self) -> Self {
+        ConnectionRef(self.0.clone())
+    }
+}
+
 impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static>
     ConnectionRef<Transport>
 {
-    pub fn bind(&self, addr: impl Into<String>) -> impl Future<Item = (), Error = Error> {
+    pub fn bind(&self, addr: impl Into<String>) -> impl Future<Item = (), Error = Error> + 'static {
         self.0.send(Bind { addr: addr.into() }).flatten()
     }
 
@@ -269,6 +286,10 @@ impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static
             })
             .flatten()
     }
+
+    pub fn connected(&self) -> bool {
+        self.0.connected()
+    }
 }
 
 pub fn connect<Transport>(transport: Transport) -> ConnectionRef<Transport>
@@ -279,19 +300,17 @@ where
 {
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {
-        Connection::add_stream(split_stream, ctx);
+        let h = Connection::add_stream(split_stream, ctx);
         Connection::new(split_sink, ctx)
     }))
 }
 
+pub type TcpTransport =
+    tokio_codec::Framed<tokio_tcp::TcpStream, ya_sb_proto::codec::GsbMessageCodec>;
+
 pub fn tcp(
     addr: &std::net::SocketAddr,
-) -> impl Future<
-    Item = impl Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
-               + Stream<Item = GsbMessage, Error = ProtocolError>
-               + 'static,
-    Error = std::io::Error,
-> {
+) -> impl Future<Item = TcpTransport, Error = std::io::Error> {
     tokio_tcp::TcpStream::connect(addr).and_then(|s| {
         Ok(tokio_codec::Framed::new(
             s,

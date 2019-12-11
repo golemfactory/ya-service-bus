@@ -8,7 +8,16 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
 
-const SERVICE_ID: &str = "/local/exe-unit";
+#[derive(Serialize, Deserialize)]
+struct Ping(String);
+
+impl RpcMessage for Ping {
+    const ID: &'static str = "ping";
+    type Item = String;
+    type Error = ();
+}
+
+const SERVICE_ID: &str = "/local/exeunit";
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -76,6 +85,10 @@ enum Args {
     LocalRaw {
         script: PathBuf,
     },
+    Ping {
+        dst: String,
+        msg: String,
+    },
 }
 
 fn run_script(script: PathBuf) -> impl Future<Item = String, Error = failure::Error> {
@@ -111,6 +124,7 @@ async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failu
 }
 
 fn main() -> failure::Fallible<()> {
+    env_logger::init();
     let mut sys = System::new("test");
     let args = Args::from_args();
     match args {
@@ -123,6 +137,11 @@ fn main() -> failure::Fallible<()> {
             let result = sys.block_on(run_script(script))?;
             eprintln!("got result: {:?}", result);
         }
+        Args::Ping { dst, msg } => {
+            let result = sys.block_on(actix_rpc::service(&dst).send(Ping(msg)))?;
+            eprintln!("got result: {:?}", result);
+        }
+
         Args::Local { script } => {
             let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
