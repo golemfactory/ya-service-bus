@@ -14,6 +14,18 @@ pub trait RawHandler {
     fn handle(&mut self, caller: &str, addr: &str, msg: &[u8]) -> Self::Result;
 }
 
+impl<
+        Output: Future<Output = Result<Vec<u8>, Error>>,
+        F: FnMut(&str, &str, &[u8]) -> Output + 'static,
+    > RawHandler for F
+{
+    type Result = Output;
+
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8]) -> Self::Result {
+        self(caller, addr, msg)
+    }
+}
+
 mod raw_actor {
     use super::{Error, RawHandler};
     use crate::{RpcEnvelope, RpcRawCall};
