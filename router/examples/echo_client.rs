@@ -10,7 +10,7 @@ use ya_sb_proto::*;
 use ya_sb_router::connect;
 
 async fn run_client() {
-    let router_addr = "127.0.0.1:8080".parse().unwrap();
+    let router_addr = "127.0.0.1:8245".parse().unwrap();
     let (reader, writer) = connect(&router_addr).await;
 
     println!("Sending call request...");

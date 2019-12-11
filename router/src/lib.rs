@@ -1,5 +1,3 @@
-use ya_sb_proto::{codec, decoder};
-
 use std::net::SocketAddr;
 
 use futures::compat::Future01CompatExt;
@@ -8,7 +6,7 @@ use tokio::codec::{FramedRead, FramedWrite};
 use tokio::io::{AsyncRead, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 
-use crate::codec::{GsbMessageDecoder, GsbMessageEncoder};
+use ya_sb_proto::codec::{GsbMessageDecoder, GsbMessageEncoder};
 
 pub async fn connect(
     addr: &SocketAddr,
