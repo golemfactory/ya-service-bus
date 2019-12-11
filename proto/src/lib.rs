@@ -1,21 +1,18 @@
+use std::convert::TryFrom;
+use std::mem::size_of;
+
+use bytes::BytesMut;
+use failure;
 use failure::Fail;
+
+pub use gsb_api::*;
 
 mod gsb_api {
     include!(concat!(env!("OUT_DIR"), "/gsb_api.rs"));
 }
 
-use bytes::BytesMut;
-use failure;
-use std::mem::size_of;
-
 #[cfg(feature = "with-codec")]
 pub mod codec;
-#[cfg(feature = "with-codec")]
-pub mod decoder;
-
-pub use gsb_api::*;
-use std::convert::TryFrom;
-use std::fs::read;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
 #[repr(i32)]

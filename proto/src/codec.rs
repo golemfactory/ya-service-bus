@@ -1,13 +1,12 @@
 use std::convert::TryInto;
 use std::mem::size_of;
 
-use crate::gsb_api::*;
 use bytes::BytesMut;
 use prost::Message;
 use tokio_codec::{Decoder, Encoder};
 
+use crate::gsb_api::*;
 use crate::{MessageHeader, MessageType};
-use std::io::Error;
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 

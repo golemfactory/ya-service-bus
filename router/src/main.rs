@@ -107,7 +107,7 @@ fn main() {
                         match msg {
                             GsbMessage::RegisterRequest(msg) => {
                                 println!("Received RegisterRequest from {}. service_id = {}", addr, &msg.service_id);
-                                if !msg.service_id.chars().all(char::is_alphanumeric) {
+                                if !msg.service_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '/') {
                                     let msg = RegisterReply {
                                         code: RegisterReplyCode::RegisterBadRequest as i32,
                                         message: "Illegal service ID".to_string(),
