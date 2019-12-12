@@ -16,18 +16,34 @@ pub mod untyped;
 
 pub use error::Error;
 
-pub trait BusMessage {}
-
 pub trait RpcMessage: Serialize + DeserializeOwned + 'static + Sync + Send {
     const ID: &'static str;
     type Item: Serialize + DeserializeOwned + 'static + Sync + Send;
     type Error: Serialize + DeserializeOwned + 'static + Sync + Send + Debug;
 }
 
-pub struct RpcEnvelope<T: RpcMessage> {
+pub trait RpcStreamMessage: Serialize + DeserializeOwned + 'static + Sync + Send {
+    const ID: &'static str;
+    type Item: Serialize + DeserializeOwned + 'static + Sync + Send;
+    type Error: Serialize + DeserializeOwned + 'static + Sync + Send + Debug;
+}
+
+pub struct RpcEnvelope<T> {
     caller: String,
     body: T,
 }
+
+pub struct RpcRawStreamCall<Reply : futures_01::Sink<SinkItem=Vec<u8>, SinkError=error::Error>> {
+    pub caller: String,
+    pub addr: String,
+    pub body: Vec<u8>,
+    pub reply : Reply
+}
+
+impl<Reply : futures_01::Sink<SinkItem=Vec<u8>, SinkError=error::Error>> Message for RpcRawStreamCall<Reply> {
+    type Result = Result<(), error::Error>;
+}
+
 
 pub struct RpcRawCall {
     pub caller: String,
@@ -105,8 +121,8 @@ pub trait RpcHandler<T: RpcMessage> {
     fn handle(&mut self, caller: &str, msg: T) -> Self::Result;
 }
 
-pub trait RpcStreamHandler<T: RpcMessage> {
-    type Result: Stream<Item = <RpcEnvelope<T> as Message>::Result>;
+pub trait RpcStreamHandler<T: RpcStreamMessage> {
+    type Result: Stream<Item=Result<T::Item, T::Error>>;
 
     fn handle(&mut self, caller: &str, msgs: Vec<T>) -> Self::Result;
 }
