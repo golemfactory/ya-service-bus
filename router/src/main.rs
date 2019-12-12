@@ -1,3 +1,4 @@
+use std::clone::Clone;
 use std::collections::{hash_map::Entry, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
@@ -8,6 +9,7 @@ use tokio::net::TcpListener;
 use tokio::prelude::*;
 use tokio::sync::mpsc;
 
+use failure::_core::fmt::Display;
 use ya_sb_proto::{
     codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder},
     *,
@@ -77,157 +79,242 @@ where
     }
 }
 
+type ServiceId = String;
+type RequestId = String;
+
+fn is_valid_service_id(service_id: &ServiceId) -> bool {
+    service_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-')
+}
+
+struct Router<A, B>
+where
+    A: Hash + Eq,
+    B: Sink,
+{
+    dispatcher: Arc<Mutex<MessageDispatcher<A, B>>>,
+    registered_endpoints: Arc<Mutex<HashMap<ServiceId, A>>>,
+    pending_calls: Arc<Mutex<HashMap<RequestId, A>>>,
+}
+
+impl<A, B> Clone for Router<A, B>
+where
+    A: Hash + Eq,
+    B: Sink,
+{
+    fn clone(&self) -> Self {
+        Router {
+            dispatcher: self.dispatcher.clone(),
+            registered_endpoints: self.registered_endpoints.clone(),
+            pending_calls: self.pending_calls.clone(),
+        }
+    }
+}
+
+impl<A, B> Router<A, B>
+where
+    A: Hash + Eq + Display + Clone,
+    B: Sink + Send + 'static,
+    B::SinkItem: Send + 'static + From<GsbMessage>,
+    B::SinkError: From<mpsc::error::RecvError> + Debug,
+{
+    fn new() -> Self {
+        Router {
+            dispatcher: Arc::new(Mutex::new(MessageDispatcher::new())),
+            registered_endpoints: Arc::new(Mutex::new(HashMap::new())),
+            pending_calls: Arc::new(Mutex::new(HashMap::new())),
+        }
+    }
+
+    fn connect(&mut self, addr: A, sink: B) -> failure::Fallible<()> {
+        println!("Accepted connection from {}", addr);
+        self.dispatcher.lock().unwrap().register(addr, sink)
+    }
+
+    fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
+        println!("Closed connection with {}", addr);
+        self.dispatcher.lock().unwrap().unregister(addr)
+        // TODO: Clean up registered endpoints and pending calls
+    }
+
+    fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
+    where
+        T: Into<GsbMessage>,
+    {
+        self.dispatcher
+            .lock()
+            .unwrap()
+            .send_message(addr, msg.into())
+    }
+
+    fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
+        println!(
+            "Received RegisterRequest from {}. service_id = {}",
+            addr, &msg.service_id
+        );
+        let msg = if !is_valid_service_id(&msg.service_id) {
+            RegisterReply {
+                code: RegisterReplyCode::RegisterBadRequest as i32,
+                message: "Illegal service ID".to_string(),
+            }
+        } else {
+            match self
+                .registered_endpoints
+                .lock()
+                .unwrap()
+                .entry(msg.service_id)
+            {
+                Entry::Occupied(entry) => RegisterReply {
+                    code: RegisterReplyCode::RegisterConflict as i32,
+                    message: "Service ID already registered".to_string(),
+                },
+                Entry::Vacant(entry) => {
+                    entry.insert(addr.clone());
+                    RegisterReply {
+                        code: RegisterReplyCode::RegisteredOk as i32,
+                        message: "Service successfully registered".to_string(),
+                    }
+                }
+            }
+        };
+        println!("{}", msg.message);
+        self.send_message(addr, msg)
+    }
+
+    fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> failure::Fallible<()> {
+        println!(
+            "Received UnregisterRequest from {}. service_id = {}",
+            addr, &msg.service_id
+        );
+        let msg = match self
+            .registered_endpoints
+            .lock()
+            .unwrap()
+            .entry(msg.service_id)
+        {
+            Entry::Occupied(entry) if entry.get() == addr => {
+                entry.remove();
+                println!("Service successfully unregistered");
+                UnregisterReply {
+                    code: UnregisterReplyCode::UnregisteredOk as i32,
+                }
+            }
+            _ => {
+                println!("Service not registered or registered by another server");
+                UnregisterReply {
+                    code: UnregisterReplyCode::NotRegistered as i32,
+                }
+            }
+        };
+        self.send_message(addr, msg)
+    }
+
+    fn call(&mut self, caller_addr: &A, msg: CallRequest) -> failure::Fallible<()> {
+        println!(
+            "Received CallRequest from {}. caller = {}, address = {}, request_id = {}",
+            caller_addr, &msg.caller, &msg.address, &msg.request_id
+        );
+        let server_addr = match self
+            .pending_calls
+            .lock()
+            .unwrap()
+            .entry(msg.request_id.clone())
+        {
+            Entry::Occupied(_) => Err("CallRequest with this ID already exists".to_string()),
+            Entry::Vacant(call_entry) => {
+                // TODO: Prefix matching
+                match self.registered_endpoints.lock().unwrap().get(&msg.address) {
+                    None => Err("No service registered under given address".to_string()),
+                    Some(addr) => {
+                        call_entry.insert(caller_addr.clone());
+                        Ok(addr.clone())
+                    }
+                }
+            }
+        };
+        match server_addr {
+            Ok(server_addr) => {
+                println!("Forwarding CallRequest to {}", server_addr);
+                self.send_message(&server_addr, msg)
+            }
+            Err(err) => {
+                println!("{}", err);
+                let msg = CallReply {
+                    request_id: msg.request_id,
+                    code: CallReplyCode::CallReplyBadRequest as i32,
+                    reply_type: CallReplyType::Full as i32,
+                    data: err.into_bytes(),
+                };
+                self.send_message(caller_addr, msg)
+            }
+        }
+    }
+
+    fn reply(&mut self, server_addr: &A, msg: CallReply) -> failure::Fallible<()> {
+        println!(
+            "Received CallReply from {} request_id = {}",
+            server_addr, &msg.request_id
+        );
+        let caller_addr = match self
+            .pending_calls
+            .lock()
+            .unwrap()
+            .entry(msg.request_id.clone())
+        {
+            Entry::Occupied(entry) => {
+                let caller_addr = entry.get().clone();
+                if msg.reply_type == CallReplyType::Full as i32 {
+                    entry.remove_entry();
+                }
+                Ok(caller_addr)
+            }
+            Entry::Vacant(_) => Err("Unknown request ID"),
+        };
+        match caller_addr {
+            Ok(addr) => self.send_message(&addr, msg),
+            Err(err) => Ok(println!("{}", err)),
+        }
+    }
+
+    fn handle_message(&mut self, addr: A, msg: GsbMessage) -> failure::Fallible<()> {
+        match msg {
+            GsbMessage::RegisterRequest(msg) => self.register_endpoint(&addr, msg),
+            GsbMessage::UnregisterRequest(msg) => self.unregister_endpoint(&addr, msg),
+            GsbMessage::CallRequest(msg) => self.call(&addr, msg),
+            GsbMessage::CallReply(msg) => self.reply(&addr, msg),
+            _ => Err(failure::err_msg(format!(
+                "Unexpected message received: {:?}",
+                msg
+            ))),
+        }
+    }
+}
+
 fn main() {
     let listen_addr = "127.0.0.1:8245".parse().unwrap();
     let listener = TcpListener::bind(&listen_addr).expect("Unable to bind TCP listener");
-    let dispatcher = Arc::new(Mutex::new(MessageDispatcher::new()));
-    let registered_endpoints = Arc::new(Mutex::new(HashMap::new()));
-    let pending_calls = Arc::new(Mutex::new(HashMap::new()));
+    let mut router = Router::new();
 
     let server = listener
         .incoming()
         .map_err(|e| eprintln!("Accept failed: {:?}", e))
         .for_each(move |sock| {
             let addr = sock.peer_addr().unwrap();
-            println!("Accepted connection from {}", addr);
-
             let (reader, writer) = sock.split();
             let writer = FramedWrite::new(writer, GsbMessageEncoder {});
             let reader = FramedRead::new(reader, GsbMessageDecoder::new());
-            dispatcher.lock().unwrap().register(addr.clone(), writer).unwrap();
 
-            let send_dispatcher = dispatcher.clone();
-            let unregister_dispatcher = dispatcher.clone();
-            let registered_endpoints = registered_endpoints.clone();
-            let pending_calls = pending_calls.clone();
+            router.connect(addr.clone(), writer);
+            let mut router1 = router.clone();
+            let mut router2 = router.clone();
 
             tokio::spawn(
                 reader
-                    .for_each(move |msg| {
-                        match msg {
-                            GsbMessage::RegisterRequest(msg) => {
-                                println!("Received RegisterRequest from {}. service_id = {}", addr, &msg.service_id);
-                                if !msg.service_id.chars().all(|c| c.is_ascii_alphanumeric() || c == '/') {
-                                    let msg = RegisterReply {
-                                        code: RegisterReplyCode::RegisterBadRequest as i32,
-                                        message: "Illegal service ID".to_string(),
-                                    };
-                                    send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
-                                } else if registered_endpoints
-                                    .lock()
-                                    .unwrap()
-                                    .contains_key(&msg.service_id)
-                                {
-                                    let msg = RegisterReply {
-                                        code: RegisterReplyCode::RegisterConflict as i32,
-                                        message: "Service ID already registered".to_string(),
-                                    };
-                                    send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
-                                } else {
-                                    registered_endpoints
-                                        .lock()
-                                        .unwrap()
-                                        .insert(msg.service_id, addr);
-                                    let msg = RegisterReply {
-                                        code: RegisterReplyCode::RegisteredOk as i32,
-                                        message: "".to_string(),
-                                    };
-                                    send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
-                                }
-                            }
-                            GsbMessage::UnregisterRequest(msg) => {
-                                println!("Received UnregisterRequest from {}. service_id = {}", addr, &msg.service_id);
-                                match registered_endpoints.lock().unwrap().get(&msg.service_id) {
-                                    Some(listener_addr) if *listener_addr == addr => {
-                                        registered_endpoints
-                                            .lock()
-                                            .unwrap()
-                                            .remove(&msg.service_id);
-                                        let msg = UnregisterReply {
-                                            code: UnregisterReplyCode::UnregisteredOk as i32,
-                                        };
-                                        send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
-                                    }
-                                    _ => {
-                                        // Service not registered or registered by another process than the caller
-                                        let msg = UnregisterReply {
-                                            code: UnregisterReplyCode::NotRegistered as i32,
-                                        };
-                                        send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
-                                    }
-                                }
-                            }
-                            GsbMessage::CallRequest(msg) => {
-                                // TODO: Handle remote services (currently assuming address == service_id)
-                                println!("Received CallRequest from {}. caller = {}, address = {}, request_id = {}", addr, &msg.caller, &msg.address, &msg.request_id);
-                                match registered_endpoints.lock().unwrap().get(&msg.address) {
-                                    Some(listener_addr) => {
-                                        if pending_calls
-                                            .lock()
-                                            .unwrap()
-                                            .contains_key(&msg.request_id)
-                                        {
-                                            // Call with this ID already exists
-                                            let msg = CallReply {
-                                                request_id: msg.request_id,
-                                                code: CallReplyCode::CallReplyBadRequest as i32,
-                                                reply_type: CallReplyType::Full as i32,
-                                                data: vec![],
-                                            };
-                                            send_dispatcher
-                                                .lock()
-                                                .unwrap()
-                                                .send_message(&addr, msg)?;
-                                        } else {
-                                            pending_calls
-                                                .lock()
-                                                .unwrap()
-                                                .insert(msg.request_id.clone(), addr);
-                                            send_dispatcher
-                                                .lock()
-                                                .unwrap()
-                                                .send_message(&listener_addr, msg)?;
-                                        }
-                                    }
-                                    None => {
-                                        // There is no service registered under given address
-                                        let msg = CallReply {
-                                            request_id: msg.request_id,
-                                            code: CallReplyCode::CallReplyBadRequest as i32,
-                                            reply_type: CallReplyType::Full as i32,
-                                            data: vec![],
-                                        };
-                                        send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
-                                    }
-                                }
-                            }
-                            GsbMessage::CallReply(msg) => {
-                                println!("Received CallReply from {} request_id = {}", addr, &msg.request_id);
-                                match pending_calls.lock().unwrap().entry(msg.request_id.clone()) {
-                                    Entry::Occupied(entry) => {
-                                        let caller_addr = entry.get();
-                                        let reply_type = CallReplyType::from_i32(msg.reply_type).unwrap();
-                                        println!("Forwarding reply to {}", caller_addr);
-                                        send_dispatcher
-                                            .lock()
-                                            .unwrap()
-                                            .send_message(caller_addr, msg)?;
-                                        if reply_type == CallReplyType::Full {
-                                            entry.remove_entry();
-                                        }
-                                    },
-                                    Entry::Vacant(_) => eprintln!("Unknown request ID: {}", msg.request_id),
-                                }
-                            }
-                            _ => eprintln!("Unexpected message received"),
-                        }
-                        Ok(())
-                    })
-                    .map_err(|e| eprintln!("Error occured parsing message: {:?}", e))
-                    .and_then(move |_| {
-                        unregister_dispatcher.lock().unwrap().unregister(&addr).unwrap();
-                        future::ok(())
-                    }),
+                    .from_err()
+                    .for_each(move |msg| future::done(router1.handle_message(addr.clone(), msg)))
+                    .and_then(move |_| future::done(router2.disconnect(&addr)))
+                    .map_err(|e| eprintln!("Error occurred handling message: {:?}", e)),
             )
         });
 
