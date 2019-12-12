@@ -32,7 +32,7 @@ impl Handler<RpcEnvelope<Ping>> for Server {
 
     fn handle(&mut self, msg: RpcEnvelope<Ping>, _ctx: &mut Self::Context) -> Self::Result {
         eprintln!("got ping");
-        Ok(msg.into_inner().0.into())
+        Ok(msg.into_inner().0)
     }
 }
 

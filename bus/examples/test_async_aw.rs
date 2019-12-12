@@ -30,7 +30,7 @@ async fn server() -> Result<(), Error> {
 
     let _ = bus::bind("/local/test", |p: Ping| {
         async move {
-            eprintln!("test!!");
+            eprintln!("got ping: {:?}", p.0);
             Ok(format!("pong {}", p.0))
         }
     });
