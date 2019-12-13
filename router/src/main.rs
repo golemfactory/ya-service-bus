@@ -1,5 +1,5 @@
 use std::clone::Clone;
-use std::collections::{hash_map::Entry, HashMap};
+use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
@@ -88,6 +88,14 @@ fn is_valid_service_id(service_id: &ServiceId) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-')
 }
 
+struct PendingCall<A>
+where
+    A: Hash + Eq,
+{
+    caller_addr: A,
+    service_id: ServiceId,
+}
+
 struct Router<A, B>
 where
     A: Hash + Eq,
@@ -95,7 +103,10 @@ where
 {
     dispatcher: Arc<Mutex<MessageDispatcher<A, B>>>,
     registered_endpoints: Arc<Mutex<HashMap<ServiceId, A>>>,
-    pending_calls: Arc<Mutex<HashMap<RequestId, A>>>,
+    reversed_endpoints: Arc<Mutex<HashMap<A, HashSet<ServiceId>>>>,
+    pending_calls: Arc<Mutex<HashMap<RequestId, PendingCall<A>>>>,
+    client_calls: Arc<Mutex<HashMap<A, HashSet<RequestId>>>>,
+    endpoint_calls: Arc<Mutex<HashMap<ServiceId, HashSet<RequestId>>>>,
 }
 
 impl<A, B> Clone for Router<A, B>
@@ -107,7 +118,10 @@ where
         Router {
             dispatcher: self.dispatcher.clone(),
             registered_endpoints: self.registered_endpoints.clone(),
+            reversed_endpoints: self.reversed_endpoints.clone(),
             pending_calls: self.pending_calls.clone(),
+            client_calls: self.client_calls.clone(),
+            endpoint_calls: self.endpoint_calls.clone(),
         }
     }
 }
@@ -123,7 +137,10 @@ where
         Router {
             dispatcher: Arc::new(Mutex::new(MessageDispatcher::new())),
             registered_endpoints: Arc::new(Mutex::new(HashMap::new())),
+            reversed_endpoints: Arc::new(Mutex::new(HashMap::new())),
             pending_calls: Arc::new(Mutex::new(HashMap::new())),
+            client_calls: Arc::new(Mutex::new(HashMap::new())),
+            endpoint_calls: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 
@@ -134,8 +151,80 @@ where
 
     fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
         println!("Closed connection with {}", addr);
-        self.dispatcher.lock().unwrap().unregister(addr)
-        // TODO: Clean up registered endpoints and pending calls
+        self.dispatcher.lock().unwrap().unregister(addr)?;
+
+        // IDs of all endpoints registered by this server
+        let service_ids = match self.reversed_endpoints.lock().unwrap().entry(addr.clone()) {
+            Entry::Occupied(entry) => entry.remove().into_iter().collect(),
+            Entry::Vacant(_) => vec![],
+        };
+
+        service_ids.iter().for_each(|service_id| {
+            self.registered_endpoints.lock().unwrap().remove(service_id);
+        });
+
+        // All pending call requests unanswered by this server
+        let pending_calls: Vec<(RequestId, PendingCall<A>)> = service_ids
+            .into_iter()
+            .filter_map(
+                |service_id| match self.endpoint_calls.lock().unwrap().entry(service_id) {
+                    Entry::Occupied(entry) => Some(entry.remove().into_iter()),
+                    Entry::Vacant(_) => None,
+                },
+            )
+            .flatten()
+            .filter_map(
+                |request_id| match self.pending_calls.lock().unwrap().entry(request_id) {
+                    Entry::Occupied(entry) => Some(entry.remove_entry()),
+                    Entry::Vacant(_) => None,
+                },
+            )
+            .collect();
+
+        // Answer all pending calls with ServiceFailure reply
+        pending_calls
+            .into_iter()
+            .for_each(|(request_id, pending_call)| {
+                self.client_calls
+                    .lock()
+                    .unwrap()
+                    .get_mut(&pending_call.caller_addr)
+                    .unwrap()
+                    .remove(&request_id);
+                let msg = CallReply {
+                    request_id,
+                    code: CallReplyCode::ServiceFailure as i32,
+                    reply_type: CallReplyType::Full as i32,
+                    data: "Service disconnected".to_owned().into_bytes(),
+                };
+                match self.send_message(&pending_call.caller_addr, msg) {
+                    Err(err) => eprintln!("Send message failed: {:?}", err),
+                    _ => (),
+                };
+            });
+
+        // Remove all pending calls coming from this client
+        match self.client_calls.lock().unwrap().entry(addr.clone()) {
+            Entry::Occupied(entry) => {
+                entry.remove().drain().for_each(|request_id| {
+                    let pending_call = self
+                        .pending_calls
+                        .lock()
+                        .unwrap()
+                        .remove(&request_id)
+                        .unwrap();
+                    self.endpoint_calls
+                        .lock()
+                        .unwrap()
+                        .get_mut(&pending_call.service_id)
+                        .unwrap()
+                        .remove(&request_id);
+                });
+            }
+            Entry::Vacant(_) => {}
+        }
+
+        Ok(())
     }
 
     fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
@@ -163,14 +252,20 @@ where
                 .registered_endpoints
                 .lock()
                 .unwrap()
-                .entry(msg.service_id)
+                .entry(msg.service_id.clone())
             {
-                Entry::Occupied(entry) => RegisterReply {
+                Entry::Occupied(_) => RegisterReply {
                     code: RegisterReplyCode::RegisterConflict as i32,
                     message: "Service ID already registered".to_string(),
                 },
                 Entry::Vacant(entry) => {
                     entry.insert(addr.clone());
+                    self.reversed_endpoints
+                        .lock()
+                        .unwrap()
+                        .entry(addr.clone())
+                        .or_insert_with(|| HashSet::new())
+                        .insert(msg.service_id);
                     RegisterReply {
                         code: RegisterReplyCode::RegisteredOk as i32,
                         message: "Service successfully registered".to_string(),
@@ -191,10 +286,16 @@ where
             .registered_endpoints
             .lock()
             .unwrap()
-            .entry(msg.service_id)
+            .entry(msg.service_id.clone())
         {
             Entry::Occupied(entry) if entry.get() == addr => {
                 entry.remove();
+                self.reversed_endpoints
+                    .lock()
+                    .unwrap()
+                    .get_mut(addr)
+                    .ok_or(failure::err_msg("Address not found"))?
+                    .remove(&msg.service_id);
                 println!("Service successfully unregistered");
                 UnregisterReply {
                     code: UnregisterReplyCode::UnregisteredOk as i32,
@@ -227,7 +328,22 @@ where
                 match self.registered_endpoints.lock().unwrap().get(&msg.address) {
                     None => Err("No service registered under given address".to_string()),
                     Some(addr) => {
-                        call_entry.insert(caller_addr.clone());
+                        call_entry.insert(PendingCall {
+                            caller_addr: caller_addr.clone(),
+                            service_id: msg.address.clone(),
+                        });
+                        self.endpoint_calls
+                            .lock()
+                            .unwrap()
+                            .entry(msg.address.clone())
+                            .or_insert_with(|| HashSet::new())
+                            .insert(msg.request_id.clone());
+                        self.client_calls
+                            .lock()
+                            .unwrap()
+                            .entry(caller_addr.clone())
+                            .or_insert_with(|| HashSet::new())
+                            .insert(msg.request_id.clone());
                         Ok(addr.clone())
                     }
                 }
@@ -263,8 +379,21 @@ where
             .entry(msg.request_id.clone())
         {
             Entry::Occupied(entry) => {
-                let caller_addr = entry.get().clone();
+                let pending_call = entry.get();
+                let caller_addr = pending_call.caller_addr.clone();
                 if msg.reply_type == CallReplyType::Full as i32 {
+                    self.endpoint_calls
+                        .lock()
+                        .unwrap()
+                        .get_mut(&pending_call.service_id)
+                        .ok_or(failure::err_msg("Service not found"))?
+                        .remove(&msg.request_id);
+                    self.client_calls
+                        .lock()
+                        .unwrap()
+                        .get_mut(&pending_call.caller_addr)
+                        .ok_or(failure::err_msg("Client not found"))?
+                        .remove(&msg.request_id);
                     entry.remove_entry();
                 }
                 Ok(caller_addr)
@@ -305,7 +434,7 @@ fn main() {
             let writer = FramedWrite::new(writer, GsbMessageEncoder {});
             let reader = FramedRead::new(reader, GsbMessageDecoder::new());
 
-            router.connect(addr.clone(), writer);
+            router.connect(addr.clone(), writer).unwrap();
             let mut router1 = router.clone();
             let mut router2 = router.clone();
 
