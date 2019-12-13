@@ -101,29 +101,12 @@ where
     A: Hash + Eq,
     B: Sink,
 {
-    dispatcher: Arc<Mutex<MessageDispatcher<A, B>>>,
-    registered_endpoints: Arc<Mutex<HashMap<ServiceId, A>>>,
-    reversed_endpoints: Arc<Mutex<HashMap<A, HashSet<ServiceId>>>>,
-    pending_calls: Arc<Mutex<HashMap<RequestId, PendingCall<A>>>>,
-    client_calls: Arc<Mutex<HashMap<A, HashSet<RequestId>>>>,
-    endpoint_calls: Arc<Mutex<HashMap<ServiceId, HashSet<RequestId>>>>,
-}
-
-impl<A, B> Clone for Router<A, B>
-where
-    A: Hash + Eq,
-    B: Sink,
-{
-    fn clone(&self) -> Self {
-        Router {
-            dispatcher: self.dispatcher.clone(),
-            registered_endpoints: self.registered_endpoints.clone(),
-            reversed_endpoints: self.reversed_endpoints.clone(),
-            pending_calls: self.pending_calls.clone(),
-            client_calls: self.client_calls.clone(),
-            endpoint_calls: self.endpoint_calls.clone(),
-        }
-    }
+    dispatcher: MessageDispatcher<A, B>,
+    registered_endpoints: HashMap<ServiceId, A>,
+    reversed_endpoints: HashMap<A, HashSet<ServiceId>>,
+    pending_calls: HashMap<RequestId, PendingCall<A>>,
+    client_calls: HashMap<A, HashSet<RequestId>>,
+    endpoint_calls: HashMap<ServiceId, HashSet<RequestId>>,
 }
 
 impl<A, B> Router<A, B>
@@ -135,50 +118,49 @@ where
 {
     fn new() -> Self {
         Router {
-            dispatcher: Arc::new(Mutex::new(MessageDispatcher::new())),
-            registered_endpoints: Arc::new(Mutex::new(HashMap::new())),
-            reversed_endpoints: Arc::new(Mutex::new(HashMap::new())),
-            pending_calls: Arc::new(Mutex::new(HashMap::new())),
-            client_calls: Arc::new(Mutex::new(HashMap::new())),
-            endpoint_calls: Arc::new(Mutex::new(HashMap::new())),
+            dispatcher: MessageDispatcher::new(),
+            registered_endpoints: HashMap::new(),
+            reversed_endpoints: HashMap::new(),
+            pending_calls: HashMap::new(),
+            client_calls: HashMap::new(),
+            endpoint_calls: HashMap::new(),
         }
     }
 
     fn connect(&mut self, addr: A, sink: B) -> failure::Fallible<()> {
         println!("Accepted connection from {}", addr);
-        self.dispatcher.lock().unwrap().register(addr, sink)
+        self.dispatcher.register(addr, sink)
     }
 
     fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
         println!("Closed connection with {}", addr);
-        self.dispatcher.lock().unwrap().unregister(addr)?;
+        self.dispatcher.unregister(addr)?;
 
         // IDs of all endpoints registered by this server
-        let service_ids = match self.reversed_endpoints.lock().unwrap().entry(addr.clone()) {
+        let service_ids = match self.reversed_endpoints.entry(addr.clone()) {
             Entry::Occupied(entry) => entry.remove().into_iter().collect(),
             Entry::Vacant(_) => vec![],
         };
 
         service_ids.iter().for_each(|service_id| {
-            self.registered_endpoints.lock().unwrap().remove(service_id);
+            self.registered_endpoints.remove(service_id);
         });
 
-        // All pending call requests unanswered by this server
-        let pending_calls: Vec<(RequestId, PendingCall<A>)> = service_ids
+        // IDs of all pending call requests unanswered by this server
+        let pending_call_ids: Vec<RequestId> = service_ids
             .into_iter()
-            .filter_map(
-                |service_id| match self.endpoint_calls.lock().unwrap().entry(service_id) {
-                    Entry::Occupied(entry) => Some(entry.remove().into_iter()),
-                    Entry::Vacant(_) => None,
-                },
-            )
+            .filter_map(|service_id| match self.endpoint_calls.entry(service_id) {
+                Entry::Occupied(entry) => Some(entry.remove().into_iter()),
+                Entry::Vacant(_) => None,
+            })
             .flatten()
-            .filter_map(
-                |request_id| match self.pending_calls.lock().unwrap().entry(request_id) {
-                    Entry::Occupied(entry) => Some(entry.remove_entry()),
-                    Entry::Vacant(_) => None,
-                },
-            )
+            .collect();
+        let pending_calls: Vec<(RequestId, PendingCall<A>)> = pending_call_ids
+            .into_iter()
+            .filter_map(|request_id| match self.pending_calls.entry(request_id) {
+                Entry::Occupied(entry) => Some(entry.remove_entry()),
+                Entry::Vacant(_) => None,
+            })
             .collect();
 
         // Answer all pending calls with ServiceFailure reply
@@ -186,8 +168,6 @@ where
             .into_iter()
             .for_each(|(request_id, pending_call)| {
                 self.client_calls
-                    .lock()
-                    .unwrap()
                     .get_mut(&pending_call.caller_addr)
                     .unwrap()
                     .remove(&request_id);
@@ -204,18 +184,11 @@ where
             });
 
         // Remove all pending calls coming from this client
-        match self.client_calls.lock().unwrap().entry(addr.clone()) {
+        match self.client_calls.entry(addr.clone()) {
             Entry::Occupied(entry) => {
                 entry.remove().drain().for_each(|request_id| {
-                    let pending_call = self
-                        .pending_calls
-                        .lock()
-                        .unwrap()
-                        .remove(&request_id)
-                        .unwrap();
+                    let pending_call = self.pending_calls.remove(&request_id).unwrap();
                     self.endpoint_calls
-                        .lock()
-                        .unwrap()
                         .get_mut(&pending_call.service_id)
                         .unwrap()
                         .remove(&request_id);
@@ -231,10 +204,7 @@ where
     where
         T: Into<GsbMessage>,
     {
-        self.dispatcher
-            .lock()
-            .unwrap()
-            .send_message(addr, msg.into())
+        self.dispatcher.send_message(addr, msg.into())
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
@@ -248,12 +218,7 @@ where
                 message: "Illegal service ID".to_string(),
             }
         } else {
-            match self
-                .registered_endpoints
-                .lock()
-                .unwrap()
-                .entry(msg.service_id.clone())
-            {
+            match self.registered_endpoints.entry(msg.service_id.clone()) {
                 Entry::Occupied(_) => RegisterReply {
                     code: RegisterReplyCode::RegisterConflict as i32,
                     message: "Service ID already registered".to_string(),
@@ -261,8 +226,6 @@ where
                 Entry::Vacant(entry) => {
                     entry.insert(addr.clone());
                     self.reversed_endpoints
-                        .lock()
-                        .unwrap()
                         .entry(addr.clone())
                         .or_insert_with(|| HashSet::new())
                         .insert(msg.service_id);
@@ -282,17 +245,10 @@ where
             "Received UnregisterRequest from {}. service_id = {}",
             addr, &msg.service_id
         );
-        let msg = match self
-            .registered_endpoints
-            .lock()
-            .unwrap()
-            .entry(msg.service_id.clone())
-        {
+        let msg = match self.registered_endpoints.entry(msg.service_id.clone()) {
             Entry::Occupied(entry) if entry.get() == addr => {
                 entry.remove();
                 self.reversed_endpoints
-                    .lock()
-                    .unwrap()
                     .get_mut(addr)
                     .ok_or(failure::err_msg("Address not found"))?
                     .remove(&msg.service_id);
@@ -316,16 +272,11 @@ where
             "Received CallRequest from {}. caller = {}, address = {}, request_id = {}",
             caller_addr, &msg.caller, &msg.address, &msg.request_id
         );
-        let server_addr = match self
-            .pending_calls
-            .lock()
-            .unwrap()
-            .entry(msg.request_id.clone())
-        {
+        let server_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(_) => Err("CallRequest with this ID already exists".to_string()),
             Entry::Vacant(call_entry) => {
                 // TODO: Prefix matching
-                match self.registered_endpoints.lock().unwrap().get(&msg.address) {
+                match self.registered_endpoints.get(&msg.address) {
                     None => Err("No service registered under given address".to_string()),
                     Some(addr) => {
                         call_entry.insert(PendingCall {
@@ -333,14 +284,10 @@ where
                             service_id: msg.address.clone(),
                         });
                         self.endpoint_calls
-                            .lock()
-                            .unwrap()
                             .entry(msg.address.clone())
                             .or_insert_with(|| HashSet::new())
                             .insert(msg.request_id.clone());
                         self.client_calls
-                            .lock()
-                            .unwrap()
                             .entry(caller_addr.clone())
                             .or_insert_with(|| HashSet::new())
                             .insert(msg.request_id.clone());
@@ -372,25 +319,16 @@ where
             "Received CallReply from {} request_id = {}",
             server_addr, &msg.request_id
         );
-        let caller_addr = match self
-            .pending_calls
-            .lock()
-            .unwrap()
-            .entry(msg.request_id.clone())
-        {
+        let caller_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(entry) => {
                 let pending_call = entry.get();
                 let caller_addr = pending_call.caller_addr.clone();
                 if msg.reply_type == CallReplyType::Full as i32 {
                     self.endpoint_calls
-                        .lock()
-                        .unwrap()
                         .get_mut(&pending_call.service_id)
                         .ok_or(failure::err_msg("Service not found"))?
                         .remove(&msg.request_id);
                     self.client_calls
-                        .lock()
-                        .unwrap()
                         .get_mut(&pending_call.caller_addr)
                         .ok_or(failure::err_msg("Client not found"))?
                         .remove(&msg.request_id);
@@ -423,7 +361,7 @@ where
 fn main() {
     let listen_addr = "127.0.0.1:8245".parse().unwrap();
     let listener = TcpListener::bind(&listen_addr).expect("Unable to bind TCP listener");
-    let mut router = Router::new();
+    let router = Arc::new(Mutex::new(Router::new()));
 
     let server = listener
         .incoming()
@@ -434,15 +372,21 @@ fn main() {
             let writer = FramedWrite::new(writer, GsbMessageEncoder {});
             let reader = FramedRead::new(reader, GsbMessageDecoder::new());
 
-            router.connect(addr.clone(), writer).unwrap();
-            let mut router1 = router.clone();
-            let mut router2 = router.clone();
+            router
+                .lock()
+                .unwrap()
+                .connect(addr.clone(), writer)
+                .unwrap();
+            let router1 = router.clone();
+            let router2 = router.clone();
 
             tokio::spawn(
                 reader
                     .from_err()
-                    .for_each(move |msg| future::done(router1.handle_message(addr.clone(), msg)))
-                    .and_then(move |_| future::done(router2.disconnect(&addr)))
+                    .for_each(move |msg| {
+                        future::done(router1.lock().unwrap().handle_message(addr.clone(), msg))
+                    })
+                    .and_then(move |_| future::done(router2.lock().unwrap().disconnect(&addr)))
                     .map_err(|e| eprintln!("Error occurred handling message: {:?}", e)),
             )
         });
