@@ -5,11 +5,11 @@ use tokio::prelude::*;
 
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
-use ya_sb_router::connect;
+use ya_sb_router::tcp_connect;
 
 async fn run_server() {
     let router_addr = "127.0.0.1:8245".parse().unwrap();
-    let (reader, writer) = connect(&router_addr).await;
+    let (reader, writer) = tcp_connect(&router_addr).await;
     let mut reader = reader.compat();
 
     println!("Sending register request...");
