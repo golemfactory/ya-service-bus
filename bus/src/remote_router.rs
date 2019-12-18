@@ -1,4 +1,4 @@
-use crate::connection::{self, ConnectionRef, TcpTransport};
+use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
 use crate::{Handle, RpcRawCall};
 use actix::prelude::*;
@@ -16,7 +16,7 @@ fn gsb_addr() -> std::net::SocketAddr {
 pub struct RemoteRouter {
     local_bindings: HashSet<String>,
     pending_calls: Vec<(RpcRawCall, oneshot::Sender<Result<Vec<u8>, Error>>)>,
-    connection: Option<ConnectionRef<TcpTransport>>,
+    connection: Option<ConnectionRef<TcpTransport, LocalRouterHandler>>,
 }
 
 impl Actor for RemoteRouter {
@@ -57,7 +57,7 @@ impl RemoteRouter {
 
     fn clean_pending_calls(
         &mut self,
-        connection: ConnectionRef<TcpTransport>,
+        connection: ConnectionRef<TcpTransport, LocalRouterHandler>,
         ctx: &mut <Self as Actor>::Context,
     ) {
         for (msg, tx) in std::mem::replace(&mut self.pending_calls, Default::default()) {

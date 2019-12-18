@@ -9,6 +9,7 @@ use futures_01::stream::SplitSink;
 use futures_01::unsync::oneshot;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
+use std::pin::Pin;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
 use ya_sb_proto::{
     CallReply, CallReplyCode, CallReplyType, CallRequest, RegisterReplyCode, RegisterRequest,
@@ -24,24 +25,80 @@ fn gen_id() -> u64 {
     rng.gen::<u64>() & 0x1f_ff_ff__ff_ff_ff_ffu64
 }
 
-struct Connection<W>
+pub trait CallRequestHandler {
+    type Reply: futures::TryFuture<Ok = Vec<u8>, Error = Error> + Unpin;
+
+    fn do_call(
+        &mut self,
+        request_id: String,
+        caller: String,
+        address: String,
+        data: Vec<u8>,
+    ) -> Self::Reply;
+}
+
+#[derive(Default)]
+pub struct LocalRouterHandler;
+
+impl CallRequestHandler for LocalRouterHandler {
+    type Reply = Pin<Box<dyn futures::Future<Output = Result<Vec<u8>, Error>>>>;
+
+    fn do_call(
+        &mut self,
+        request_id: String,
+        caller: String,
+        address: String,
+        data: Vec<u8>,
+    ) -> Self::Reply {
+        Box::pin(
+            router()
+                .lock()
+                .unwrap()
+                .forward_bytes_local(&address, &caller, data.as_ref()),
+        )
+    }
+}
+
+impl<
+        R: futures::TryFuture<Ok = Vec<u8>, Error = Error> + Unpin,
+        F: FnMut(String, String, String, Vec<u8>) -> R,
+    > CallRequestHandler for F
+{
+    type Reply = R;
+
+    fn do_call(
+        &mut self,
+        request_id: String,
+        caller: String,
+        address: String,
+        data: Vec<u8>,
+    ) -> Self::Reply {
+        self(request_id, caller, address, data)
+    }
+}
+
+struct Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    H: CallRequestHandler,
 {
     writer: actix::io::SinkWrite<W>,
     register_reply: VecDeque<oneshot::Sender<Result<(), Error>>>,
     call_reply: HashMap<String, oneshot::Sender<Result<Vec<u8>, Error>>>,
+    handler: H,
 }
 
-impl<W: 'static> Connection<W>
+impl<W: 'static, H: 'static> Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    H: CallRequestHandler,
 {
-    fn new(w: W, ctx: &mut <Self as Actor>::Context) -> Self {
+    fn new(w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
             writer: io::SinkWrite::new(w, ctx),
             register_reply: Default::default(),
             call_reply: Default::default(),
+            handler,
         }
     }
 
@@ -78,10 +135,9 @@ where
         ctx: &mut <Self as Actor>::Context,
     ) {
         log::debug!("got call request_id={}, address={}", request_id, address);
-        let mut do_call = router()
-            .lock()
-            .unwrap()
-            .forward_bytes_local(&address, &caller, data.as_ref())
+        let mut do_call = self
+            .handler
+            .do_call(request_id.clone(), caller, address, data)
             .compat()
             .into_actor(self)
             .then(move |r, act: &mut Self, ctx| {
@@ -139,9 +195,10 @@ where
     }
 }
 
-impl<W: 'static> Actor for Connection<W>
+impl<W: 'static, H: 'static> Actor for Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    H: CallRequestHandler,
 {
     type Context = Context<Self>;
 
@@ -163,9 +220,10 @@ fn register_reply_code(code: i32) -> Option<RegisterReplyCode> {
     })
 }
 
-impl<W: 'static> StreamHandler<GsbMessage, ProtocolError> for Connection<W>
+impl<W: 'static, H: 'static> StreamHandler<GsbMessage, ProtocolError> for Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    H: CallRequestHandler,
 {
     fn handle(&mut self, item: GsbMessage, ctx: &mut Self::Context) {
         match item {
@@ -194,7 +252,8 @@ where
     }
 }
 
-impl<W: 'static> io::WriteHandler<ProtocolError> for Connection<W>
+impl<W: 'static, H: CallRequestHandler + 'static> io::WriteHandler<ProtocolError>
+    for Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
 {
@@ -204,7 +263,7 @@ where
     }
 }
 
-impl<W: 'static> Handler<RpcRawCall> for Connection<W>
+impl<W: 'static, H: CallRequestHandler + 'static> Handler<RpcRawCall> for Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
 {
@@ -235,7 +294,7 @@ impl Message for Bind {
     type Result = Result<(), Error>;
 }
 
-impl<W: 'static> Handler<Bind> for Connection<W>
+impl<W: 'static, H: CallRequestHandler + 'static> Handler<Bind> for Connection<W, H>
 where
     W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
 {
@@ -255,18 +314,23 @@ where
 
 pub struct ConnectionRef<
     Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
->(Addr<Connection<SplitSink<Transport>>>);
+    H: CallRequestHandler + 'static,
+>(Addr<Connection<SplitSink<Transport>, H>>);
 
-impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static> Clone
-    for ConnectionRef<Transport>
+impl<
+        Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
+        H: CallRequestHandler + 'static,
+    > Clone for ConnectionRef<Transport, H>
 {
     fn clone(&self) -> Self {
         ConnectionRef(self.0.clone())
     }
 }
 
-impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static>
-    ConnectionRef<Transport>
+impl<
+        Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
+        H: CallRequestHandler + 'static,
+    > ConnectionRef<Transport, H>
 {
     pub fn bind(&self, addr: impl Into<String>) -> impl Future<Item = (), Error = Error> + 'static {
         self.0.send(Bind { addr: addr.into() }).flatten()
@@ -292,7 +356,21 @@ impl<Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static
     }
 }
 
-pub fn connect<Transport>(transport: Transport) -> ConnectionRef<Transport>
+pub fn connect<Transport, H: CallRequestHandler + 'static + Default>(
+    transport: Transport,
+) -> ConnectionRef<Transport, H>
+where
+    Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
+        + Stream<Item = GsbMessage, Error = ProtocolError>
+        + 'static,
+{
+    connect_with_handler(transport, Default::default())
+}
+
+pub fn connect_with_handler<Transport, H: CallRequestHandler + 'static>(
+    transport: Transport,
+    handler: H,
+) -> ConnectionRef<Transport, H>
 where
     Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
         + Stream<Item = GsbMessage, Error = ProtocolError>
@@ -301,7 +379,7 @@ where
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {
         let h = Connection::add_stream(split_stream, ctx);
-        Connection::new(split_sink, ctx)
+        Connection::new(split_sink, handler, ctx)
     }))
 }
 
