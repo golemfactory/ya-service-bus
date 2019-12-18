@@ -13,6 +13,7 @@ use tokio::sync::mpsc;
 
 use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder};
 use ya_sb_proto::*;
+use ya_sb_util::PrefixLookupBag;
 
 struct MessageDispatcher<A, B>
 where
@@ -101,7 +102,7 @@ where
     B: Sink,
 {
     dispatcher: MessageDispatcher<A, B>,
-    registered_endpoints: HashMap<ServiceId, A>,
+    registered_endpoints: PrefixLookupBag<A>,
     reversed_endpoints: HashMap<A, HashSet<ServiceId>>,
     pending_calls: HashMap<RequestId, PendingCall<A>>,
     client_calls: HashMap<A, HashSet<RequestId>>,
@@ -118,7 +119,7 @@ where
     pub fn new() -> Self {
         Router {
             dispatcher: MessageDispatcher::new(),
-            registered_endpoints: HashMap::new(),
+            registered_endpoints: PrefixLookupBag::default(),
             reversed_endpoints: HashMap::new(),
             pending_calls: HashMap::new(),
             client_calls: HashMap::new(),
@@ -273,27 +274,24 @@ where
         );
         let server_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(_) => Err("CallRequest with this ID already exists".to_string()),
-            Entry::Vacant(call_entry) => {
-                // TODO: Prefix matching
-                match self.registered_endpoints.get(&msg.address) {
-                    None => Err("No service registered under given address".to_string()),
-                    Some(addr) => {
-                        call_entry.insert(PendingCall {
-                            caller_addr: caller_addr.clone(),
-                            service_id: msg.address.clone(),
-                        });
-                        self.endpoint_calls
-                            .entry(msg.address.clone())
-                            .or_insert_with(|| HashSet::new())
-                            .insert(msg.request_id.clone());
-                        self.client_calls
-                            .entry(caller_addr.clone())
-                            .or_insert_with(|| HashSet::new())
-                            .insert(msg.request_id.clone());
-                        Ok(addr.clone())
-                    }
+            Entry::Vacant(call_entry) => match self.registered_endpoints.get(&msg.address) {
+                None => Err("No service registered under given address".to_string()),
+                Some(addr) => {
+                    call_entry.insert(PendingCall {
+                        caller_addr: caller_addr.clone(),
+                        service_id: msg.address.clone(),
+                    });
+                    self.endpoint_calls
+                        .entry(msg.address.clone())
+                        .or_insert_with(|| HashSet::new())
+                        .insert(msg.request_id.clone());
+                    self.client_calls
+                        .entry(caller_addr.clone())
+                        .or_insert_with(|| HashSet::new())
+                        .insert(msg.request_id.clone());
+                    Ok(addr.clone())
                 }
-            }
+            },
         };
         match server_addr {
             Ok(server_addr) => {

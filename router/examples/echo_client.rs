@@ -18,7 +18,7 @@ async fn run_client() {
     let hello_msg = "Hello";
     let call_request = CallRequest {
         caller: "".to_string(),
-        address: "echo".to_string(),
+        address: "echo/test".to_string(),
         request_id: request_id.clone(),
         data: hello_msg.to_string().into_bytes(),
     };
