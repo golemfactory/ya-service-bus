@@ -1,6 +1,8 @@
 use crate::error::Error;
 use crate::local_router::{router, Router};
-use crate::{Handle, RpcEndpoint, RpcEnvelope, RpcHandler, RpcMessage};
+use crate::{
+    Handle, RpcEndpoint, RpcEnvelope, RpcHandler, RpcMessage, RpcStreamHandler, RpcStreamMessage,
+};
 use actix::Message;
 use failure::_core::marker::PhantomData;
 use futures::compat::{Compat01As03, Future01CompatExt};
@@ -8,8 +10,42 @@ use futures::{Future, FutureExt};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
+/// Binds RpcHandler to given service address.
+///
+/// ## Example
+///
+/// ```rust
+/// use ya_service_bus::{typed as bus, RpcMessage};
+/// use serde::{Serialize, Deserialize};
+/// use actix::System;
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Echo(String);
+///
+/// impl RpcMessage for Echo {
+///     const ID :&'static str = "echo";
+///     type Item = String;
+///     type Error=();
+/// }
+///
+/// fn main() {
+///      let sys = System::new("test");
+///      let _ = bus::bind("/local/echo", |e:Echo| {
+///          async {
+///             Ok(e.0)
+///          }
+///      });
+///  }
+///
 pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
     router().lock().unwrap().bind(addr, endpoint)
+}
+
+pub fn bind_streaming<T: RpcStreamMessage>(
+    addr: &str,
+    endpoint: impl RpcStreamHandler<T> + 'static,
+) -> Handle {
+    unimplemented!()
 }
 
 #[derive(Clone)]
