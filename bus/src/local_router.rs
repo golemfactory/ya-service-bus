@@ -15,16 +15,15 @@ use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::pin::Pin;
 mod into_actix;
-mod util;
 
 use crate::local_router::into_actix::RpcHandlerWrapper;
-use crate::local_router::util::PrefixLookupBag;
 use crate::remote_router::{RemoteRouter, UpdateService};
 use crate::untyped::RawHandler;
 use actix::{Actor, SystemService};
 use futures::future::ErrInto;
 use futures_01::future::Future as Future01;
 use std::sync::{Arc, Mutex};
+use ya_sb_util::PrefixLookupBag;
 
 trait RawEndpoint: Any {
     fn send(&self, msg: RpcRawCall) -> Box<dyn Future01<Item = Vec<u8>, Error = Error>>;

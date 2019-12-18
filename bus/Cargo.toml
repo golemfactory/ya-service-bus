@@ -16,6 +16,7 @@ actix="0.8.3"
 failure="0.1"
 lazy_static = "1.4"
 ya-sb-proto = { path = "../proto" }
+ya-sb-util = { path = "../util" }
 rand="0.7.2"
 log="0.4"
 tokio-tcp="0.1"
