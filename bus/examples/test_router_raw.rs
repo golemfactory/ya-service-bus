@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio_timer::Timer;
 use ya_service_bus::connection;
+use ya_service_bus::connection::LocalRouterHandler;
 
 #[derive(StructOpt)]
 enum Args {
@@ -22,7 +23,7 @@ fn main() -> Fallible<()> {
         Args::Server { .. } => {
             System::run(move || {
                 let a = connection::tcp(&bus_addr).and_then(|tcp_connection| {
-                    let c = connection::connect(tcp_connection);
+                    let c = connection::connect::<_, LocalRouterHandler>(tcp_connection);
 
                     let handle_echo = |caller: &str, addr: &str, msg: &[u8]| {
                         eprintln!("got msg from {} to {}", caller, addr);
@@ -53,7 +54,7 @@ fn main() -> Fallible<()> {
                 let a = connection::tcp(&bus_addr)
                     .map_err(|e| eprintln!("connect error={}", e))
                     .and_then(|tcp_connection| {
-                        let c = connection::connect(tcp_connection);
+                        let c = connection::connect::<_, LocalRouterHandler>(tcp_connection);
 
                         c.call("me", "/local/raw/echo", data)
                             .and_then(|msg| {
