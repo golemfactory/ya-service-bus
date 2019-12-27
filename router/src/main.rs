@@ -184,6 +184,7 @@ fn main() {
                                                 reply_type: CallReplyType::Full as i32,
                                                 data: vec![],
                                             };
+                                            eprintln!("Call with this ID already exists");
                                             send_dispatcher
                                                 .lock()
                                                 .unwrap()
@@ -207,6 +208,7 @@ fn main() {
                                             reply_type: CallReplyType::Full as i32,
                                             data: vec![],
                                         };
+                                        eprintln!("There is no service registered under given address");
                                         send_dispatcher.lock().unwrap().send_message(&addr, msg)?;
                                     }
                                 }
