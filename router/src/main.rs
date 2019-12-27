@@ -83,7 +83,7 @@ where
 #[structopt(name = "Router", about = "Service Bus Router")]
 struct Options {
     #[structopt(short = "l", default_value = "127.0.0.1:8245")]
-    ip_port: String
+    ip_port: String,
 }
 
 fn main() {
