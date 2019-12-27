@@ -12,6 +12,7 @@ failure = "0.1.6"
 futures = { version = "0.3", features = ["compat"] }
 lazy_static = "1.4.0"
 prost = "0.5.0"
+structopt = "0.3"
 tokio = "0.1.22"
 uuid = { version = "0.8.1", features = ["v4"] }
 ya-sb-proto = { path = "../proto" }
