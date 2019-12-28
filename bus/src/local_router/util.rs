@@ -32,10 +32,12 @@ impl<T> Default for PrefixLookupBag<T> {
 }
 
 impl<T> PrefixLookupBag<T> {
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<&T> {
         RevPrefixes(key).find_map(|key| self.dict.get(key))
     }
 
+    #[allow(dead_code)]
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.dict.keys()
     }

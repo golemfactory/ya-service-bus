@@ -1,7 +1,7 @@
 use super::Handle;
 use crate::error::Error;
-use crate::local_router::{router, Router};
-use actix::Actor;
+use crate::local_router::router;
+
 use futures::Future;
 
 pub fn send(addr: &str, from: &str, bytes: &[u8]) -> impl Future<Output = Result<Vec<u8>, Error>> {
@@ -31,7 +31,7 @@ impl<
 
 mod raw_actor {
     use super::{Error, RawHandler};
-    use crate::{RpcEnvelope, RpcRawCall};
+    use crate::RpcRawCall;
     use actix::prelude::*;
     use futures::{FutureExt, TryFutureExt};
 
@@ -46,7 +46,7 @@ mod raw_actor {
     impl<T: RawHandler + 'static> Handler<RpcRawCall> for RawHandlerActor<T> {
         type Result = ActorResponse<Self, Vec<u8>, Error>;
 
-        fn handle(&mut self, msg: RpcRawCall, ctx: &mut Self::Context) -> Self::Result {
+        fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
             ActorResponse::r#async(
                 self.inner
                     .handle(&msg.caller, &msg.addr, msg.body.as_ref())
