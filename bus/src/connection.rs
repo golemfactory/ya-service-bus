@@ -10,12 +10,10 @@ use futures_01::unsync::oneshot;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::pin::Pin;
-use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
+use ya_sb_proto::codec::{GsbMessage, ProtocolError};
 use ya_sb_proto::{
     CallReply, CallReplyCode, CallReplyType, CallRequest, RegisterReplyCode, RegisterRequest,
 };
-
-static DEFAULT_URL: &str = "tcp://127.0.0.1:8245";
 
 fn gen_id() -> u64 {
     use rand::Rng;
@@ -45,7 +43,7 @@ impl CallRequestHandler for LocalRouterHandler {
 
     fn do_call(
         &mut self,
-        request_id: String,
+        _request_id: String,
         caller: String,
         address: String,
         data: Vec<u8>,
@@ -135,12 +133,12 @@ where
         ctx: &mut <Self as Actor>::Context,
     ) {
         log::debug!("got call request_id={}, address={}", request_id, address);
-        let mut do_call = self
+        let do_call = self
             .handler
             .do_call(request_id.clone(), caller, address, data)
             .compat()
             .into_actor(self)
-            .then(move |r, act: &mut Self, ctx| {
+            .then(move |r, act: &mut Self, _ctx| {
                 // TODO: handle write error
                 let _ = act.writer.write(GsbMessage::CallReply(match r {
                     Ok(data) => {
@@ -174,7 +172,7 @@ where
         &mut self,
         request_id: String,
         code: i32,
-        reply_type: i32,
+        _reply_type: i32,
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), failure::Error> {
@@ -202,11 +200,11 @@ where
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         log::info!("started connection to gsb");
     }
 
-    fn stopped(&mut self, ctx: &mut Self::Context) {
+    fn stopped(&mut self, _ctx: &mut Self::Context) {
         log::info!("stopped connection to gsb");
     }
 }
@@ -269,7 +267,7 @@ where
 {
     type Result = ActorResponse<Self, Vec<u8>, Error>;
 
-    fn handle(&mut self, msg: RpcRawCall, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
         let (tx, rx) = oneshot::channel();
         let request_id = format!("{}", gen_id());
         let _ = self.call_reply.insert(request_id.clone(), tx);
@@ -300,7 +298,7 @@ where
 {
     type Result = ActorResponse<Self, (), Error>;
 
-    fn handle(&mut self, msg: Bind, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: Bind, _ctx: &mut Self::Context) -> Self::Result {
         let (tx, rx) = oneshot::channel();
         self.register_reply.push_back(tx);
         let service_id = msg.addr;
@@ -378,7 +376,7 @@ where
 {
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {
-        let h = Connection::add_stream(split_stream, ctx);
+        let _h = Connection::add_stream(split_stream, ctx);
         Connection::new(split_sink, handler, ctx)
     }))
 }

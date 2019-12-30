@@ -1,5 +1,5 @@
 use failure::Error;
-use futures::{FutureExt, SinkExt, TryFutureExt};
+use futures::{FutureExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
 use ya_service_bus::{typed as bus, RpcMessage};
 
@@ -17,8 +17,8 @@ async fn server() -> Result<(), Error> {
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
 
     let mut txh = Some(tx);
-    let quit = move |p: Ping| {
-        let mut tx = txh.take().unwrap();
+    let quit = move |_p: Ping| {
+        let tx = txh.take().unwrap();
         async move {
             eprintln!("quit!!");
             let _ = tx.send(());

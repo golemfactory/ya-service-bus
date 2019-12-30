@@ -4,9 +4,8 @@ use super::Handle;
 use crate::local_router::{router, Router};
 use crate::{RpcEnvelope, RpcMessage};
 use actix::prelude::*;
-use futures::compat::Future01CompatExt;
-use futures::{FutureExt, TryFutureExt};
-use futures_01::{future, Future};
+
+use futures_01::Future;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};

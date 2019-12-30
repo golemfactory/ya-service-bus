@@ -2,7 +2,7 @@ use actix::prelude::*;
 use failure::Fallible;
 use failure::_core::time::Duration;
 use futures::compat::Future01CompatExt;
-use futures_01::prelude::*;
+
 use std::path::PathBuf;
 use structopt::StructOpt;
 use tokio_timer::Timer;

@@ -3,12 +3,10 @@ use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Debug;
 use std::future::Future;
-use std::marker::PhantomData;
-use std::sync::Arc;
 
 pub mod actix_rpc;
 pub mod connection;
-mod error;
+pub mod error;
 mod local_router;
 mod remote_router;
 pub mod typed;

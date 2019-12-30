@@ -1,9 +1,8 @@
 use crate::error::Error;
 use crate::local_router::{router, Router};
-use crate::{Handle, RpcEndpoint, RpcEnvelope, RpcHandler, RpcMessage};
-use actix::Message;
-use failure::_core::marker::PhantomData;
-use futures::compat::{Compat01As03, Future01CompatExt};
+use crate::{Handle, RpcEndpoint, RpcHandler, RpcMessage};
+
+use futures::compat::Future01CompatExt;
 use futures::{Future, FutureExt};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -49,7 +48,7 @@ impl<
 {
     type Result = Output;
 
-    fn handle(&mut self, caller: &str, msg: T) -> Self::Result {
+    fn handle(&mut self, _caller: &str, msg: T) -> Self::Result {
         self(msg)
     }
 }

@@ -1,6 +1,7 @@
 use std::clone::Clone;
 use std::sync::{Arc, Mutex};
 
+use structopt::StructOpt;
 use tokio::codec::{FramedRead, FramedWrite};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
@@ -8,8 +9,16 @@ use tokio::prelude::*;
 use ya_sb_proto::codec::{GsbMessageDecoder, GsbMessageEncoder};
 use ya_sb_router::Router;
 
+#[derive(StructOpt)]
+#[structopt(name = "Router", about = "Service Bus Router")]
+struct Options {
+    #[structopt(short = "l", default_value = "127.0.0.1:8245")]
+    ip_port: String,
+}
+
 fn main() {
-    let listen_addr = "127.0.0.1:8245".parse().unwrap();
+    let options = Options::from_args();
+    let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
     let listener = TcpListener::bind(&listen_addr).expect("Unable to bind TCP listener");
     let router = Arc::new(Mutex::new(Router::new()));
 

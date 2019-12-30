@@ -1,4 +1,3 @@
-use crate::error::Error;
 use crate::{RpcEnvelope, RpcHandler, RpcMessage};
 use actix::prelude::*;
 use futures::{FutureExt, TryFutureExt};
@@ -21,7 +20,7 @@ impl<T: RpcMessage, H: RpcHandler<T> + 'static> Handler<RpcEnvelope<T>>
 {
     type Result = ActorResponse<Self, T::Item, T::Error>;
 
-    fn handle(&mut self, msg: RpcEnvelope<T>, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RpcEnvelope<T>, _ctx: &mut Self::Context) -> Self::Result {
         ActorResponse::r#async(
             self.0
                 .handle(msg.caller.as_str(), msg.body)

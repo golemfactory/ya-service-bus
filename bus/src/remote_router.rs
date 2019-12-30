@@ -1,16 +1,15 @@
 use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
-use crate::{Handle, RpcRawCall};
+use crate::RpcRawCall;
 use actix::prelude::*;
-use futures::task::{LocalSpawnExt, SpawnExt};
-use futures_01::{sync::oneshot, Future, Sink};
-use std::alloc::handle_alloc_error;
+use futures_01::{sync::oneshot, Future};
+
 use std::collections::HashSet;
-use std::net::{IpAddr, Ipv4Addr};
-use ya_sb_proto::codec::{GsbMessage, ProtocolError};
+
+static DEFAULT_URL: &str = "127.0.0.1:8245";
 
 fn gsb_addr() -> std::net::SocketAddr {
-    "127.0.0.1:8245".parse().unwrap()
+    DEFAULT_URL.parse().unwrap()
 }
 
 pub struct RemoteRouter {
@@ -43,13 +42,13 @@ impl RemoteRouter {
                         .into_iter()
                         .map(move |service_id| connection.bind(service_id)),
                 )
-                .and_then(|v| {
+                .and_then(|_v| {
                     log::info!("registed all services");
                     Ok(())
                 })
                 .into_actor(act)
             });
-        ctx.spawn(connect_fut.map_err(|e, _, ctx| {
+        ctx.spawn(connect_fut.map_err(|e, _, _ctx| {
             log::error!("fail to connect to gsb: {}", e);
             //ctx.stop();
         }));
@@ -84,7 +83,7 @@ impl Default for RemoteRouter {
 }
 
 impl Supervised for RemoteRouter {
-    fn restarting(&mut self, ctx: &mut Self::Context) {
+    fn restarting(&mut self, _ctx: &mut Self::Context) {
         if let Some(c) = self.connection.take() {
             if c.connected() {
                 self.connection = Some(c)
@@ -99,6 +98,7 @@ impl SystemService for RemoteRouter {}
 
 pub enum UpdateService {
     Add(String),
+    #[allow(dead_code)]
     Remove(String),
 }
 
@@ -109,7 +109,7 @@ impl Message for UpdateService {
 impl Handler<UpdateService> for RemoteRouter {
     type Result = MessageResult<UpdateService>;
 
-    fn handle(&mut self, msg: UpdateService, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: UpdateService, _ctx: &mut Self::Context) -> Self::Result {
         match msg {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
@@ -131,7 +131,7 @@ impl Handler<UpdateService> for RemoteRouter {
 impl Handler<RpcRawCall> for RemoteRouter {
     type Result = ActorResponse<Self, Vec<u8>, Error>;
 
-    fn handle(&mut self, msg: RpcRawCall, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
         if let Some(c) = &self.connection {
             ActorResponse::r#async(c.call(msg.caller, msg.addr, msg.body).into_actor(self))
         } else {
