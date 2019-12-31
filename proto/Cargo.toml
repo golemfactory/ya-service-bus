@@ -5,15 +5,15 @@ authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
 [features]
-default=["with-codec"]
-with-codec=['tokio-codec']
+default = ["with-codec"]
+with-codec = ['tokio-codec']
 
 
 [dependencies]
 bytes = "0.4.12"
 failure = "0.1.6"
 prost = "0.5.0"
-tokio-codec={ version = "0.1", optional=true }
+tokio-codec = { version = "0.1", optional = true }
 
 [build-dependencies]
 prost-build = "0.5.0"
