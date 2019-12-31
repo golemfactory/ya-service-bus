@@ -16,6 +16,8 @@ struct Options {
     ip_port: String,
 }
 
+
+// TODO: move to example
 fn main() {
     let options = Options::from_args();
     let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
