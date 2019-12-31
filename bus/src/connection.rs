@@ -3,7 +3,7 @@ use futures_01::Sink;
 
 use crate::error::Error;
 use crate::local_router::router;
-use crate::RpcRawCall;
+use crate::{RpcRawCall, ResponseChunk};
 use futures::TryFutureExt;
 use futures_01::stream::SplitSink;
 use futures_01::unsync::oneshot;
@@ -26,7 +26,7 @@ fn gen_id() -> u64 {
 }
 
 pub trait CallRequestHandler {
-    type Reply: futures::TryFuture<Ok = Vec<u8>, Error = Error> + Unpin;
+    type Reply: futures::TryStream<Ok = ResponseChunk, Error = Error> + Unpin;
 
     fn do_call(
         &mut self,
@@ -41,7 +41,7 @@ pub trait CallRequestHandler {
 pub struct LocalRouterHandler;
 
 impl CallRequestHandler for LocalRouterHandler {
-    type Reply = Pin<Box<dyn futures::Future<Output = Result<Vec<u8>, Error>>>>;
+    type Reply = Pin<Box<dyn futures::Stream<Item = Result<ResponseChunk, Error>>>>;
 
     fn do_call(
         &mut self,
@@ -60,7 +60,7 @@ impl CallRequestHandler for LocalRouterHandler {
 }
 
 impl<
-        R: futures::TryFuture<Ok = Vec<u8>, Error = Error> + Unpin,
+        R: futures::TryStream<Ok = ResponseChunk, Error = Error> + Unpin,
         F: FnMut(String, String, String, Vec<u8>) -> R,
     > CallRequestHandler for F
 {

@@ -140,7 +140,7 @@ pub trait RpcHandler<T: RpcMessage> {
 }
 
 pub trait RpcStreamHandler<T: RpcStreamMessage> {
-    type Result: TryStream<Ok = T::Item, Error = T::Error> + Unpin;
+    type Result: Stream<Item = Result<T::Item, T::Error>> + Unpin;
 
     fn handle(&mut self, caller: &str, msg: T) -> Self::Result;
 }

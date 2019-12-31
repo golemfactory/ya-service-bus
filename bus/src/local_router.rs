@@ -102,6 +102,7 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
                 Ok(v) => Ok(ResponseChunk::Part(
                     rmp_serde::to_vec(&v).map_err(Error::from)?,
                 )),
+                //Ok(Err(e)) => Err(e),
                 Err(e) => Err(e),
             })
             .chain(rxe.flatten().into_stream());
@@ -229,6 +230,10 @@ impl Slot {
         Slot { inner: Box::new(r) }
     }
 
+    fn from_stream_actor<T: RpcStreamMessage>(r: Recipient<RpcStreamCall<T>>) -> Self {
+        Slot { inner: Box::new(r) }
+    }
+
     fn recipient<T: RpcMessage>(&mut self) -> Option<actix::Recipient<RpcEnvelope<T>>>
     where
         <RpcEnvelope<T> as Message>::Result: Sync + Send + 'static,
@@ -303,6 +308,17 @@ impl Router {
         Handle { _inner: () }
     }
 
+    pub fn bind_stream_actor<T: RpcStreamMessage>(
+        &mut self,
+        addr: &str,
+        endpoint: Recipient<RpcStreamCall<T>>,
+    ) {
+        let slot = Slot::from_stream_actor(endpoint);
+        let addr = format!("{}/{}", addr, T::ID);
+        let _ = self.handlers.insert(addr.clone(), slot);
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr));
+    }
+
     pub fn bind_actor<T: RpcMessage>(&mut self, addr: &str, endpoint: Recipient<RpcEnvelope<T>>) {
         let slot = Slot::from_actor(endpoint);
         let addr = format!("{}/{}", addr, T::ID);
@@ -353,6 +369,48 @@ impl Router {
         }
     }
 
+    pub fn streaming_forward<T: RpcStreamMessage>(
+        &mut self,
+        addr: &str,
+        msg: T,
+    ) -> impl futures_01::stream::Stream<Item = Result<T::Item, T::Error>, Error = Error> {
+        let caller = "local";
+        let addr = format!("{}/{}", addr, T::ID);
+        if let Some(slot) = self.handlers.get_mut(&addr) {
+            futures_01::future::Either::A(if let Some(h) = slot.stream_recipient() {
+                let (tx, rx) = futures_01::sync::mpsc::channel(16);
+                let call = RpcStreamCall {
+                    caller: caller.to_string(),
+                    addr: addr.to_string(),
+                    body: msg,
+                    reply: tx,
+                };
+                Arbiter::spawn(
+                    h.send(call)
+                        .map_err(|e| log::error!("streaming forward error: {}", e))
+                        .map(|_| ()),
+                );
+                rx.then(|v| match v {
+                    Ok(v) => Ok(v),
+                    Err(()) => Err(Error::Closed),
+                })
+            } else {
+                /*let body = rmp_serde::to_vec(&msg).unwrap();
+                futures_01::future::Either::B(
+                    slot.send(RpcRawCall {
+                        caller: caller.into(),
+                        addr,
+                        body,
+                    })
+                        .and_then(|b| Ok(rmp_serde::from_read_ref(&b)?)),
+                )*/
+                unimplemented!()
+            })
+        } else {
+            futures_01::future::Either::B(futures_01::stream::once(Err(Error::NoEndpoint)))
+        }
+    }
+
     pub fn forward_bytes(
         &mut self,
         addr: &str,
@@ -387,19 +445,21 @@ impl Router {
         addr: &str,
         from: &str,
         msg: &[u8],
-    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
+    ) -> impl Stream<Item = Result<ResponseChunk, Error>> {
         if let Some(slot) = self.handlers.get_mut(addr) {
             future::Either::Left(
-                slot.send(RpcRawCall {
+                futures::compat::Stream01CompatExt::compat(
+                slot.send_streaming(RpcRawCall {
                     caller: from.into(),
                     addr: addr.into(),
                     body: msg.into(),
-                })
-                .compat(),
+                }))
             )
         } else {
             log::warn!("no endpoint: {}", addr);
-            future::Either::Right(future::ready(Err(Error::NoEndpoint)))
+            future::Either::Right(futures::stream::once(async {
+                Err(Error::NoEndpoint)
+            }))
         }
     }
 }

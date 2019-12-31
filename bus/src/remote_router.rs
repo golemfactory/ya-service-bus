@@ -1,6 +1,6 @@
 use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
-use crate::{Handle, RpcRawCall};
+use crate::{Handle, RpcRawCall, RpcRawStreamCall};
 use actix::prelude::*;
 use futures::task::{LocalSpawnExt, SpawnExt};
 use futures_01::{sync::oneshot, Future, Sink};
@@ -139,5 +139,13 @@ impl Handler<RpcRawCall> for RemoteRouter {
             self.pending_calls.push((msg, tx));
             ActorResponse::r#async(rx.flatten().into_actor(self))
         }
+    }
+}
+
+impl Handler<RpcRawStreamCall> for RemoteRouter {
+    type Result = Result<(), Error>;
+
+    fn handle(&mut self, msg: RpcRawStreamCall, ctx: &mut Self::Context) -> Self::Result {
+        unimplemented!()
     }
 }

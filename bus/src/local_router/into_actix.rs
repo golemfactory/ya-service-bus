@@ -3,6 +3,7 @@ use crate::{
     RpcEnvelope, RpcHandler, RpcMessage, RpcStreamCall, RpcStreamHandler, RpcStreamMessage,
 };
 use actix::prelude::*;
+use futures::future::ErrInto;
 use futures::{FutureExt, Sink, TryFutureExt};
 use std::marker::PhantomData;
 
@@ -52,18 +53,26 @@ impl<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static> Handler<RpcStreamCal
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: RpcStreamCall<T>, ctx: &mut Self::Context) -> Self::Result {
-        use futures::stream::{Stream, TryStream, TryStreamExt};
+        use futures::stream::{Stream, StreamExt, TryStream, TryStreamExt};
         use futures_01::prelude::*;
-
-        let mut s = self.0.handle(&msg.caller, msg.body);
-        /*
+        // TryStream<Ok = T::Item, Error = T::Error> + Unpin
+        //
+        //fn send_all<S>(self : Sink, stream: S) -> SendAll<Self, S>
+        //    where S: Stream<Item = Self::SinkItem>,
+        //          Self::SinkError: From<S::Error>,
+        //          Self: Sized
+        let mut s = self
+            .0
+            .handle(&msg.caller, msg.body)
+            .map(|v| Ok::<_, Error>(v));
         let pump = msg
             .reply
-            .send_all(s.compat())
+            .sink_map_err(|e| Error::Closed)
+            .send_all(TryStreamExt::compat(s))
             .map_err(|e| ())
             .and_then(|(reply, stream)| Ok(()));
-        ActorResponse::r#async(pump.into_actor(self))
-        */
+        //        ActorResponse::r#async(pump.into_actor(self))
+
         unimplemented!()
     }
 }

@@ -2,7 +2,7 @@
 use super::error::Error as BusError;
 use super::Handle;
 use crate::local_router::{router, Router};
-use crate::{RpcEnvelope, RpcMessage};
+use crate::{RpcEnvelope, RpcMessage, RpcStreamCall, RpcStreamMessage};
 use actix::prelude::*;
 use futures::compat::Future01CompatExt;
 use futures::{FutureExt, TryFutureExt};
@@ -16,6 +16,14 @@ where
     <RpcEnvelope<M> as Message>::Result: Serialize + DeserializeOwned + Sync + Send,
 {
     router().lock().unwrap().bind_actor(addr, actor);
+    Handle { _inner: {} }
+}
+
+pub fn binds<M: RpcStreamMessage>(addr: &str, actor: Recipient<RpcStreamCall<M>>) -> Handle
+where
+    Result<M::Item, M::Error>: Serialize + DeserializeOwned + Sync + Send,
+{
+    router().lock().unwrap().bind_stream_actor(addr, actor);
     Handle { _inner: {} }
 }
 
@@ -38,5 +46,15 @@ impl Endpoint {
     ) -> impl Future<Item = <RpcEnvelope<M> as Message>::Result, Error = BusError> + 'static {
         let mut b = self.router.lock().unwrap();
         b.forward(self.addr.as_ref(), msg)
+    }
+
+    pub fn call_stream<M: RpcStreamMessage>(
+        &self,
+        msg: M,
+    ) -> impl Stream<Item = Result<M::Item, M::Error>, Error = BusError> {
+        self.router
+            .lock()
+            .unwrap()
+            .streaming_forward(&self.addr, msg)
     }
 }

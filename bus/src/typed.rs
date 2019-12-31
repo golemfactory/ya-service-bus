@@ -5,8 +5,8 @@ use crate::{
 };
 use actix::Message;
 use failure::_core::marker::PhantomData;
-use futures::compat::{Compat01As03, Future01CompatExt};
-use futures::{Future, FutureExt};
+use futures::compat::{Compat01As03, Future01CompatExt, Stream01CompatExt};
+use futures::{Future, FutureExt, Stream};
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
@@ -45,33 +45,52 @@ pub fn bind_streaming<T: RpcStreamMessage>(
     addr: &str,
     endpoint: impl RpcStreamHandler<T> + 'static,
 ) -> Handle {
-    unimplemented!()
+    router().lock().unwrap().bind_stream(addr, endpoint)
 }
 
 #[derive(Clone)]
-struct Forward {
+pub struct Endpoint {
     router: Arc<Mutex<Router>>,
     addr: String,
 }
 
-impl<T: RpcMessage> RpcEndpoint<T> for Forward
+impl Endpoint {
+    pub fn call<T: RpcMessage>(
+        &self,
+        msg: T,
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+        self.router
+            .lock()
+            .unwrap()
+            .forward(&self.addr, msg)
+            .compat()
+    }
+
+    pub fn call_streaming<T: RpcStreamMessage>(
+        &self,
+        msg: T,
+    ) -> impl Stream<Item = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+        self.router
+            .lock()
+            .unwrap()
+            .streaming_forward(&self.addr, msg)
+            .compat()
+    }
+}
+
+impl<T: RpcMessage> RpcEndpoint<T> for Endpoint
 where
     T: Send,
 {
     type Result = Pin<Box<dyn Future<Output = Result<Result<T::Item, T::Error>, Error>>>>;
 
     fn send(&self, msg: T) -> Self::Result {
-        self.router
-            .lock()
-            .unwrap()
-            .forward(&self.addr, msg)
-            .compat()
-            .boxed_local()
+        Endpoint::call(self, msg).boxed_local()
     }
 }
 
-pub fn service<T: RpcMessage>(addr: &str) -> impl RpcEndpoint<T> {
-    Forward {
+pub fn service(addr: &str) -> Endpoint {
+    Endpoint {
         router: router(),
         addr: addr.to_string(),
     }
@@ -82,6 +101,19 @@ impl<
         Output: Future<Output = Result<T::Item, T::Error>> + 'static,
         F: FnMut(T) -> Output + 'static,
     > RpcHandler<T> for F
+{
+    type Result = Output;
+
+    fn handle(&mut self, caller: &str, msg: T) -> Self::Result {
+        self(msg)
+    }
+}
+
+impl<
+        T: RpcStreamMessage,
+        Output: Stream<Item = Result<T::Item, T::Error>> + Unpin + 'static,
+        F: FnMut(T) -> Output + 'static,
+    > RpcStreamHandler<T> for F
 {
     type Result = Output;
 

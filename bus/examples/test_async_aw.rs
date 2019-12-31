@@ -1,12 +1,18 @@
 use failure::Error;
 use futures::{FutureExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
-use ya_service_bus::{typed as bus, RpcMessage};
+use ya_service_bus::{typed as bus, RpcMessage, RpcStreamMessage};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
 
 impl RpcMessage for Ping {
+    const ID: &'static str = "ping";
+    type Item = String;
+    type Error = ();
+}
+
+impl RpcStreamMessage for Ping {
     const ID: &'static str = "ping";
     type Item = String;
     type Error = ();
@@ -35,6 +41,14 @@ async fn server() -> Result<(), Error> {
         }
     });
     let _ = bus::bind("/local/quit", quit);
+    let _ = bus::bind_streaming("/local/stream", |p: Ping| {
+        let s = async_stream::stream! {
+            for i in 0..3 {
+                yield Ok(format!("ack {}", i))
+            }
+        };
+        Box::pin(s)
+    });
 
     let _ = rx.await;
     Ok(())

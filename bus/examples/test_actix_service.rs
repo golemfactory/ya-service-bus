@@ -1,17 +1,25 @@
 use actix::prelude::*;
 use failure::_core::time::Duration;
-use futures::{FutureExt, TryFutureExt};
+use futures::{FutureExt, StreamExt, TryFutureExt};
 use futures_01::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
+use ya_service_bus::{
+    actix_rpc, untyped, Error, Handle, RpcEnvelope, RpcMessage, RpcStreamCall, RpcStreamMessage,
+};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
 
 impl RpcMessage for Ping {
+    const ID: &'static str = "ping";
+    type Item = String;
+    type Error = ();
+}
+
+impl RpcStreamMessage for Ping {
     const ID: &'static str = "ping";
     type Item = String;
     type Error = ();
@@ -42,7 +50,7 @@ enum Command {
 #[derive(Serialize, Deserialize, Debug)]
 struct Execute(Vec<Command>);
 
-impl RpcMessage for Execute {
+impl RpcStreamMessage for Execute {
     const ID: &'static str = "execute";
     type Item = String;
     type Error = String;
@@ -55,19 +63,34 @@ impl Actor for ExeUnit {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.0 = Some(actix_rpc::bind::<Execute>(
+        self.0 = Some(actix_rpc::binds::<Execute>(
             SERVICE_ID,
             ctx.address().recipient(),
         ))
     }
 }
 
-impl Handler<RpcEnvelope<Execute>> for ExeUnit {
-    type Result = Result<String, String>;
+impl Handler<RpcStreamCall<Execute>> for ExeUnit {
+    type Result = ActorResponse<Self, (), Error>;
 
-    fn handle(&mut self, msg: RpcEnvelope<Execute>, _ctx: &mut Self::Context) -> Self::Result {
-        eprintln!("got {:?}", msg.as_ref());
-        Ok(format!("{:?}", msg.into_inner()))
+    fn handle(&mut self, msg: RpcStreamCall<Execute>, _ctx: &mut Self::Context) -> Self::Result {
+        eprintln!("got {:?}", msg.body);
+        let mut it = msg.body.0.into_iter();
+        let s = futures_01::stream::poll_fn(move || -> Result<_, Error> {
+            if let Some(command) = it.next() {
+                Ok(Async::Ready(Some(Ok(format!("{:?}", command)))))
+            } else {
+                Ok(Async::Ready(None))
+            }
+        });
+
+        ActorResponse::r#async(
+            msg.reply
+                .sink_map_err(|s| Error::Closed)
+                .send_all(s)
+                .and_then(|_| Ok::<_, Error>(()))
+                .into_actor(self),
+        )
     }
 }
 
@@ -89,9 +112,13 @@ enum Args {
         dst: String,
         msg: String,
     },
+    Pings {
+        dst: String,
+        msg: String,
+    },
 }
 
-fn run_script(script: PathBuf) -> impl Future<Item = String, Error = failure::Error> {
+fn run_script(script: PathBuf) -> impl Future<Item = Vec<String>, Error = failure::Error> {
     (|| -> Result<_, std::io::Error> {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
@@ -101,9 +128,17 @@ fn run_script(script: PathBuf) -> impl Future<Item = String, Error = failure::Er
     .from_err()
     .and_then(|commands| {
         actix_rpc::service(SERVICE_ID)
-            .send(Execute(commands))
+            .call_stream(Execute(commands))
             .from_err()
-            .and_then(|v| v.map_err(|e| failure::err_msg(e)))
+            .collect()
+            .and_then(|v| {
+                let mut results = Vec::new();
+
+                for it in v {
+                    results.push(it.map_err(|e| failure::err_msg(e))?)
+                }
+                Ok(results)
+            })
     })
 }
 
@@ -142,6 +177,14 @@ fn main() -> failure::Fallible<()> {
             eprintln!("got result: {:?}", result);
         }
 
+        Args::Pings { dst, msg } => {
+            let result = sys.block_on(
+                actix_rpc::service(&dst)
+                    .call_stream(Ping(msg))
+                    .for_each(|result| Ok(eprintln!("got result: {:?}", result))),
+            )?;
+            eprintln!("done = {:?}", result);
+        }
         Args::Local { script } => {
             let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
