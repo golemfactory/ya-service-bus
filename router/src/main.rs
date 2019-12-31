@@ -16,7 +16,6 @@ struct Options {
     ip_port: String,
 }
 
-
 // TODO: move to example
 fn main() {
     let options = Options::from_args();
