@@ -4,28 +4,20 @@ version = "0.1.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
-[features]
-default=["with-actix"]
-with-actix=["futures_01"]
-
 [dependencies]
 serde={ version = "1.0.102", features=["derive"]}
 rmp-serde="0.14.0"
-futures={version="0.3", features=["compat"]}
-actix="0.8.3"
+futures="0.3"
+actix="0.9"
 failure="0.1"
 lazy_static = "1.4"
 ya-sb-proto = { path = "../proto" }
 ya-sb-util = { path = "../util" }
 rand="0.7.2"
 log="0.4"
-tokio-tcp="0.1"
-tokio-codec="0.1"
+tokio = {version = "0.2.6", futures=["codec", "tcp"]}
+tokio-util="0.2.0"
 
-[dependencies.futures_01]
-version = "0.1.25"
-optional = true
-package = "futures"
 
 [dev-dependencies]
 structopt="0.3.5"

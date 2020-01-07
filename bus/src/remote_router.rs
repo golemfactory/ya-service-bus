@@ -2,8 +2,10 @@ use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
 use crate::RpcRawCall;
 use actix::prelude::*;
-use futures_01::{sync::oneshot, Future};
+use futures::channel::oneshot;
+use futures::prelude::*;
 
+use actix::WrapFuture;
 use std::collections::HashSet;
 
 static DEFAULT_URL: &str = "127.0.0.1:8245";
@@ -32,21 +34,26 @@ impl RemoteRouter {
             .map_err(Error::BusConnectionFail)
             .into_actor(self)
             .and_then(|tcp_transport, act, ctx| {
-                let connection = connection::connect(tcp_transport);
-                act.connection = Some(connection.clone());
+                async {
+                    let connection = connection::connect(tcp_transport);
+                    act.connection = Some(connection.clone());
 
-                act.clean_pending_calls(connection.clone(), ctx);
-                futures_01::future::join_all(
-                    act.local_bindings
-                        .clone()
-                        .into_iter()
-                        .map(move |service_id| connection.bind(service_id)),
-                )
-                .and_then(|_v| {
-                    log::info!("registed all services");
-                    Ok(())
-                })
-                .into_actor(act)
+                    act.clean_pending_calls(connection.clone(), ctx);
+                    future::join_all(
+                        act.local_bindings
+                            .clone()
+                            .into_iter()
+                            .map(move |service_id| connection.bind(service_id)),
+                    )
+                    .and_then(|_v| {
+                        async {
+                            log::info!("registed all services");
+                            Ok(())
+                        }
+                    })
+                    .into_actor(act)
+                }
+                    .into_actor(act)
             });
         ctx.spawn(connect_fut.map_err(|e, _, _ctx| {
             log::error!("fail to connect to gsb: {}", e);

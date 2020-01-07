@@ -2,6 +2,7 @@
 
 use actix::MailboxError;
 use failure::Fail;
+use futures::channel::oneshot;
 use std::io;
 
 #[derive(Debug, Fail)]
@@ -35,8 +36,8 @@ impl From<MailboxError> for Error {
     }
 }
 
-impl From<futures_01::sync::oneshot::Canceled> for Error {
-    fn from(_: futures_01::sync::oneshot::Canceled) -> Self {
+impl From<oneshot::Canceled> for Error {
+    fn from(_: oneshot::Canceled) -> Self {
         Error::Closed
     }
 }

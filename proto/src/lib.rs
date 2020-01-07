@@ -37,7 +37,7 @@ impl MessageHeader {
         buf.extend_from_slice(&self.msg_length.to_be_bytes());
     }
 
-    pub fn decode(mut src: BytesMut) -> failure::Fallible<Self> {
+    pub fn decode(mut src: tokio_bytes::BytesMut) -> failure::Fallible<Self> {
         if src.len() < size_of::<MessageHeader>() {
             return Err(failure::err_msg(
                 "Cannot decode message header: not enough bytes",

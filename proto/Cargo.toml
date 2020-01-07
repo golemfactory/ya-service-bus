@@ -6,14 +6,15 @@ edition = "2018"
 
 [features]
 default=["with-codec"]
-with-codec=['tokio-codec']
+with-codec=['tokio-util']
 
 
 [dependencies]
-bytes = "0.4.12"
+bytes = "0.4"
+tokio-bytes = {version="0.5", package="bytes" }
 failure = "0.1.6"
 prost = "0.5.0"
-tokio-codec={ version = "0.1", optional=true }
+tokio-util={ version = "0.2", optional=true }
 
 [build-dependencies]
 prost-build = "0.5.0"

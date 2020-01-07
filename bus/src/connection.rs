@@ -1,12 +1,13 @@
 use actix::prelude::*;
-use futures_01::Sink;
+use futures::channel::oneshot;
+use futures::prelude::*;
 
 use crate::error::Error;
 use crate::local_router::router;
 use crate::RpcRawCall;
+use futures::stream::SplitSink;
+use futures::task::SpawnExt;
 use futures::TryFutureExt;
-use futures_01::stream::SplitSink;
-use futures_01::unsync::oneshot;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::pin::Pin;
@@ -24,7 +25,7 @@ fn gen_id() -> u64 {
 }
 
 pub trait CallRequestHandler {
-    type Reply: futures::TryFuture<Ok = Vec<u8>, Error = Error> + Unpin;
+    type Reply: futures::Future<Output = Result<Vec<u8>, Error>> + Unpin;
 
     fn do_call(
         &mut self,
@@ -58,7 +59,7 @@ impl CallRequestHandler for LocalRouterHandler {
 }
 
 impl<
-        R: futures::TryFuture<Ok = Vec<u8>, Error = Error> + Unpin,
+        R: futures::Future<Output = Result<Vec<u8>, Error>> + Unpin,
         F: FnMut(String, String, String, Vec<u8>) -> R,
     > CallRequestHandler for F
 {
@@ -77,18 +78,25 @@ impl<
 
 struct Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
-    writer: actix::io::SinkWrite<W>,
+    writer: actix::io::SinkWrite<GsbMessage, W>,
     register_reply: VecDeque<oneshot::Sender<Result<(), Error>>>,
     call_reply: HashMap<String, oneshot::Sender<Result<Vec<u8>, Error>>>,
     handler: H,
 }
 
+impl<W: 'static, H: 'static> Unpin for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
+    H: CallRequestHandler,
+{
+}
+
 impl<W: 'static, H: 'static> Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
     fn new(w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
@@ -136,7 +144,6 @@ where
         let do_call = self
             .handler
             .do_call(request_id.clone(), caller, address, data)
-            .compat()
             .into_actor(self)
             .then(move |r, act: &mut Self, _ctx| {
                 // TODO: handle write error
@@ -163,8 +170,11 @@ where
                         }
                     }
                 }));
-                fut::ok(())
+                //Ok(())
+                fut::ready(())
+                //fut::ok::<_, Error, _>(())
             });
+        //do_call.spawn(ctx);
         ctx.spawn(do_call);
     }
 
@@ -195,7 +205,7 @@ where
 
 impl<W: 'static, H: 'static> Actor for Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
     type Context = Context<Self>;
@@ -218,13 +228,13 @@ fn register_reply_code(code: i32) -> Option<RegisterReplyCode> {
     })
 }
 
-impl<W: 'static, H: 'static> StreamHandler<GsbMessage, ProtocolError> for Connection<W, H>
+impl<W: 'static, H: 'static> StreamHandler<Result<GsbMessage, ProtocolError>> for Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
-    fn handle(&mut self, item: GsbMessage, ctx: &mut Self::Context) {
-        match item {
+    fn handle(&mut self, item: Result<GsbMessage, ProtocolError>, ctx: &mut Self::Context) {
+        match item.unwrap() {
             GsbMessage::RegisterReply(r) => {
                 if let Some(code) = register_reply_code(r.code) {
                     self.handle_register_reply(code, r.message, ctx)
@@ -250,10 +260,10 @@ where
     }
 }
 
-impl<W: 'static, H: CallRequestHandler + 'static> io::WriteHandler<ProtocolError>
+impl<W: 'static + Unpin, H: CallRequestHandler + 'static> io::WriteHandler<ProtocolError>
     for Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError>,
 {
     fn error(&mut self, err: ProtocolError, _ctx: &mut Self::Context) -> Running {
         log::error!("protocol error: {}", err);
@@ -261,9 +271,9 @@ where
     }
 }
 
-impl<W: 'static, H: CallRequestHandler + 'static> Handler<RpcRawCall> for Connection<W, H>
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<RpcRawCall> for Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError>,
 {
     type Result = ActorResponse<Self, Vec<u8>, Error>;
 
@@ -280,7 +290,7 @@ where
             address,
             data,
         }));
-        ActorResponse::r#async(rx.flatten().into_actor(self))
+        ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
     }
 }
 
@@ -292,9 +302,9 @@ impl Message for Bind {
     type Result = Result<(), Error>;
 }
 
-impl<W: 'static, H: CallRequestHandler + 'static> Handler<Bind> for Connection<W, H>
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Bind> for Connection<W, H>
 where
-    W: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError>,
 {
     type Result = ActorResponse<Self, (), Error>;
 
@@ -306,17 +316,24 @@ where
             .writer
             .write(GsbMessage::RegisterRequest(RegisterRequest { service_id }));
 
-        ActorResponse::r#async(rx.flatten().into_actor(self))
+        ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
     }
 }
 
 pub struct ConnectionRef<
-    Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
+    Transport: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
->(Addr<Connection<SplitSink<Transport>, H>>);
+>(Addr<Connection<SplitSink<Transport, GsbMessage>, H>>);
 
 impl<
-        Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
+        Transport: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+        H: CallRequestHandler + 'static,
+    > Unpin for ConnectionRef<Transport, H>
+{
+}
+
+impl<
+        Transport: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
         H: CallRequestHandler + 'static,
     > Clone for ConnectionRef<Transport, H>
 {
@@ -326,12 +343,17 @@ impl<
 }
 
 impl<
-        Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError> + 'static,
-        H: CallRequestHandler + 'static,
+        Transport: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+        H: CallRequestHandler + Unpin + 'static,
     > ConnectionRef<Transport, H>
 {
-    pub fn bind(&self, addr: impl Into<String>) -> impl Future<Item = (), Error = Error> + 'static {
-        self.0.send(Bind { addr: addr.into() }).flatten()
+    pub fn bind(
+        &self,
+        addr: impl Into<String>,
+    ) -> impl Future<Output = Result<(), Error>> + 'static {
+        self.0
+            .send(Bind { addr: addr.into() })
+            .then(|v| async { v? })
     }
 
     pub fn call(
@@ -339,14 +361,14 @@ impl<
         caller: impl Into<String>,
         addr: impl Into<String>,
         body: impl Into<Vec<u8>>,
-    ) -> impl Future<Item = Vec<u8>, Error = Error> {
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
         self.0
             .send(RpcRawCall {
                 caller: caller.into(),
                 addr: addr.into(),
                 body: body.into(),
             })
-            .flatten()
+            .then(|v| async { v? })
     }
 
     pub fn connected(&self) -> bool {
@@ -354,24 +376,26 @@ impl<
     }
 }
 
-pub fn connect<Transport, H: CallRequestHandler + 'static + Default>(
+pub fn connect<Transport, H: CallRequestHandler + 'static + Default + Unpin>(
     transport: Transport,
 ) -> ConnectionRef<Transport, H>
 where
-    Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
-        + Stream<Item = GsbMessage, Error = ProtocolError>
+    Transport: Sink<GsbMessage, Error = ProtocolError>
+        + Stream<Item = Result<GsbMessage, ProtocolError>>
+        + Unpin
         + 'static,
 {
     connect_with_handler(transport, Default::default())
 }
 
-pub fn connect_with_handler<Transport, H: CallRequestHandler + 'static>(
+pub fn connect_with_handler<Transport, H: CallRequestHandler + Unpin + 'static>(
     transport: Transport,
     handler: H,
 ) -> ConnectionRef<Transport, H>
 where
-    Transport: Sink<SinkItem = GsbMessage, SinkError = ProtocolError>
-        + Stream<Item = GsbMessage, Error = ProtocolError>
+    Transport: Sink<GsbMessage, Error = ProtocolError>
+        + Stream<Item = Result<GsbMessage, ProtocolError>>
+        + Unpin
         + 'static,
 {
     let (split_sink, split_stream) = transport.split();
@@ -382,15 +406,12 @@ where
 }
 
 pub type TcpTransport =
-    tokio_codec::Framed<tokio_tcp::TcpStream, ya_sb_proto::codec::GsbMessageCodec>;
+    tokio_util::codec::Framed<tokio::net::TcpStream, ya_sb_proto::codec::GsbMessageCodec>;
 
-pub fn tcp(
-    addr: &std::net::SocketAddr,
-) -> impl Future<Item = TcpTransport, Error = std::io::Error> {
-    tokio_tcp::TcpStream::connect(addr).and_then(|s| {
-        Ok(tokio_codec::Framed::new(
-            s,
-            ya_sb_proto::codec::GsbMessageCodec::default(),
-        ))
-    })
+pub async fn tcp(addr: &std::net::SocketAddr) -> Result<TcpTransport, std::io::Error> {
+    let s = tokio::net::TcpStream::connect(addr).await?;
+    Ok(tokio_util::codec::Framed::new(
+        s,
+        ya_sb_proto::codec::GsbMessageCodec::default(),
+    ))
 }

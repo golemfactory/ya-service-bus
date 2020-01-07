@@ -39,11 +39,11 @@ mod raw_actor {
         inner: T,
     }
 
-    impl<T: RawHandler + 'static> Actor for RawHandlerActor<T> {
+    impl<T: RawHandler + Unpin + 'static> Actor for RawHandlerActor<T> {
         type Context = Context<Self>;
     }
 
-    impl<T: RawHandler + 'static> Handler<RpcRawCall> for RawHandlerActor<T> {
+    impl<T: RawHandler + Unpin + 'static> Handler<RpcRawCall> for RawHandlerActor<T> {
         type Result = ActorResponse<Self, Vec<u8>, Error>;
 
         fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
@@ -57,7 +57,7 @@ mod raw_actor {
         }
     }
 
-    pub fn recipient(h: impl RawHandler + 'static) -> Recipient<RpcRawCall> {
+    pub fn recipient(h: impl RawHandler + Unpin + 'static) -> Recipient<RpcRawCall> {
         RawHandlerActor { inner: h }.start().recipient()
     }
 }

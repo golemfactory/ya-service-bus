@@ -9,6 +9,8 @@ impl<T: 'static, H: 'static> Actor for RpcHandlerWrapper<T, H> {
     type Context = Context<Self>;
 }
 
+impl<T: 'static, H: 'static> Unpin for RpcHandlerWrapper<T, H> {}
+
 impl<T, H> RpcHandlerWrapper<T, H> {
     pub fn new(h: H) -> Self {
         RpcHandlerWrapper(h, PhantomData)
@@ -24,8 +26,6 @@ impl<T: RpcMessage, H: RpcHandler<T> + 'static> Handler<RpcEnvelope<T>>
         ActorResponse::r#async(
             self.0
                 .handle(msg.caller.as_str(), msg.body)
-                .boxed_local()
-                .compat()
                 .into_actor(self),
         )
     }

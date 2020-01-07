@@ -1,12 +1,13 @@
 use std::clone::Clone;
 use std::sync::{Arc, Mutex};
 
+use futures::prelude::*;
 use structopt::StructOpt;
-use tokio::codec::{FramedRead, FramedWrite};
 use tokio::net::TcpListener;
 use tokio::prelude::*;
+use tokio_util::codec::{FramedRead, FramedWrite};
 
-use ya_sb_proto::codec::{GsbMessageDecoder, GsbMessageEncoder};
+use ya_sb_proto::codec::{GsbMessageCodec, GsbMessageDecoder, GsbMessageEncoder};
 use ya_sb_router::Router;
 
 #[derive(StructOpt)]
@@ -16,20 +17,22 @@ struct Options {
     ip_port: String,
 }
 
-fn main() {
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let options = Options::from_args();
-    let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
-    let listener = TcpListener::bind(&listen_addr).expect("Unable to bind TCP listener");
+    let listen_addr: std::net::SocketAddr = options.ip_port.parse().expect("Invalid ip:port");
+    let mut listener = TcpListener::bind(&listen_addr)
+        .await
+        .expect("Unable to bind TCP listener");
     let router = Arc::new(Mutex::new(Router::new()));
 
-    let server = listener
+    let _ = listener
         .incoming()
         .map_err(|e| eprintln!("Accept failed: {:?}", e))
-        .for_each(move |sock| {
+        .try_for_each(move |mut sock| {
             let addr = sock.peer_addr().unwrap();
-            let (reader, writer) = sock.split();
-            let writer = FramedWrite::new(writer, GsbMessageEncoder {});
-            let reader = FramedRead::new(reader, GsbMessageDecoder::new());
+            let (writer, reader) =
+                tokio_util::codec::Framed::new(sock, GsbMessageCodec::default()).split();
 
             router
                 .lock()
@@ -39,16 +42,20 @@ fn main() {
             let router1 = router.clone();
             let router2 = router.clone();
 
-            tokio::spawn(
-                reader
-                    .from_err()
+            tokio::spawn(async move {
+                let _ = reader
                     .for_each(move |msg| {
-                        future::done(router1.lock().unwrap().handle_message(addr.clone(), msg))
+                        router1
+                            .lock()
+                            .unwrap()
+                            .handle_message(addr.clone(), msg.unwrap());
+                        future::ready(())
                     })
-                    .and_then(move |_| future::done(router2.lock().unwrap().disconnect(&addr)))
-                    .map_err(|e| eprintln!("Error occurred handling message: {:?}", e)),
-            )
-        });
+                    .await;
+            });
+            future::ok(())
+        })
+        .await;
 
-    tokio::run(server);
+    Ok(())
 }

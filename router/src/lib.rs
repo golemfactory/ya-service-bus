@@ -3,32 +3,32 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::net::SocketAddr;
 
-use futures::compat::Future01CompatExt;
+use futures::prelude::*;
 
-use tokio::codec::{FramedRead, FramedWrite};
 use tokio::io::{AsyncRead, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::sync::mpsc;
+use tokio_util::codec::*;
 
-use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder};
+use ya_sb_proto::codec::{
+    GsbMessage, GsbMessageCodec, GsbMessageDecoder, GsbMessageEncoder, ProtocolError,
+};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
-struct MessageDispatcher<A, B>
+struct MessageDispatcher<A, M, E>
 where
     A: Hash + Eq,
-    B: Sink,
 {
-    senders: HashMap<A, mpsc::Sender<B::SinkItem>>,
+    senders: HashMap<A, mpsc::Sender<Result<M, E>>>,
 }
 
-impl<A, B> MessageDispatcher<A, B>
+impl<A, M, E> MessageDispatcher<A, M, E>
 where
     A: Hash + Eq,
-    B: Sink + Send + 'static,
-    B::SinkItem: Send + 'static,
-    B::SinkError: From<mpsc::error::RecvError> + Debug,
+    M: Send + 'static,
+    E: Send + 'static + From<mpsc::error::RecvError> + Debug,
 {
     fn new() -> Self {
         MessageDispatcher {
@@ -36,16 +36,22 @@ where
         }
     }
 
-    fn register(&mut self, addr: A, sink: B) -> failure::Fallible<()> {
+    fn register<B: Sink<M, Error = E> + Send + 'static>(
+        &mut self,
+        addr: A,
+        sink: B,
+    ) -> failure::Fallible<()> {
         match self.senders.entry(addr) {
             Entry::Occupied(_) => Err(failure::err_msg("Sender already registered")),
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(1000);
-                tokio::spawn(
-                    sink.send_all(rx)
-                        .map(|_| ())
-                        .map_err(|e| eprintln!("Send failed: {:?}", e)),
-                );
+                tokio::spawn(async move {
+                    let mut rx = rx;
+                    futures::pin_mut!(sink);
+                    if let Err(e) = sink.send_all(&mut rx).await {
+                        eprintln!("Send failed: {:?}", e)
+                    }
+                });
                 entry.insert(tx);
                 Ok(())
             }
@@ -61,18 +67,20 @@ where
 
     fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
     where
-        T: Into<B::SinkItem>,
+        T: Into<M>,
     {
         match self.senders.get_mut(addr) {
             None => Err(failure::err_msg("Sender not registered")),
             Some(sender) => {
                 let sender = sender.clone();
-                tokio::spawn(
-                    sender
-                        .send(msg.into())
-                        .map(|_| ())
-                        .map_err(|e| eprintln!("Send failed: {:?}", e)),
-                );
+                let msg = msg.into();
+                tokio::spawn(async move {
+                    futures::pin_mut!(sender);
+                    let _ = sender
+                        .send(Ok(msg))
+                        .await
+                        .unwrap_or_else(|e| eprintln!("Send failed: {}", e));
+                });
                 Ok(())
             }
         }
@@ -96,12 +104,11 @@ where
     service_id: ServiceId,
 }
 
-pub struct Router<A, B>
+pub struct Router<A, M, E>
 where
     A: Hash + Eq,
-    B: Sink,
 {
-    dispatcher: MessageDispatcher<A, B>,
+    dispatcher: MessageDispatcher<A, M, E>,
     registered_endpoints: PrefixLookupBag<A>,
     reversed_endpoints: HashMap<A, HashSet<ServiceId>>,
     pending_calls: HashMap<RequestId, PendingCall<A>>,
@@ -109,12 +116,11 @@ where
     endpoint_calls: HashMap<ServiceId, HashSet<RequestId>>,
 }
 
-impl<A, B> Router<A, B>
+impl<A, M, E> Router<A, M, E>
 where
     A: Hash + Eq + Display + Clone,
-    B: Sink + Send + 'static,
-    B::SinkItem: Send + 'static + From<GsbMessage>,
-    B::SinkError: From<mpsc::error::RecvError> + Debug,
+    M: Send + 'static + From<GsbMessage>,
+    E: Send + 'static + From<mpsc::error::RecvError> + Debug,
 {
     pub fn new() -> Self {
         Router {
@@ -127,7 +133,11 @@ where
         }
     }
 
-    pub fn connect(&mut self, addr: A, sink: B) -> failure::Fallible<()> {
+    pub fn connect<B: Sink<M, Error = E> + Send + 'static>(
+        &mut self,
+        addr: A,
+        sink: B,
+    ) -> failure::Fallible<()> {
         println!("Accepted connection from {}", addr);
         self.dispatcher.register(addr, sink)
     }
@@ -358,15 +368,14 @@ where
 pub async fn tcp_connect(
     addr: &SocketAddr,
 ) -> (
-    FramedRead<ReadHalf<TcpStream>, GsbMessageDecoder>,
-    FramedWrite<WriteHalf<TcpStream>, GsbMessageEncoder>,
+    impl Sink<GsbMessage, Error = ProtocolError>,
+    impl Stream<Item = Result<GsbMessage, ProtocolError>>,
 ) {
-    let sock = TcpStream::connect(&addr)
-        .compat()
-        .await
-        .expect("Connect failed");
-    let (reader, writer) = sock.split();
+    let mut sock = TcpStream::connect(&addr).await.expect("Connect failed");
+    let framed = tokio_util::codec::Framed::new(sock, GsbMessageCodec::default());
+    framed.split()
+    /*let (reader, writer) = sock.split();
     let reader = FramedRead::new(reader, GsbMessageDecoder::new());
     let writer = FramedWrite::new(writer, GsbMessageEncoder {});
-    (reader, writer)
+    (reader, writer)*/
 }
