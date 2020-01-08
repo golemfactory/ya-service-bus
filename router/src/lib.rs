@@ -45,7 +45,7 @@ where
                 tokio::spawn(
                     sink.send_all(rx)
                         .map(|_| ())
-                        .map_err(|e| eprintln!("Send failed: {:?}", e)),
+                        .map_err(|e| log::error!("Send failed: {:?}", e)),
                 );
                 entry.insert(tx);
                 Ok(())
@@ -72,7 +72,7 @@ where
                     sender
                         .send(msg.into())
                         .map(|_| ())
-                        .map_err(|e| eprintln!("Send failed: {:?}", e)),
+                        .map_err(|e| log::error!("Send failed: {:?}", e)),
                 );
                 Ok(())
             }
@@ -129,12 +129,12 @@ where
     }
 
     pub fn connect(&mut self, addr: A, sink: B) -> failure::Fallible<()> {
-        println!("Accepted connection from {}", addr);
+        log::info!("Accepted connection from {}", addr);
         self.dispatcher.register(addr, sink)
     }
 
     pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
-        println!("Closed connection with {}", addr);
+        log::info!("Closed connection with {}", addr);
         self.dispatcher.unregister(addr)?;
 
         // IDs of all endpoints registered by this server
@@ -179,7 +179,7 @@ where
                     data: "Service disconnected".to_owned().into_bytes(),
                 };
                 match self.send_message(&pending_call.caller_addr, msg) {
-                    Err(err) => eprintln!("Send message failed: {:?}", err),
+                    Err(err) => log::error!("Send message failed: {:?}", err),
                     _ => (),
                 };
             });
@@ -209,7 +209,7 @@ where
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
-        println!(
+        log::info!(
             "Received RegisterRequest from {}. service_id = {}",
             addr, &msg.service_id
         );
@@ -237,12 +237,12 @@ where
                 }
             }
         };
-        println!("{}", msg.message);
+        log::info!("{}", msg.message);
         self.send_message(addr, msg)
     }
 
     fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> failure::Fallible<()> {
-        println!(
+        log::info!(
             "Received UnregisterRequest from {}. service_id = {}",
             addr, &msg.service_id
         );
@@ -253,13 +253,13 @@ where
                     .get_mut(addr)
                     .ok_or(failure::err_msg("Address not found"))?
                     .remove(&msg.service_id);
-                println!("Service successfully unregistered");
+                log::info!("Service successfully unregistered");
                 UnregisterReply {
                     code: UnregisterReplyCode::UnregisteredOk as i32,
                 }
             }
             _ => {
-                println!("Service not registered or registered by another server");
+                log::info!("Service not registered or registered by another server");
                 UnregisterReply {
                     code: UnregisterReplyCode::NotRegistered as i32,
                 }
@@ -269,7 +269,7 @@ where
     }
 
     fn call(&mut self, caller_addr: &A, msg: CallRequest) -> failure::Fallible<()> {
-        println!(
+        log::info!(
             "Received CallRequest from {}. caller = {}, address = {}, request_id = {}",
             caller_addr, &msg.caller, &msg.address, &msg.request_id
         );
@@ -296,11 +296,11 @@ where
         };
         match server_addr {
             Ok(server_addr) => {
-                println!("Forwarding CallRequest to {}", server_addr);
+                log::info!("Forwarding CallRequest to {}", server_addr);
                 self.send_message(&server_addr, msg)
             }
             Err(err) => {
-                println!("{}", err);
+                log::info!("{}", err);
                 let msg = CallReply {
                     request_id: msg.request_id,
                     code: CallReplyCode::CallReplyBadRequest as i32,
@@ -313,7 +313,7 @@ where
     }
 
     fn reply(&mut self, server_addr: &A, msg: CallReply) -> failure::Fallible<()> {
-        println!(
+        log::info!(
             "Received CallReply from {} request_id = {}",
             server_addr, &msg.request_id
         );
@@ -338,7 +338,7 @@ where
         };
         match caller_addr {
             Ok(addr) => self.send_message(&addr, msg),
-            Err(err) => Ok(println!("{}", err)),
+            Err(err) => Ok(log::error!("{}", err)),
         }
     }
 
@@ -363,7 +363,7 @@ pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
 
     listener
         .incoming()
-        .map_err(|e| eprintln!("Accept failed: {:?}", e))
+        .map_err(|e| log::error!("Accept failed: {:?}", e))
         .for_each(move |sock| {
             let addr = sock.peer_addr().unwrap();
             let (reader, writer) = sock.split();
@@ -385,7 +385,7 @@ pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
                         future::done(router1.lock().unwrap().handle_message(addr.clone(), msg))
                     })
                     .and_then(move |_| future::done(router2.lock().unwrap().disconnect(&addr)))
-                    .map_err(|e| eprintln!("Error occurred handling message: {:?}", e)),
+                    .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
             )
         })
         .compat()

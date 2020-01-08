@@ -12,6 +12,7 @@ bytes = "0.4.12"
 failure = "0.1.6"
 futures = { version = "0.3", features = ["compat"] }
 lazy_static = "1.4.0"
+log = "0.4"
 prost = "0.5.0"
 structopt = "0.3"
 tokio = "0.1.22"
