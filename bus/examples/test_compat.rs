@@ -1,7 +1,5 @@
 use actix::prelude::*;
-use futures::{
-    prelude::*,
-};
+use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::io;
 use ya_service_bus::{actix_rpc, Handle, RpcEnvelope, RpcMessage};

@@ -1,7 +1,6 @@
 use std::convert::TryFrom;
 use std::mem::size_of;
 
-
 use failure;
 use failure::Fail;
 

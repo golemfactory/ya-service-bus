@@ -1,7 +1,6 @@
 use std::convert::TryInto;
 use std::mem::size_of;
 
-
 use prost::Message;
 
 use crate::gsb_api::*;

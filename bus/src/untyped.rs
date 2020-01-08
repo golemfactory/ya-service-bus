@@ -37,7 +37,7 @@ mod raw_actor {
     use super::{Error, RawHandler};
     use crate::RpcRawCall;
     use actix::prelude::*;
-    use futures::{FutureExt};
+    use futures::FutureExt;
 
     struct RawHandlerActor<T> {
         inner: T,

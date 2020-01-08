@@ -9,9 +9,7 @@ use tokio::prelude::*;
 use tokio::sync::mpsc;
 use tokio_util::codec::*;
 
-use ya_sb_proto::codec::{
-    GsbMessage, GsbMessageCodec, ProtocolError,
-};
+use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
