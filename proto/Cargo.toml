@@ -5,9 +5,8 @@ authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
 [features]
-default=["with-codec"]
-with-codec=['tokio-util']
-
+default = ["with-codec"]
+with-codec = ['tokio-util']
 
 [dependencies]
 bytes = "0.4"

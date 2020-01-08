@@ -1,11 +1,10 @@
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::net::SocketAddr;
-
+use std::net::{SocketAddr};
+use std::sync::{Arc, Mutex};
 use futures::prelude::*;
-
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, TcpListener};
 use tokio::prelude::*;
 use tokio::sync::mpsc;
 use tokio_util::codec::*;
@@ -142,7 +141,7 @@ where
     }
 
     pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
-        println!("Closed connection with {}", addr);
+        log::info!("Closed connection with {}", addr);
         self.dispatcher.unregister(addr)?;
 
         // IDs of all endpoints registered by this server
@@ -368,6 +367,39 @@ where
             ))),
         }
     }
+}
+
+pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
+    let mut listener =
+        TcpListener::bind(&addr).await.expect(&format!("Unable to bind TCP listener at {}", addr));
+    let router = Arc::new(Mutex::new(Router::new()));
+
+    listener
+        .incoming()
+        .map_err(|e| log::error!("Accept failed: {:?}", e))
+        .try_for_each(move |sock| {
+            let addr = sock.peer_addr().unwrap();
+            let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
+            router
+                .lock()
+                .unwrap()
+                .connect(addr.clone(), writer)
+                .unwrap();
+            let router1 = router.clone();
+            let router2 = router.clone();
+
+            let _ = tokio::spawn(
+                reader
+                    .map_err(From::from)
+                    .try_for_each(move |msg: GsbMessage| {
+                        future::ready(router1.lock().unwrap().handle_message(addr.clone(), msg))
+                    })
+                    .and_then(move |_| future::ready(router2.lock().unwrap().disconnect(&addr)))
+                    .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
+            );
+            future::ok(())
+        })
+        .await
 }
 
 pub async fn tcp_connect(
