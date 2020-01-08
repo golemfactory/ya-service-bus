@@ -1,6 +1,6 @@
 use crate::{RpcEnvelope, RpcHandler, RpcMessage};
 use actix::prelude::*;
-use futures::{FutureExt, TryFutureExt};
+
 use std::marker::PhantomData;
 
 pub struct RpcHandlerWrapper<T, H>(pub(super) H, PhantomData<T>);

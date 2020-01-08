@@ -1,7 +1,7 @@
 use std::convert::TryFrom;
 use std::mem::size_of;
 
-use bytes::BytesMut;
+
 use failure;
 use failure::Fail;
 

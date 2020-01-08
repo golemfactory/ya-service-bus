@@ -1,5 +1,5 @@
 use failure::Error;
-use futures::{FutureExt, TryFutureExt};
+
 use serde::{Deserialize, Serialize};
 use ya_service_bus::{typed as bus, RpcMessage};
 

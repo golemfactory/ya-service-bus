@@ -1,12 +1,12 @@
 use std::convert::TryInto;
 use std::mem::size_of;
 
-use bytes::{BufMut, BytesMut};
+
 use prost::Message;
 
 use crate::gsb_api::*;
 use crate::{MessageHeader, MessageType};
-use tokio_bytes::BufMut as _;
+
 use tokio_util::codec::{Decoder, Encoder};
 use ya_sb_util::bytes::BytesCompat;
 

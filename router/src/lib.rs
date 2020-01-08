@@ -10,7 +10,7 @@ use tokio::sync::mpsc;
 use tokio_util::codec::*;
 
 use ya_sb_proto::codec::{
-    GsbMessage, GsbMessageCodec, GsbMessageDecoder, GsbMessageEncoder, ProtocolError,
+    GsbMessage, GsbMessageCodec, ProtocolError,
 };
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
@@ -409,7 +409,7 @@ pub async fn tcp_connect(
     impl Sink<GsbMessage, Error = ProtocolError>,
     impl Stream<Item = Result<GsbMessage, ProtocolError>>,
 ) {
-    let mut sock = TcpStream::connect(&addr).await.expect("Connect failed");
+    let sock = TcpStream::connect(&addr).await.expect("Connect failed");
     let framed = tokio_util::codec::Framed::new(sock, GsbMessageCodec::default());
     framed.split()
     /*let (reader, writer) = sock.split();

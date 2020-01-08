@@ -53,7 +53,7 @@ impl RemoteRouter {
                     .into_actor(act),
                 )
             })
-            .then(|v: Result<(), Error>, _, _| fut::ready(()));
+            .then(|_v: Result<(), Error>, _, _| fut::ready(()));
 
         ctx.spawn(connect_fut);
     }

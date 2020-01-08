@@ -1,5 +1,5 @@
 use futures::prelude::*;
-use tokio::prelude::*;
+
 use uuid::Uuid;
 
 use ya_sb_proto::codec::GsbMessage;

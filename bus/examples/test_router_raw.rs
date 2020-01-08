@@ -47,7 +47,7 @@ fn main() -> Fallible<()> {
                     }
                 });
                 Arbiter::spawn(async {
-                    let result = a.await;
+                    let _result = a.await;
                 })
             })
             .unwrap();

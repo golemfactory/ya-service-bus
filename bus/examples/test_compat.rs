@@ -1,6 +1,5 @@
 use actix::prelude::*;
 use futures::{
-    future::{FutureExt, TryFutureExt},
     prelude::*,
 };
 use serde::{Deserialize, Serialize};
