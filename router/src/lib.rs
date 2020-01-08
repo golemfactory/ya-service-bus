@@ -2,12 +2,13 @@ use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 
 use futures::compat::Future01CompatExt;
 
 use tokio::codec::{FramedRead, FramedWrite};
 use tokio::io::{AsyncRead, ReadHalf, WriteHalf};
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio::sync::mpsc;
 
@@ -353,6 +354,42 @@ where
             ))),
         }
     }
+}
+
+pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
+    let listener = TcpListener::bind(&addr)
+        .expect(&format!("Unable to bind TCP listener at {}", addr));
+    let router = Arc::new(Mutex::new(Router::new()));
+
+    listener
+        .incoming()
+        .map_err(|e| eprintln!("Accept failed: {:?}", e))
+        .for_each(move |sock| {
+            let addr = sock.peer_addr().unwrap();
+            let (reader, writer) = sock.split();
+            let writer = FramedWrite::new(writer, GsbMessageEncoder {});
+            let reader = FramedRead::new(reader, GsbMessageDecoder::new());
+
+            router
+                .lock()
+                .unwrap()
+                .connect(addr.clone(), writer)
+                .unwrap();
+            let router1 = router.clone();
+            let router2 = router.clone();
+
+            tokio::spawn(
+                reader
+                    .from_err()
+                    .for_each(move |msg: GsbMessage| {
+                        future::done(router1.lock().unwrap().handle_message(addr.clone(), msg))
+                    })
+                    .and_then(move |_| future::done(router2.lock().unwrap().disconnect(&addr)))
+                    .map_err(|e| eprintln!("Error occurred handling message: {:?}", e)),
+            )
+        })
+        .compat()
+        .await
 }
 
 pub async fn tcp_connect(
