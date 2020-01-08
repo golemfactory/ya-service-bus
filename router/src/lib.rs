@@ -369,7 +369,7 @@ where
     }
 }
 
-pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
+pub async fn bind_router(addr: SocketAddr) {
     let mut listener = TcpListener::bind(&addr)
         .await
         .expect(&format!("Unable to bind TCP listener at {}", addr));
@@ -400,7 +400,7 @@ pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
             );
             future::ok(())
         })
-        .await
+        .await;
 }
 
 pub async fn tcp_connect(
