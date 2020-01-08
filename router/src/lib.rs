@@ -211,7 +211,8 @@ where
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
         log::info!(
             "Received RegisterRequest from {}. service_id = {}",
-            addr, &msg.service_id
+            addr,
+            &msg.service_id
         );
         let msg = if !is_valid_service_id(&msg.service_id) {
             RegisterReply {
@@ -244,7 +245,8 @@ where
     fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> failure::Fallible<()> {
         log::info!(
             "Received UnregisterRequest from {}. service_id = {}",
-            addr, &msg.service_id
+            addr,
+            &msg.service_id
         );
         let msg = match self.registered_endpoints.entry(msg.service_id.clone()) {
             Entry::Occupied(entry) if entry.get() == addr => {
@@ -271,7 +273,10 @@ where
     fn call(&mut self, caller_addr: &A, msg: CallRequest) -> failure::Fallible<()> {
         log::info!(
             "Received CallRequest from {}. caller = {}, address = {}, request_id = {}",
-            caller_addr, &msg.caller, &msg.address, &msg.request_id
+            caller_addr,
+            &msg.caller,
+            &msg.address,
+            &msg.request_id
         );
         let server_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(_) => Err("CallRequest with this ID already exists".to_string()),
@@ -315,7 +320,8 @@ where
     fn reply(&mut self, server_addr: &A, msg: CallReply) -> failure::Fallible<()> {
         log::info!(
             "Received CallReply from {} request_id = {}",
-            server_addr, &msg.request_id
+            server_addr,
+            &msg.request_id
         );
         let caller_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(entry) => {
