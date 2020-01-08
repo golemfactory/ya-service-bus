@@ -137,7 +137,6 @@ fn main() -> failure::Fallible<()> {
         }
 
         Args::Local { script } => {
-            let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
 
             let result = sys.block_on(async {

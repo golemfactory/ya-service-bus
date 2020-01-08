@@ -5,7 +5,6 @@ use futures::prelude::*;
 use std::path::PathBuf;
 use std::time::Duration;
 use structopt::StructOpt;
-use tokio_timer::Timer;
 use ya_service_bus::connection;
 use ya_service_bus::connection::LocalRouterHandler;
 

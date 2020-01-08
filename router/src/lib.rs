@@ -1,10 +1,10 @@
+use futures::prelude::*;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
-use futures::prelude::*;
-use tokio::net::{TcpStream, TcpListener};
+use tokio::net::{TcpListener, TcpStream};
 use tokio::prelude::*;
 use tokio::sync::mpsc;
 use tokio_util::codec::*;
@@ -370,8 +370,9 @@ where
 }
 
 pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
-    let mut listener =
-        TcpListener::bind(&addr).await.expect(&format!("Unable to bind TCP listener at {}", addr));
+    let mut listener = TcpListener::bind(&addr)
+        .await
+        .expect(&format!("Unable to bind TCP listener at {}", addr));
     let router = Arc::new(Mutex::new(Router::new()));
 
     listener
