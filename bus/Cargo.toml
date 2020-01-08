@@ -15,7 +15,7 @@ ya-sb-proto = { path = "../proto" }
 ya-sb-util = { path = "../util" }
 rand="0.7.2"
 log="0.4"
-tokio = {version = "0.2.6", futures=["codec", "tcp", "time"]}
+tokio = {version = "0.2.6", features=["tcp", "time"]}
 tokio-util="0.2.0"
 
 

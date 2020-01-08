@@ -17,7 +17,7 @@ struct Forward {
 
 impl<T: RpcMessage> RpcEndpoint<T> for Forward
 where
-    T: Send,
+    T: Send + Unpin,
 {
     type Result = Pin<Box<dyn Future<Output = Result<Result<T::Item, T::Error>, Error>>>>;
 
@@ -30,7 +30,7 @@ where
     }
 }
 
-pub fn service<T: RpcMessage>(addr: &str) -> impl RpcEndpoint<T> {
+pub fn service<T: RpcMessage + Unpin>(addr: &str) -> impl RpcEndpoint<T> {
     Forward {
         router: router(),
         addr: addr.to_string(),

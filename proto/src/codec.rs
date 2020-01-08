@@ -8,6 +8,7 @@ use crate::gsb_api::*;
 use crate::{MessageHeader, MessageType};
 use tokio_bytes::BufMut as _;
 use tokio_util::codec::{Decoder, Encoder};
+use ya_sb_util::bytes::BytesCompat;
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
@@ -16,13 +17,14 @@ pub type ProtocolError = failure::Error;
 trait Encodable {
     // This trait exists because prost::Message has template methods
 
-    fn encode_(&self, buf: &mut BytesMut) -> failure::Fallible<()>;
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()>;
     fn encoded_len_(&self) -> usize;
 }
 
 impl<T: Message> Encodable for T {
-    fn encode_(&self, buf: &mut BytesMut) -> failure::Fallible<()> {
-        Ok(self.encode(buf)?)
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()> {
+        let mut c = buf.compat();
+        Ok(self.encode(&mut c)?)
     }
 
     fn encoded_len_(&self) -> usize {
@@ -128,14 +130,13 @@ fn decode_message(
 
 fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> failure::Fallible<()> {
     let (msg_type, msg) = msg.unpack();
-    let mut dst_vec = BytesMut::new();
-    encode_message_unpacked(&mut dst_vec, msg_type, msg.as_ref())?;
-    dst.put_slice(dst_vec.as_ref());
+    //let mut dst_vec = dst.compat();
+    encode_message_unpacked(dst, msg_type, msg.as_ref())?;
     Ok(())
 }
 
 fn encode_message_unpacked(
-    dst: &mut BytesMut,
+    dst: &mut tokio_bytes::BytesMut,
     msg_type: MessageType,
     msg: &dyn Encodable,
 ) -> failure::Fallible<()> {

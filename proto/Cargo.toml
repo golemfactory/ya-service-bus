@@ -15,6 +15,7 @@ tokio-bytes = {version="0.5", package="bytes" }
 failure = "0.1.6"
 prost = "0.5.0"
 tokio-util={ version = "0.2", optional=true, features=["codec"] }
+ya-sb-util = { path = "../util" }
 
 [build-dependencies]
 prost-build = "0.5.0"

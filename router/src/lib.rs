@@ -48,7 +48,7 @@ where
                     let mut rx = rx;
                     futures::pin_mut!(sink);
                     if let Err(e) = sink.send_all(&mut rx).await {
-                        eprintln!("Send failed: {:?}", e)
+                        log::error!("Send failed: {:?}", e)
                     }
                 });
                 entry.insert(tx);
@@ -78,7 +78,7 @@ where
                     let _ = sender
                         .send(Ok(msg))
                         .await
-                        .unwrap_or_else(|e| eprintln!("Send failed: {}", e));
+                        .unwrap_or_else(|e| log::error!("Send message failed: {}", e));
                 });
                 Ok(())
             }
@@ -187,7 +187,7 @@ where
                     data: "Service disconnected".to_owned().into_bytes(),
                 };
                 match self.send_message(&pending_call.caller_addr, msg) {
-                    Err(err) => eprintln!("Send message failed: {:?}", err),
+                    Err(err) => log::error!("Send message failed: {:?}", err),
                     _ => (),
                 };
             });
@@ -217,9 +217,10 @@ where
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
-        println!(
+        log::info!(
             "Received RegisterRequest from {}. service_id = {}",
-            addr, &msg.service_id
+            addr,
+            &msg.service_id
         );
         let msg = if !is_valid_service_id(&msg.service_id) {
             RegisterReply {
@@ -245,14 +246,15 @@ where
                 }
             }
         };
-        println!("{}", msg.message);
+        log::debug!("{}", msg.message);
         self.send_message(addr, msg)
     }
 
     fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> failure::Fallible<()> {
-        println!(
+        log::info!(
             "Received UnregisterRequest from {}. service_id = {}",
-            addr, &msg.service_id
+            addr,
+            &msg.service_id
         );
         let msg = match self.registered_endpoints.entry(msg.service_id.clone()) {
             Entry::Occupied(entry) if entry.get() == addr => {
@@ -261,13 +263,13 @@ where
                     .get_mut(addr)
                     .ok_or(failure::err_msg("Address not found"))?
                     .remove(&msg.service_id);
-                println!("Service successfully unregistered");
+                log::info!("Service successfully unregistered");
                 UnregisterReply {
                     code: UnregisterReplyCode::UnregisteredOk as i32,
                 }
             }
             _ => {
-                println!("Service not registered or registered by another server");
+                log::warn!("Service not registered or registered by another server");
                 UnregisterReply {
                     code: UnregisterReplyCode::NotRegistered as i32,
                 }
@@ -277,9 +279,12 @@ where
     }
 
     fn call(&mut self, caller_addr: &A, msg: CallRequest) -> failure::Fallible<()> {
-        println!(
+        log::debug!(
             "Received CallRequest from {}. caller = {}, address = {}, request_id = {}",
-            caller_addr, &msg.caller, &msg.address, &msg.request_id
+            caller_addr,
+            &msg.caller,
+            &msg.address,
+            &msg.request_id
         );
         let server_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(_) => Err("CallRequest with this ID already exists".to_string()),
@@ -304,11 +309,11 @@ where
         };
         match server_addr {
             Ok(server_addr) => {
-                println!("Forwarding CallRequest to {}", server_addr);
+                log::debug!("Forwarding CallRequest to {}", server_addr);
                 self.send_message(&server_addr, msg)
             }
             Err(err) => {
-                println!("{}", err);
+                log::debug!("{}", err);
                 let msg = CallReply {
                     request_id: msg.request_id,
                     code: CallReplyCode::CallReplyBadRequest as i32,
@@ -321,9 +326,10 @@ where
     }
 
     fn reply(&mut self, server_addr: &A, msg: CallReply) -> failure::Fallible<()> {
-        println!(
+        log::debug!(
             "Received CallReply from {} request_id = {}",
-            server_addr, &msg.request_id
+            server_addr,
+            &msg.request_id
         );
         let caller_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(entry) => {
@@ -346,7 +352,7 @@ where
         };
         match caller_addr {
             Ok(addr) => self.send_message(&addr, msg),
-            Err(err) => Ok(println!("{}", err)),
+            Err(err) => Ok(log::error!("{}", err)),
         }
     }
 

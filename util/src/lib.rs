@@ -1,3 +1,6 @@
+pub mod bytes;
+pub mod futures;
+
 use std::collections::{hash_map::Entry, HashMap};
 
 struct RevPrefixes<'a>(&'a str);

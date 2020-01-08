@@ -88,7 +88,7 @@ impl Slot {
         }
     }
 
-    fn send(&self, msg: RpcRawCall) -> impl Future<Output = Result<Vec<u8>, Error>> {
+    fn send(&self, msg: RpcRawCall) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
         self.inner.send(msg)
     }
 }
@@ -130,11 +130,11 @@ impl Router {
         Handle { _inner: () }
     }
 
-    pub fn forward<T: RpcMessage>(
+    pub fn forward<T: RpcMessage + Unpin>(
         &mut self,
         addr: &str,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
         let caller = "local";
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
@@ -149,7 +149,12 @@ impl Router {
                     addr,
                     body,
                 })
-                .and_then(|b| async move { Ok(rmp_serde::from_read_ref(&b)?) })
+                .then(|b| {
+                    future::ready(match b {
+                        Ok(b) => rmp_serde::from_read_ref(&b).map_err(From::from),
+                        Err(e) => Err(e),
+                    })
+                })
                 .right_future()
             })
             .left_future()
@@ -162,8 +167,18 @@ impl Router {
                     addr,
                     body,
                 })
-                .then(|v| async { Ok(v?) })
-                .and_then(|b| async { Ok(rmp_serde::from_read_ref(&b?)?) })
+                .then(|v| {
+                    future::ready(match v {
+                        Ok(v) => v,
+                        Err(e) => Err(e.into()),
+                    })
+                })
+                .then(|b| {
+                    future::ready(match b {
+                        Ok(b) => rmp_serde::from_read_ref(&b).map_err(From::from),
+                        Err(e) => Err(e),
+                    })
+                })
                 .right_future()
         }
     }
@@ -173,7 +188,7 @@ impl Router {
         addr: &str,
         from: &str,
         msg: Vec<u8>,
-    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
         if let Some(slot) = self.handlers.get_mut(addr) {
             slot.send(RpcRawCall {
                 caller: from.into(),
@@ -188,7 +203,10 @@ impl Router {
                     addr: addr.into(),
                     body: msg,
                 })
-                .then(|v| async { v? })
+                .then(|v| match v {
+                    Ok(r) => future::ready(r),
+                    Err(e) => future::err(e.into()),
+                })
                 .right_future()
         }
     }

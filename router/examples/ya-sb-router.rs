@@ -19,16 +19,21 @@ struct Options {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    flexi_logger::Logger::with_env_or_str("info,ya_sb_router=debug")
+        .start()
+        .unwrap();
+
     let options = Options::from_args();
     let listen_addr: std::net::SocketAddr = options.ip_port.parse().expect("Invalid ip:port");
     let mut listener = TcpListener::bind(&listen_addr)
         .await
         .expect("Unable to bind TCP listener");
+    log::info!("listening on {:?}", listen_addr);
     let router = Arc::new(Mutex::new(Router::new()));
 
     let _ = listener
         .incoming()
-        .map_err(|e| eprintln!("Accept failed: {:?}", e))
+        .map_err(|e| log::error!("Accept failed: {:?}", e))
         .try_for_each(move |mut sock| {
             let addr = sock.peer_addr().unwrap();
             let (writer, reader) =

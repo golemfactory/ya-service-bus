@@ -4,7 +4,11 @@ use crate::local_router::router;
 
 use futures::Future;
 
-pub fn send(addr: &str, from: &str, bytes: &[u8]) -> impl Future<Output = Result<Vec<u8>, Error>> {
+pub fn send(
+    addr: &str,
+    from: &str,
+    bytes: &[u8],
+) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
     router()
         .lock()
         .unwrap()

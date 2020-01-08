@@ -18,3 +18,7 @@ tokio-util = "0.2.0"
 uuid = { version = "0.8.1", features = ["v4"] }
 ya-sb-proto = { path = "../proto" }
 ya-sb-util = { path = "../util" }
+log = "0.4.8"
+
+[dev-dependencies]
+flexi_logger= "0.14.5"

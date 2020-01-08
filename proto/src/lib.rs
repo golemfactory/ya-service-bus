@@ -32,7 +32,7 @@ pub struct MessageHeader {
 }
 
 impl MessageHeader {
-    pub fn encode(&self, buf: &mut BytesMut) {
+    pub fn encode(&self, buf: &mut tokio_bytes::BytesMut) {
         buf.extend_from_slice(&self.msg_type.to_be_bytes());
         buf.extend_from_slice(&self.msg_length.to_be_bytes());
     }
