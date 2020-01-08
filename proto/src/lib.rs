@@ -22,6 +22,12 @@ pub enum MessageType {
     UnregisterReply = 3,
     CallRequest = 4,
     CallReply = 5,
+    SubscribeRequest = 6,
+    SubscribeReply = 7,
+    UnsubscribeRequest = 8,
+    UnsubscribeReply = 9,
+    BroadcastRequest = 10,
+    BroadcastReply = 11,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

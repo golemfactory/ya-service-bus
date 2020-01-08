@@ -12,6 +12,15 @@ service Bus {
 
   /* Call a local or remote service method */
   rpc ServiceCall (CallRequest) returns (CallReply);
+
+  /* Subscribe to a broadcast topic */
+  rpc Subscribe (SubscribeRequest) returns (SubscribeReply);
+
+  /* Unsubscribe from a broadcast topic */
+  rpc Unsubscribe (UnsubscribeRequest) returns (UnsubscribeReply);
+
+  /* Broadcast a message to everyone subscribed to a topic */
+  rpc Broadcast (BroadcastRequest) returns (BroadcastReply);
 }
 
 /* Exposed by registering services */
@@ -32,13 +41,28 @@ enum UnregisterReplyCode {
 
 enum CallReplyCode {
   CALL_REPLY_OK = 0;
-  CALL_REPLY_BAD_REQUEST = 400; // eg. duplicate request ID, service not found etc.
+  CALL_REPLY_BAD_REQUEST = 400; // e.g. duplicate request ID, service not found etc.
   SERVICE_FAILURE = 500;  // e.g. service did not respond in time
 }
 
 enum CallReplyType {
   FULL = 0;  // a single response or end of stream
   PARTIAL = 1;  // i.e. a streaming response
+}
+
+enum SubscribeReplyCode {
+  SUBSCRIBED_OK = 0;
+  SUBSCRIBE_BAD_REQUEST = 400;  // e.g. invalid topic name
+}
+
+enum UnsubscribeReplyCode {
+  UNSUBSCRIBED_OK = 0;
+  NOT_SUBSCRIBED = 404;
+}
+
+enum BroadcastReplyCode {
+  BROADCAST_OK = 0;
+  BROADCAST_BAD_REQUEST = 400;  // e.g. invalid topic name
 }
 
 message RegisterRequest {
@@ -70,4 +94,31 @@ message CallReply {
   CallReplyCode code = 2;
   CallReplyType reply_type = 3;
   bytes data = 4;
+}
+
+message SubscribeRequest {
+  string topic = 1;
+}
+
+message SubscribeReply {
+  SubscribeReplyCode code = 1;
+  string message = 2;  // in case of errors
+}
+
+message UnsubscribeRequest {
+  string topic = 1;
+}
+
+message UnsubscribeReply {
+  UnsubscribeReplyCode code = 1;
+}
+
+message BroadcastRequest {
+  string topic = 1;
+  bytes data = 2;
+}
+
+message BroadcastReply {
+  BroadcastReplyCode code = 1;
+  string message = 2;  // in case of errors
 }
