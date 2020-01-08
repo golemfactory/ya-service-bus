@@ -357,8 +357,8 @@ where
 }
 
 pub async fn bind_router(addr: SocketAddr) -> Result<(), ()> {
-    let listener = TcpListener::bind(&addr)
-        .expect(&format!("Unable to bind TCP listener at {}", addr));
+    let listener =
+        TcpListener::bind(&addr).expect(&format!("Unable to bind TCP listener at {}", addr));
     let router = Arc::new(Mutex::new(Router::new()));
 
     listener
