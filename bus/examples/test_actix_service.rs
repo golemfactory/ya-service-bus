@@ -1,7 +1,6 @@
 use actix::prelude::*;
 use failure::_core::time::Duration;
-use futures::{FutureExt, TryFutureExt};
-use futures_01::prelude::*;
+use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
@@ -91,20 +90,15 @@ enum Args {
     },
 }
 
-fn run_script(script: PathBuf) -> impl Future<Item = String, Error = failure::Error> {
-    (|| -> Result<_, std::io::Error> {
+fn run_script(script: PathBuf) -> impl Future<Output = Result<String, failure::Error>> {
+    async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        Ok(commands)
-    })()
-    .into_future()
-    .from_err()
-    .and_then(|commands| {
-        actix_rpc::service(SERVICE_ID)
+        let result = actix_rpc::service(SERVICE_ID)
             .send(Execute(commands))
-            .from_err()
-            .and_then(|v| v.map_err(|e| failure::err_msg(e)))
-    })
+            .await?;
+        result.map_err(|e| failure::err_msg(e))
+    }
 }
 
 async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failure::Error> {
@@ -145,21 +139,20 @@ fn main() -> failure::Fallible<()> {
         Args::Local { script } => {
             let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
-            let sleep = timer.sleep(Duration::from_millis(500));
 
-            let result = sys.block_on(sleep.from_err().and_then(|_| run_script(script)))?;
+            let result = sys.block_on(async {
+                tokio::time::delay_for(Duration::from_millis(500)).await;
+                run_script(script).await
+            })?;
             eprintln!("got result: {:?}", result);
         }
         Args::LocalRaw { script } => {
-            let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
-            let sleep = timer.sleep(Duration::from_millis(500));
 
-            let result = sys.block_on(
-                sleep
-                    .from_err()
-                    .and_then(|_| run_script_raw(script).boxed_local().compat()),
-            )?;
+            let result = sys.block_on(async {
+                tokio::time::delay_for(Duration::from_millis(500)).await;
+                run_script_raw(script).await.map_err(|e| format!("{}", e))?
+            });
             eprintln!("got result: {:?}", result);
         }
     }

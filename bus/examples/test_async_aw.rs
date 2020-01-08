@@ -42,5 +42,5 @@ async fn server() -> Result<(), Error> {
 
 fn main() -> Result<(), Error> {
     env_logger::init();
-    actix::System::new("w").block_on(server().boxed_local().compat())
+    actix::System::new("w").block_on(server())
 }

@@ -15,12 +15,12 @@ ya-sb-proto = { path = "../proto" }
 ya-sb-util = { path = "../util" }
 rand="0.7.2"
 log="0.4"
-tokio = {version = "0.2.6", futures=["codec", "tcp"]}
+tokio = {version = "0.2.6", futures=["codec", "tcp", "time"]}
 tokio-util="0.2.0"
 
 
 [dev-dependencies]
 structopt="0.3.5"
 serde_json = "1.0"
-tokio-timer = "0.1"
+tokio-timer = "0.2"
 env_logger="0.7"

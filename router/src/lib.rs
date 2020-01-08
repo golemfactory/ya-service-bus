@@ -5,7 +5,6 @@ use std::net::SocketAddr;
 
 use futures::prelude::*;
 
-use tokio::io::{AsyncRead, ReadHalf, WriteHalf};
 use tokio::net::TcpStream;
 use tokio::prelude::*;
 use tokio::sync::mpsc;

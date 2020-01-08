@@ -51,7 +51,6 @@ mod raw_actor {
                 self.inner
                     .handle(&msg.caller, &msg.addr, msg.body.as_ref())
                     .boxed_local()
-                    .compat()
                     .into_actor(self),
             )
         }
@@ -62,7 +61,7 @@ mod raw_actor {
     }
 }
 
-pub fn subscribe(addr: &str, h: impl RawHandler + 'static) -> Handle {
+pub fn subscribe(addr: &str, h: impl RawHandler + Unpin + 'static) -> Handle {
     router()
         .lock()
         .unwrap()

@@ -1,7 +1,7 @@
 use actix::prelude::*;
 use futures::{
-    compat::Future01CompatExt,
     future::{FutureExt, TryFutureExt},
+    prelude::*,
 };
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -41,12 +41,11 @@ async fn start_server() {
 
     let resp = server
         .send(RpcEnvelope::local(Ping("test01".into())))
-        .compat()
         .await
         .unwrap();
     eprintln!("resp = {:?}", resp);
 }
 
 fn main() -> io::Result<()> {
-    actix::run(|| start_server().unit_error().boxed_local().compat())
+    actix::run(start_server())
 }

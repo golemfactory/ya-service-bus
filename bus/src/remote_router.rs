@@ -30,35 +30,32 @@ impl Actor for RemoteRouter {
 
 impl RemoteRouter {
     fn try_connect(&mut self, ctx: &mut <Self as Actor>::Context) {
-        let connect_fut = connection::tcp(&gsb_addr())
+        let addr = gsb_addr();
+        let connect_fut = connection::tcp(addr)
             .map_err(Error::BusConnectionFail)
             .into_actor(self)
-            .and_then(|tcp_transport, act, ctx| {
-                async {
-                    let connection = connection::connect(tcp_transport);
-                    act.connection = Some(connection.clone());
-
-                    act.clean_pending_calls(connection.clone(), ctx);
-                    future::join_all(
+            .then(|tcp_transport, act, ctx| {
+                let tcp_transport = match tcp_transport {
+                    Ok(v) => v,
+                    Err(e) => return fut::Either::Left(fut::err(e)),
+                };
+                let connection = connection::connect(tcp_transport);
+                act.connection = Some(connection.clone());
+                act.clean_pending_calls(connection.clone(), ctx);
+                fut::Either::Right(
+                    future::try_join_all(
                         act.local_bindings
                             .clone()
                             .into_iter()
                             .map(move |service_id| connection.bind(service_id)),
                     )
-                    .and_then(|_v| {
-                        async {
-                            log::info!("registed all services");
-                            Ok(())
-                        }
-                    })
-                    .into_actor(act)
-                }
-                    .into_actor(act)
-            });
-        ctx.spawn(connect_fut.map_err(|e, _, _ctx| {
-            log::error!("fail to connect to gsb: {}", e);
-            //ctx.stop();
-        }));
+                    .and_then(|_| async { Ok(log::info!("registed all services")) })
+                    .into_actor(act),
+                )
+            })
+            .then(|v: Result<(), Error>, _, _| fut::ready(()));
+
+        ctx.spawn(connect_fut);
     }
 
     fn clean_pending_calls(
@@ -71,7 +68,7 @@ impl RemoteRouter {
                 .call(msg.caller, msg.addr, msg.body)
                 .then(|r| {
                     let _ = tx.send(r);
-                    Ok(())
+                    future::ready(())
                 })
                 .into_actor(self);
             ctx.spawn(send_fut);
@@ -121,8 +118,9 @@ impl Handler<UpdateService> for RemoteRouter {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
                     Arbiter::spawn(
-                        c.bind(service_id.clone())
-                            .map_err(|e| log::error!("bind error: {}", e)),
+                        c.bind(service_id.clone()).then(|v| {
+                            async { v.unwrap_or_else(|e| log::error!("bind error: {}", e)) }
+                        }),
                     )
                 }
                 self.local_bindings.insert(service_id);
@@ -144,7 +142,7 @@ impl Handler<RpcRawCall> for RemoteRouter {
         } else {
             let (tx, rx) = oneshot::channel();
             self.pending_calls.push((msg, tx));
-            ActorResponse::r#async(rx.flatten().into_actor(self))
+            ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
         }
     }
 }

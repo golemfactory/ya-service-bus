@@ -27,7 +27,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
                 .map_err(|e| e.into())
-                .and_then(|r| async { rmp_serde::to_vec(&r).map_err(Error::from) }),
+                .and_then(|r| async move { rmp_serde::to_vec(&r).map_err(Error::from) }),
         )
     }
 
@@ -149,7 +149,7 @@ impl Router {
                     addr,
                     body,
                 })
-                .and_then(|b| async { Ok(rmp_serde::from_read_ref(&b)?) })
+                .and_then(|b| async move { Ok(rmp_serde::from_read_ref(&b)?) })
                 .right_future()
             })
             .left_future()

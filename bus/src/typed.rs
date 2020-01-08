@@ -1,9 +1,7 @@
 use crate::error::Error;
 use crate::local_router::{router, Router};
 use crate::{Handle, RpcEndpoint, RpcHandler, RpcMessage};
-
-use futures::compat::Future01CompatExt;
-use futures::{Future, FutureExt};
+use futures::prelude::*;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
@@ -28,7 +26,6 @@ where
             .lock()
             .unwrap()
             .forward(&self.addr, msg)
-            .compat()
             .boxed_local()
     }
 }
