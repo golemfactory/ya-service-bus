@@ -1,4 +1,3 @@
-use futures::{FutureExt, TryFutureExt};
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -9,9 +8,13 @@ struct Options {
 }
 
 #[tokio::main]
-async fn main() {
+async fn main() -> failure::Fallible<()> {
+    flexi_logger::Logger::with_env_or_str("info")
+        .start()
+        .unwrap();
+
     let options = Options::from_args();
     let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
 
-    ya_sb_router::bind_router(listen_addr).await;
+    ya_sb_router::bind_router(listen_addr).await
 }

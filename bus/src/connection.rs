@@ -6,7 +6,6 @@ use crate::error::Error;
 use crate::local_router::router;
 use crate::RpcRawCall;
 use futures::stream::SplitSink;
-use futures::task::SpawnExt;
 
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;

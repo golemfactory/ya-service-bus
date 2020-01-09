@@ -1,6 +1,5 @@
 use actix::prelude::*;
 use failure::_core::time::Duration;
-use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;

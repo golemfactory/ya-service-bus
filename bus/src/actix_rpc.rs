@@ -4,7 +4,6 @@ use super::Handle;
 use crate::local_router::{router, Router};
 use crate::{RpcEnvelope, RpcMessage};
 use actix::prelude::*;
-use futures::prelude::*;
 
 use serde::de::DeserializeOwned;
 use serde::Serialize;

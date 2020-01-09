@@ -5,16 +5,16 @@ authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
 [dependencies]
-serde={ version = "1.0.102", features=["derive"]}
-rmp-serde="0.14.0"
-futures="0.3"
-actix="0.9"
-failure="0.1"
+serde = { version = "1.0.102", features = ["derive"] }
+rmp-serde = "0.14.0"
+futures = "0.3"
+actix = "0.9"
+failure = "0.1"
 lazy_static = "1.4"
-rand="0.7.2"
-log="0.4"
-tokio = {version = "0.2.6", features=["tcp", "time"]}
-tokio-util="0.2.0"
+rand = "0.7.2"
+log = "0.4"
+tokio = { version = "0.2.6", features = ["tcp", "time"] }
+tokio-util = "0.2.0"
 ya-sb-proto = "0.1"
 ya-sb-util = "0.1"
 

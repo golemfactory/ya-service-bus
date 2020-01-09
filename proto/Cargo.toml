@@ -9,12 +9,13 @@ default = ["with-codec"]
 with-codec = ['tokio-util']
 
 [dependencies]
+ya-sb-util = "0.1"
+
 bytes = "0.4"
-tokio-bytes = {version="0.5", package="bytes" }
 failure = "0.1.6"
 prost = "0.5.0"
-tokio-util={ version = "0.2", optional=true, features=["codec"] }
-ya-sb-util = { path = "../util" }
+tokio-bytes = { version = "0.5", package = "bytes" }
+tokio-util = { version = "0.2", optional = true, features = ["codec"] }
 
 [build-dependencies]
 prost-build = "0.5.0"

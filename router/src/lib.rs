@@ -5,7 +5,6 @@ use std::hash::Hash;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
 use tokio::sync::mpsc;
 use tokio_util::codec::*;
 
@@ -367,15 +366,24 @@ where
     }
 }
 
-pub async fn bind_router(addr: SocketAddr) {
+pub async fn bind_router(addr: SocketAddr) -> failure::Fallible<()> {
     let mut listener = TcpListener::bind(&addr)
-        .await
-        .expect(&format!("Unable to bind TCP listener at {}", addr));
+        .map_err(|e| {
+            log::error!("Unable to bind TCP listener at {}: {}", addr, e);
+            e
+        })
+        .await?;
+
     let router = Arc::new(Mutex::new(Router::new()));
+
+    log::info!("Router listening on: {}", addr);
 
     listener
         .incoming()
-        .map_err(|e| log::error!("Accept failed: {:?}", e))
+        .map_err(|e| {
+            log::error!("Accept failed: {:?}", e);
+            e
+        })
         .try_for_each(move |sock| {
             let addr = sock.peer_addr().unwrap();
             let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
@@ -398,7 +406,8 @@ pub async fn bind_router(addr: SocketAddr) {
             );
             future::ok(())
         })
-        .await;
+        .await?;
+    Ok(())
 }
 
 pub async fn tcp_connect(
