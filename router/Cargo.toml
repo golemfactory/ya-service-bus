@@ -4,14 +4,19 @@ version = "0.1.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-
 [dependencies]
+ya-sb-proto = "0.1"
+ya-sb-util = "0.1"
 bytes = "0.4.12"
 failure = "0.1.6"
-futures = { version = "0.3", features = ["compat"] }
+futures = { version = "0.3" }
 lazy_static = "1.4.0"
 prost = "0.5.0"
-tokio = "0.1.22"
+structopt = "0.3"
+tokio = {version="0.2", features=["tcp", "sync", "macros", "rt-core", "stream"]}
+tokio-util = "0.2.0"
 uuid = { version = "0.8.1", features = ["v4"] }
-ya-sb-proto = { path = "../proto" }
+log = "0.4.8"
+
+[dev-dependencies]
+flexi_logger= "0.14.5"

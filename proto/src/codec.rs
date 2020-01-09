@@ -1,12 +1,13 @@
 use std::convert::TryInto;
 use std::mem::size_of;
 
-use bytes::BytesMut;
 use prost::Message;
-use tokio_codec::{Decoder, Encoder};
 
 use crate::gsb_api::*;
 use crate::{MessageHeader, MessageType};
+
+use tokio_util::codec::{Decoder, Encoder};
+use ya_sb_util::bytes::BytesCompat;
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
@@ -15,13 +16,14 @@ pub type ProtocolError = failure::Error;
 trait Encodable {
     // This trait exists because prost::Message has template methods
 
-    fn encode_(&self, buf: &mut BytesMut) -> failure::Fallible<()>;
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()>;
     fn encoded_len_(&self) -> usize;
 }
 
 impl<T: Message> Encodable for T {
-    fn encode_(&self, buf: &mut BytesMut) -> failure::Fallible<()> {
-        Ok(self.encode(buf)?)
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()> {
+        let mut c = buf.compat();
+        Ok(self.encode(&mut c)?)
     }
 
     fn encoded_len_(&self) -> usize {
@@ -88,7 +90,7 @@ impl Into<GsbMessage> for CallReply {
     }
 }
 
-fn decode_header(src: &mut BytesMut) -> failure::Fallible<Option<MessageHeader>> {
+fn decode_header(src: &mut tokio_bytes::BytesMut) -> failure::Fallible<Option<MessageHeader>> {
     if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
     } else {
@@ -98,7 +100,7 @@ fn decode_header(src: &mut BytesMut) -> failure::Fallible<Option<MessageHeader>>
 }
 
 fn decode_message(
-    src: &mut BytesMut,
+    src: &mut tokio_bytes::BytesMut,
     header: &MessageHeader,
 ) -> failure::Fallible<Option<GsbMessage>> {
     let msg_length = header.msg_length.try_into()?;
@@ -108,12 +110,12 @@ fn decode_message(
         let buf = src.split_to(msg_length);
         let msg_type = MessageType::from_i32(header.msg_type);
         let msg: GsbMessage = match msg_type {
-            Some(MessageType::RegisterRequest) => RegisterRequest::decode(buf)?.into(),
-            Some(MessageType::RegisterReply) => RegisterReply::decode(buf)?.into(),
-            Some(MessageType::UnregisterRequest) => UnregisterRequest::decode(buf)?.into(),
-            Some(MessageType::UnregisterReply) => UnregisterReply::decode(buf)?.into(),
-            Some(MessageType::CallRequest) => CallRequest::decode(buf)?.into(),
-            Some(MessageType::CallReply) => CallReply::decode(buf)?.into(),
+            Some(MessageType::RegisterRequest) => RegisterRequest::decode(buf.as_ref())?.into(),
+            Some(MessageType::RegisterReply) => RegisterReply::decode(buf.as_ref())?.into(),
+            Some(MessageType::UnregisterRequest) => UnregisterRequest::decode(buf.as_ref())?.into(),
+            Some(MessageType::UnregisterReply) => UnregisterReply::decode(buf.as_ref())?.into(),
+            Some(MessageType::CallRequest) => CallRequest::decode(buf.as_ref())?.into(),
+            Some(MessageType::CallReply) => CallReply::decode(buf.as_ref())?.into(),
             None => {
                 return Err(failure::err_msg(format!(
                     "Unrecognized message type: {}",
@@ -125,14 +127,15 @@ fn decode_message(
     }
 }
 
-fn encode_message(dst: &mut BytesMut, msg: GsbMessage) -> failure::Fallible<()> {
+fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> failure::Fallible<()> {
     let (msg_type, msg) = msg.unpack();
+    //let mut dst_vec = dst.compat();
     encode_message_unpacked(dst, msg_type, msg.as_ref())?;
     Ok(())
 }
 
 fn encode_message_unpacked(
-    dst: &mut BytesMut,
+    dst: &mut tokio_bytes::BytesMut,
     msg_type: MessageType,
     msg: &dyn Encodable,
 ) -> failure::Fallible<()> {
@@ -162,7 +165,10 @@ impl Decoder for GsbMessageDecoder {
     type Item = GsbMessage;
     type Error = failure::Error;
 
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode(
+        &mut self,
+        src: &mut tokio_bytes::BytesMut,
+    ) -> Result<Option<Self::Item>, Self::Error> {
         if self.msg_header == None {
             self.msg_header = decode_header(src)?;
         }
@@ -189,7 +195,11 @@ impl Encoder for GsbMessageEncoder {
     type Item = GsbMessage;
     type Error = failure::Error;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        item: Self::Item,
+        dst: &mut tokio_bytes::BytesMut,
+    ) -> Result<(), Self::Error> {
         encode_message(dst, item)
     }
 }
@@ -204,7 +214,11 @@ impl Encoder for GsbMessageCodec {
     type Item = GsbMessage;
     type Error = failure::Error;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut BytesMut) -> Result<(), Self::Error> {
+    fn encode(
+        &mut self,
+        item: Self::Item,
+        dst: &mut tokio_bytes::BytesMut,
+    ) -> Result<(), Self::Error> {
         self.encoder.encode(item, dst)
     }
 }
@@ -213,7 +227,10 @@ impl Decoder for GsbMessageCodec {
     type Item = GsbMessage;
     type Error = failure::Error;
 
-    fn decode(&mut self, src: &mut BytesMut) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode(
+        &mut self,
+        src: &mut tokio_bytes::BytesMut,
+    ) -> Result<Option<Self::Item>, Self::Error> {
         self.decoder.decode(src)
     }
 }

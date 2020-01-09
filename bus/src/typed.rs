@@ -1,14 +1,10 @@
 use crate::error::Error;
 use crate::local_router::{router, Router};
-use crate::{
-    Handle, RpcEndpoint, RpcEnvelope, RpcHandler, RpcMessage, RpcStreamHandler, RpcStreamMessage,
-};
-use actix::Message;
-use failure::_core::marker::PhantomData;
-use futures::compat::{Compat01As03, Future01CompatExt, Stream01CompatExt};
-use futures::{Future, FutureExt, Stream};
+use crate::{Handle, RpcEndpoint, RpcHandler, RpcMessage, RpcStreamMessage, RpcStreamHandler};
+use futures::prelude::*;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
+use futures::FutureExt;
 
 /// Binds RpcHandler to given service address.
 ///
@@ -55,6 +51,7 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+
     pub fn call<T: RpcMessage>(
         &self,
         msg: T,
@@ -63,7 +60,6 @@ impl Endpoint {
             .lock()
             .unwrap()
             .forward(&self.addr, msg)
-            .compat()
     }
 
     pub fn call_streaming<T: RpcStreamMessage>(
@@ -74,7 +70,6 @@ impl Endpoint {
             .lock()
             .unwrap()
             .streaming_forward(&self.addr, msg)
-            .compat()
     }
 }
 
@@ -104,7 +99,7 @@ impl<
 {
     type Result = Output;
 
-    fn handle(&mut self, caller: &str, msg: T) -> Self::Result {
+    fn handle(&mut self, _caller: &str, msg: T) -> Self::Result {
         self(msg)
     }
 }

@@ -1,14 +1,11 @@
 use actix::prelude::*;
 use failure::_core::time::Duration;
-use futures::{FutureExt, StreamExt, TryFutureExt};
-use futures_01::prelude::*;
+use futures::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use ya_service_bus::{
-    actix_rpc, untyped, Error, Handle, RpcEnvelope, RpcMessage, RpcStreamCall, RpcStreamMessage,
-};
+use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage, RpcStreamMessage, RpcStreamCall, Error};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
@@ -76,7 +73,7 @@ impl Handler<RpcStreamCall<Execute>> for ExeUnit {
     fn handle(&mut self, msg: RpcStreamCall<Execute>, _ctx: &mut Self::Context) -> Self::Result {
         eprintln!("got {:?}", msg.body);
         let mut it = msg.body.0.into_iter();
-        let s = futures_01::stream::poll_fn(move || -> Result<_, Error> {
+        let s = stream::poll_fn(move || -> Result<_, Error> {
             if let Some(command) = it.next() {
                 Ok(Async::Ready(Some(Ok(format!("{:?}", command)))))
             } else {
@@ -118,28 +115,16 @@ enum Args {
     },
 }
 
-fn run_script(script: PathBuf) -> impl Future<Item = Vec<String>, Error = failure::Error> {
-    (|| -> Result<_, std::io::Error> {
+fn run_script(script: PathBuf) -> impl Future<Output = Result<Vec<String>, failure::Error>> {
+    async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        Ok(commands)
-    })()
-    .into_future()
-    .from_err()
-    .and_then(|commands| {
-        actix_rpc::service(SERVICE_ID)
+        let result : Result<Vec<_>,()> = actix_rpc::service(SERVICE_ID)
             .call_stream(Execute(commands))
-            .from_err()
-            .collect()
-            .and_then(|v| {
-                let mut results = Vec::new();
+            .try_collect().await;
 
-                for it in v {
-                    results.push(it.map_err(|e| failure::err_msg(e))?)
-                }
-                Ok(results)
-            })
-    })
+        result.map_err(|e| failure::err_msg("invalid"))
+    }
 }
 
 async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failure::Error> {
@@ -181,28 +166,26 @@ fn main() -> failure::Fallible<()> {
             let result = sys.block_on(
                 actix_rpc::service(&dst)
                     .call_stream(Ping(msg))
-                    .for_each(|result| Ok(eprintln!("got result: {:?}", result))),
+                    .try_for_each(|result| Ok(eprintln!("got result: {:?}", result))),
             )?;
             eprintln!("done = {:?}", result);
         }
         Args::Local { script } => {
-            let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
-            let sleep = timer.sleep(Duration::from_millis(500));
 
-            let result = sys.block_on(sleep.from_err().and_then(|_| run_script(script)))?;
+            let result = sys.block_on(async {
+                tokio::time::delay_for(Duration::from_millis(500)).await;
+                run_script(script).await
+            })?;
             eprintln!("got result: {:?}", result);
         }
         Args::LocalRaw { script } => {
-            let timer = tokio_timer::Timer::default();
             let _ = ExeUnit::default().start();
-            let sleep = timer.sleep(Duration::from_millis(500));
 
-            let result = sys.block_on(
-                sleep
-                    .from_err()
-                    .and_then(|_| run_script_raw(script).boxed_local().compat()),
-            )?;
+            let result = sys.block_on(async {
+                tokio::time::delay_for(Duration::from_millis(500)).await;
+                run_script_raw(script).await.map_err(|e| format!("{}", e))?
+            });
             eprintln!("got result: {:?}", result);
         }
     }

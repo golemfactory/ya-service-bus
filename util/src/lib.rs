@@ -1,4 +1,7 @@
-use std::collections::HashMap;
+pub mod bytes;
+pub mod futures;
+
+use std::collections::{hash_map::Entry, HashMap};
 
 struct RevPrefixes<'a>(&'a str);
 
@@ -32,10 +35,12 @@ impl<T> Default for PrefixLookupBag<T> {
 }
 
 impl<T> PrefixLookupBag<T> {
+    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<&T> {
         RevPrefixes(key).find_map(|key| self.dict.get(key))
     }
 
+    #[allow(dead_code)]
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.dict.keys()
     }
@@ -50,6 +55,18 @@ impl<T> PrefixLookupBag<T> {
 
     pub fn insert(&mut self, key: String, v: T) -> Option<T> {
         self.dict.insert(key, v)
+    }
+
+    pub fn entry(&mut self, key: String) -> Entry<String, T> {
+        if let Some(k) = RevPrefixes(&key).find(|&k| self.dict.contains_key(k)) {
+            self.dict.entry(k.to_owned())
+        } else {
+            self.dict.entry(key)
+        }
+    }
+
+    pub fn remove(&mut self, key: &str) -> Option<T> {
+        self.dict.remove(key)
     }
 }
 

@@ -1,24 +1,19 @@
-use futures::compat::{Future01CompatExt, Stream01CompatExt};
-use futures::{FutureExt, StreamExt, TryFutureExt, TryStreamExt};
-
-use tokio::prelude::*;
+use futures::prelude::*;
 
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
-use ya_sb_router::connect;
+use ya_sb_router::tcp_connect;
 
 async fn run_server() {
     let router_addr = "127.0.0.1:8245".parse().unwrap();
-    let (reader, writer) = connect(&router_addr).await;
-    let mut reader = reader.compat();
+    let (mut writer, mut reader) = tcp_connect(&router_addr).await;
 
     println!("Sending register request...");
     let register_request = RegisterRequest {
         service_id: "echo".to_string(),
     };
-    let writer = writer
+    writer
         .send(register_request.into())
-        .compat()
         .await
         .expect("Send failed");
 
@@ -35,34 +30,35 @@ async fn run_server() {
     }
 
     reader
-        .compat()
-        .filter_map(|msg| match msg {
-            GsbMessage::CallRequest(msg) => {
-                println!(
-                    "Received call request request_id = {} caller = {} address = {}",
-                    msg.request_id, msg.caller, msg.address
-                );
-                Some(
-                    CallReply {
-                        request_id: msg.request_id,
-                        code: CallReplyCode::CallReplyOk as i32,
-                        reply_type: CallReplyType::Full as i32,
-                        data: msg.data,
+        .filter_map(|msg| {
+            async {
+                match msg {
+                    Ok(GsbMessage::CallRequest(msg)) => {
+                        println!(
+                            "Received call request request_id = {} caller = {} address = {}",
+                            msg.request_id, msg.caller, msg.address
+                        );
+                        Some(Ok(CallReply {
+                            request_id: msg.request_id,
+                            code: CallReplyCode::CallReplyOk as i32,
+                            reply_type: CallReplyType::Full as i32,
+                            data: msg.data,
+                        }
+                        .into()))
                     }
-                    .into(),
-                )
-            }
-            _ => {
-                eprintln!("Unexpected message received");
-                None
+                    _ => {
+                        eprintln!("Unexpected message received");
+                        None
+                    }
+                }
             }
         })
         .forward(writer)
-        .compat()
         .map(|_| ())
         .await;
 }
 
-fn main() {
-    tokio::run(run_server().unit_error().boxed().compat());
+#[tokio::main]
+async fn main() {
+    run_server().await;
 }

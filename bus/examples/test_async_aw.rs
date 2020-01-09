@@ -1,6 +1,6 @@
 use failure::Error;
-use futures::{FutureExt, TryFutureExt};
 use serde::{Deserialize, Serialize};
+use futures::prelude::*;
 use ya_service_bus::{typed as bus, RpcMessage, RpcStreamMessage};
 
 #[derive(Serialize, Deserialize)]
@@ -23,7 +23,7 @@ async fn server() -> Result<(), Error> {
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
 
     let mut txh = Some(tx);
-    let quit = move |p: Ping| {
+    let quit = move |_p: Ping| {
         let mut tx = txh.take().unwrap();
         async move {
             eprintln!("quit!!");
@@ -56,5 +56,5 @@ async fn server() -> Result<(), Error> {
 
 fn main() -> Result<(), Error> {
     env_logger::init();
-    actix::System::new("w").block_on(server().boxed_local().compat())
+    actix::System::new("w").block_on(server())
 }
