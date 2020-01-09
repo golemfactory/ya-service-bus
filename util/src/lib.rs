@@ -1,6 +1,8 @@
 pub mod bytes;
 pub mod futures;
 
+pub use crate::futures::IntoFlatten as _;
+
 use std::collections::{hash_map::Entry, HashMap};
 
 struct RevPrefixes<'a>(&'a str);

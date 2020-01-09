@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 use std::fs::OpenOptions;
 use std::path::PathBuf;
 use structopt::StructOpt;
-use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage, RpcStreamMessage, RpcStreamCall, Error};
+use ya_service_bus::{
+    actix_rpc, untyped, Error, Handle, RpcMessage, RpcStreamCall, RpcStreamMessage,
+};
+use futures::SinkExt;
+use futures::task::Poll;
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
@@ -73,21 +77,21 @@ impl Handler<RpcStreamCall<Execute>> for ExeUnit {
     fn handle(&mut self, msg: RpcStreamCall<Execute>, _ctx: &mut Self::Context) -> Self::Result {
         eprintln!("got {:?}", msg.body);
         let mut it = msg.body.0.into_iter();
-        let s = stream::poll_fn(move || -> Result<_, Error> {
+        let reply = msg.reply;
+        let mut s = stream::poll_fn(move |_| -> Poll<Option<Result<Result<String, String>, Error>>>{
             if let Some(command) = it.next() {
-                Ok(Async::Ready(Some(Ok(format!("{:?}", command)))))
+                Poll::Ready(Some(Ok(Ok(format!("{:?}", command)))))
             } else {
-                Ok(Async::Ready(None))
+                Poll::Ready(None)
             }
         });
 
-        ActorResponse::r#async(
-            msg.reply
-                .sink_map_err(|s| Error::Closed)
-                .send_all(s)
-                .and_then(|_| Ok::<_, Error>(()))
-                .into_actor(self),
-        )
+        ActorResponse::r#async(async move {
+            let v = reply.sink_map_err(|_| Error::Closed).
+                send_all(&mut s).await;
+            eprintln!("r={:?}", v);
+            Ok(())
+        }.into_actor(self))
     }
 }
 
@@ -119,11 +123,16 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<Vec<String>, failu
     async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        let result : Result<Vec<_>,()> = actix_rpc::service(SERVICE_ID)
+        let result: Result<Vec<_>, _> = actix_rpc::service(SERVICE_ID)
             .call_stream(Execute(commands))
-            .try_collect().await;
+            .try_collect()
+            .await;
 
-        result.map_err(|e| failure::err_msg("invalid"))
+        let it = result?;
+
+        it.into_iter().collect::<Result<Vec<_>,_>>().map_err(|_| failure::err_msg("invalid"))
+
+        //result.)
     }
 }
 
@@ -166,7 +175,7 @@ fn main() -> failure::Fallible<()> {
             let result = sys.block_on(
                 actix_rpc::service(&dst)
                     .call_stream(Ping(msg))
-                    .try_for_each(|result| Ok(eprintln!("got result: {:?}", result))),
+                    .try_for_each(|result| future::ok(eprintln!("got result: {:?}", result))),
             )?;
             eprintln!("done = {:?}", result);
         }

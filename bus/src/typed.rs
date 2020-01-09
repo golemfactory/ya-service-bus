@@ -1,10 +1,10 @@
 use crate::error::Error;
 use crate::local_router::{router, Router};
-use crate::{Handle, RpcEndpoint, RpcHandler, RpcMessage, RpcStreamMessage, RpcStreamHandler};
+use crate::{Handle, RpcEndpoint, RpcHandler, RpcMessage, RpcStreamHandler, RpcStreamMessage};
 use futures::prelude::*;
+use futures::FutureExt;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
-use futures::FutureExt;
 
 /// Binds RpcHandler to given service address.
 ///
@@ -33,13 +33,13 @@ use futures::FutureExt;
 ///      });
 ///  }
 ///
-pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
+pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + Unpin + 'static) -> Handle {
     router().lock().unwrap().bind(addr, endpoint)
 }
 
-pub fn bind_streaming<T: RpcStreamMessage>(
+pub fn bind_streaming<T: RpcStreamMessage + Unpin>(
     addr: &str,
-    endpoint: impl RpcStreamHandler<T> + 'static,
+    endpoint: impl RpcStreamHandler<T> + Unpin + 'static,
 ) -> Handle {
     router().lock().unwrap().bind_stream(addr, endpoint)
 }
@@ -51,15 +51,11 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
-
-    pub fn call<T: RpcMessage>(
+    pub fn call<T: RpcMessage + Unpin>(
         &self,
         msg: T,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
-        self.router
-            .lock()
-            .unwrap()
-            .forward(&self.addr, msg)
+        self.router.lock().unwrap().forward(&self.addr, msg)
     }
 
     pub fn call_streaming<T: RpcStreamMessage>(
@@ -73,7 +69,7 @@ impl Endpoint {
     }
 }
 
-impl<T: RpcMessage> RpcEndpoint<T> for Endpoint
+impl<T: RpcMessage + Unpin> RpcEndpoint<T> for Endpoint
 where
     T: Send,
 {

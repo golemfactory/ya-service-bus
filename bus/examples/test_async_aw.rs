@@ -1,6 +1,6 @@
 use failure::Error;
-use serde::{Deserialize, Serialize};
 use futures::prelude::*;
+use serde::{Deserialize, Serialize};
 use ya_service_bus::{typed as bus, RpcMessage, RpcStreamMessage};
 
 #[derive(Serialize, Deserialize)]

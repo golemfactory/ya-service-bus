@@ -4,10 +4,11 @@ use futures::prelude::*;
 
 use crate::error::Error;
 use crate::local_router::router;
-use crate::{RpcRawCall, ResponseChunk};
+use crate::{ResponseChunk, RpcRawCall};
 use futures::stream::SplitSink;
 use futures::task::SpawnExt;
 
+use futures::StreamExt;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::pin::Pin;
@@ -25,7 +26,7 @@ fn gen_id() -> u64 {
 }
 
 pub trait CallRequestHandler {
-    type Reply: futures::Future<Output = Result<ResponseChunk, Error>> + Unpin;
+    type Reply: Stream<Item = Result<ResponseChunk, Error>> + Unpin;
 
     fn do_call(
         &mut self,
@@ -34,6 +35,24 @@ pub trait CallRequestHandler {
         address: String,
         data: Vec<u8>,
     ) -> Self::Reply;
+}
+
+impl ResponseChunk {
+    #[inline]
+    fn reply_type(&self) -> CallReplyType {
+        match self {
+            ResponseChunk::Full(_) => CallReplyType::Full,
+            ResponseChunk::Part(_) => CallReplyType::Partial,
+        }
+    }
+
+    #[inline]
+    fn into_vec(self) -> Vec<u8> {
+        match self {
+            ResponseChunk::Full(v) => v,
+            ResponseChunk::Part(v) => v,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -49,12 +68,11 @@ impl CallRequestHandler for LocalRouterHandler {
         address: String,
         data: Vec<u8>,
     ) -> Self::Reply {
-        Box::pin(
-            router()
-                .lock()
-                .unwrap()
-                .forward_bytes_local(&address, &caller, data.as_ref()),
-        )
+        router()
+            .lock()
+            .unwrap()
+            .forward_bytes_local(&address, &caller, data.as_ref())
+            .boxed_local()
     }
 }
 
@@ -145,17 +163,18 @@ where
             .handler
             .do_call(request_id.clone(), caller, address, data)
             .into_actor(self)
-            .then(move |r, act: &mut Self, _ctx| {
+            .fold((), move |(), r, act: &mut Self, _ctx| {
+                let request_id = request_id.clone();
                 // TODO: handle write error
                 let _ = act.writer.write(GsbMessage::CallReply(match r {
                     Ok(data) => {
                         let code = CallReplyCode::CallReplyOk as i32;
-                        let reply_type = CallReplyType::Full as i32;
+                        let reply_type = data.reply_type() as i32;
                         CallReply {
                             request_id,
                             code,
                             reply_type,
-                            data,
+                            data: data.into_vec(),
                         }
                     }
                     Err(e) => {

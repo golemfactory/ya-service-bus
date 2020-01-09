@@ -5,7 +5,6 @@ use std::hash::Hash;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::prelude::*;
 use tokio::sync::mpsc;
 use tokio_util::codec::*;
 
@@ -373,7 +372,7 @@ pub async fn bind_router(addr: SocketAddr) {
         .expect(&format!("Unable to bind TCP listener at {}", addr));
     let router = Arc::new(Mutex::new(Router::new()));
 
-    listener
+    let _ = listener
         .incoming()
         .map_err(|e| log::error!("Accept failed: {:?}", e))
         .try_for_each(move |sock| {

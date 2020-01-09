@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 use actix::Message;
 use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
@@ -37,7 +38,7 @@ pub struct RpcStreamCall<T: RpcStreamMessage> {
     pub caller: String,
     pub addr: String,
     pub body: T,
-    pub reply: futures_01::sync::mpsc::Sender<Result<T::Item, T::Error>>,
+    pub reply: futures::channel::mpsc::Sender<Result<T::Item, T::Error>>,
 }
 
 // Represents raw response chunk
@@ -50,7 +51,7 @@ pub struct RpcRawStreamCall {
     pub caller: String,
     pub addr: String,
     pub body: Vec<u8>,
-    pub reply: futures_01::sync::mpsc::Sender<ResponseChunk>,
+    pub reply: futures::channel::mpsc::Sender<ResponseChunk>,
 }
 
 impl Message for RpcRawStreamCall {

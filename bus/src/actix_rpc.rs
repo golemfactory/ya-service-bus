@@ -51,7 +51,7 @@ impl Endpoint {
     pub fn call_stream<M: RpcStreamMessage>(
         &self,
         msg: M,
-    ) -> impl Stream<Item = Result<M::Item, M::Error>, Error = BusError> {
+    ) -> impl Stream<Item = Result<Result<M::Item, M::Error>, BusError>> {
         self.router
             .lock()
             .unwrap()
