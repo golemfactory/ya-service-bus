@@ -12,75 +12,7 @@ use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
-struct MessageDispatcher<A, M, E>
-where
-    A: Hash + Eq,
-{
-    senders: HashMap<A, mpsc::Sender<Result<M, E>>>,
-}
-
-impl<A, M, E> MessageDispatcher<A, M, E>
-where
-    A: Hash + Eq + Display,
-    M: Send + 'static,
-    E: Send + 'static + From<mpsc::error::RecvError> + Debug,
-{
-    fn new() -> Self {
-        MessageDispatcher {
-            senders: HashMap::new(),
-        }
-    }
-
-    fn register<B: Sink<M, Error = E> + Send + 'static>(
-        &mut self,
-        addr: A,
-        sink: B,
-    ) -> failure::Fallible<()> {
-        match self.senders.entry(addr) {
-            Entry::Occupied(_) => Err(failure::err_msg("Sender already registered")),
-            Entry::Vacant(entry) => {
-                let (tx, rx) = mpsc::channel(1000);
-                tokio::spawn(async move {
-                    let mut rx = rx;
-                    futures::pin_mut!(sink);
-                    if let Err(e) = sink.send_all(&mut rx).await {
-                        log::error!("register send failed: {:?}", e)
-                    }
-                });
-                entry.insert(tx);
-                Ok(())
-            }
-        }
-    }
-
-    fn unregister(&mut self, addr: &A) -> failure::Fallible<()> {
-        match self.senders.remove(addr) {
-            None => Err(failure::err_msg("Sender not registered")),
-            Some(_) => Ok(()),
-        }
-    }
-
-    fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
-    where
-        T: Into<M>,
-    {
-        match self.senders.get_mut(addr) {
-            None => Err(failure::err_msg("Sender not registered")),
-            Some(sender) => {
-                let sender = sender.clone();
-                let msg = msg.into();
-                tokio::spawn(async move {
-                    futures::pin_mut!(sender);
-                    let _ = sender
-                        .send(Ok(msg))
-                        .await
-                        .unwrap_or_else(|e| log::error!("Send message failed: {}", e));
-                });
-                Ok(())
-            }
-        }
-    }
-}
+mod dispatcher;
 
 type ServiceId = String;
 type RequestId = String;
@@ -110,7 +42,7 @@ pub struct Router<A, M, E>
 where
     A: Hash + Eq,
 {
-    dispatcher: MessageDispatcher<A, M, E>,
+    dispatcher: dispatcher::MessageDispatcher<A, M, E>,
     registered_endpoints: PrefixLookupBag<A>,
     reversed_endpoints: HashMap<A, HashSet<ServiceId>>,
     pending_calls: HashMap<RequestId, PendingCall<A>>,
@@ -128,7 +60,7 @@ where
 {
     pub fn new() -> Self {
         Router {
-            dispatcher: MessageDispatcher::new(),
+            dispatcher: dispatcher::MessageDispatcher::new(),
             registered_endpoints: PrefixLookupBag::default(),
             reversed_endpoints: HashMap::new(),
             pending_calls: HashMap::new(),
