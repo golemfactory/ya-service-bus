@@ -80,7 +80,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
-    writer: actix::io::SinkWrite<GsbMessage, W>,
+    writer: actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>,
     register_reply: VecDeque<oneshot::Sender<Result<(), Error>>>,
     call_reply: HashMap<String, oneshot::Sender<Result<Vec<u8>, Error>>>,
     handler: H,
@@ -100,7 +100,7 @@ where
 {
     fn new(w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
-            writer: io::SinkWrite::new(w, ctx),
+            writer: io::SinkWrite::new(w.buffer(256), ctx),
             register_reply: Default::default(),
             call_reply: Default::default(),
             handler,
@@ -113,6 +113,7 @@ where
         msg: String,
         ctx: &mut <Self as Actor>::Context,
     ) {
+        log::trace!("got reply: {}", msg);
         if let Some(r) = self.register_reply.pop_front() {
             let _ = match code {
                 RegisterReplyCode::RegisteredOk => r.send(Ok(())),
@@ -311,11 +312,18 @@ where
         let (tx, rx) = oneshot::channel();
         self.register_reply.push_back(tx);
         let service_id = msg.addr;
-        let _r = self
+        let n = service_id.clone();
+        match self
             .writer
-            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id }));
+            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id })) {
+            Ok(()) => (),
+            Err(e) => return ActorResponse::reply(Err(Error::GsbFailure(e.to_string())))
+        };
 
-        ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
+        ActorResponse::r#async(async move {
+            let v = rx.await;
+            Ok(())
+        }.into_actor(self))
     }
 }
 
@@ -350,9 +358,13 @@ impl<
         &self,
         addr: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let addr = addr.into();
         self.0
-            .send(Bind { addr: addr.into() })
-            .then(|v| async { v? })
+            .send(Bind { addr })
+            .then(|v| async {
+                log::trace!("send bind result: {:?}", v);
+                v?
+            })
     }
 
     pub fn call(
@@ -400,7 +412,7 @@ where
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {
         let _h = Connection::add_stream(split_stream, ctx);
-        Connection::new(split_sink, handler, ctx)
+        Connection::new( split_sink, handler, ctx)
     }))
 }
 
