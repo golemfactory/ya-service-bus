@@ -256,17 +256,17 @@ where
             match self.registered_endpoints.entry(msg.service_id.clone()) {
                 Entry::Occupied(_) => RegisterReply {
                     code: RegisterReplyCode::RegisterConflict as i32,
-                    message: "Service ID already registered".to_string(),
+                    message: format!("Service ID '{}' already registered", msg.service_id),
                 },
                 Entry::Vacant(entry) => {
                     entry.insert(addr.clone());
                     self.reversed_endpoints
                         .entry(addr.clone())
                         .or_insert_with(|| HashSet::new())
-                        .insert(msg.service_id);
+                        .insert(msg.service_id.clone());
                     RegisterReply {
                         code: RegisterReplyCode::RegisteredOk as i32,
-                        message: "Service successfully registered".to_string(),
+                        message: format!("Service ID '{}' successfully registered", msg.service_id),
                     }
                 }
             }

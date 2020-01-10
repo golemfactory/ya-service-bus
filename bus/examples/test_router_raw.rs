@@ -17,6 +17,7 @@ enum Args {
 }
 
 fn main() -> Fallible<()> {
+    env_logger::init();
     let bus_addr = "127.0.0.1:8245".parse().unwrap();
     let args = Args::from_args();
     match args {

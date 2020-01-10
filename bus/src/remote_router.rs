@@ -49,11 +49,16 @@ impl RemoteRouter {
                             .into_iter()
                             .map(move |service_id| connection.bind(service_id)),
                     )
-                    .and_then(|_| async { Ok(log::info!("registed all services")) })
+                    .and_then(|_| async { Ok(log::info!("registered all services")) })
                     .into_actor(act),
                 )
             })
-            .then(|_v: Result<(), Error>, _, _| fut::ready(()));
+            .then(|v: Result<(), Error>, _, _| {
+                if let Err(e) = v {
+                    log::warn!("routing error: {}", e);
+                }
+                fut::ready(())
+            });
 
         ctx.spawn(connect_fut);
     }
@@ -122,7 +127,10 @@ impl Handler<UpdateService> for RemoteRouter {
                             async { v.unwrap_or_else(|e| log::error!("bind error: {}", e)) }
                         }),
                     )
+                } else {
+                    log::warn!("Not adding remote service '{}'; not connected to router", service_id)
                 }
+                log::debug!("Adding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);
             }
             UpdateService::Remove(service_id) => {
