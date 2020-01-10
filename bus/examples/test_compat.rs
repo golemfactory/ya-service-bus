@@ -1,6 +1,6 @@
 use actix::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::io;
+use std::{env, io};
 use ya_service_bus::{actix_rpc, Handle, RpcEnvelope, RpcMessage};
 
 #[derive(Default)]
@@ -43,5 +43,7 @@ async fn start_server() {
 }
 
 fn main() -> io::Result<()> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
+    env_logger::init();
     actix::run(start_server())
 }

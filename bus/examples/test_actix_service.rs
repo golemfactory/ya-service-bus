@@ -1,9 +1,9 @@
 use actix::prelude::*;
 use failure::_core::time::Duration;
 use serde::{Deserialize, Serialize};
-use std::fs::OpenOptions;
-use std::path::PathBuf;
+use std::{env, fs::OpenOptions, path::PathBuf};
 use structopt::StructOpt;
+
 use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
 
 #[derive(Serialize, Deserialize)]
@@ -117,6 +117,7 @@ async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failu
 }
 
 fn main() -> failure::Fallible<()> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     let mut sys = System::new("test");
     let args = Args::from_args();

@@ -1,6 +1,7 @@
 use failure::Error;
-
 use serde::{Deserialize, Serialize};
+use std::env;
+
 use ya_service_bus::{typed as bus, RpcMessage};
 
 #[derive(Serialize, Deserialize)]
@@ -42,6 +43,7 @@ async fn server() -> Result<(), Error> {
 
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     server().await
 }

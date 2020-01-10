@@ -29,6 +29,27 @@ async fn run_server() {
         _ => panic!("Unexpected message received"),
     }
 
+    println!("Sending register request...");
+    let register_request = RegisterRequest {
+        service_id: "echo2".to_string(),
+    };
+    writer
+        .send(register_request.into())
+        .await
+        .expect("Send failed");
+
+    let msg = reader
+        .next()
+        .await
+        .unwrap()
+        .expect("Register reply not received");
+    match msg {
+        GsbMessage::RegisterReply(msg) if msg.code == RegisterReplyCode::RegisteredOk as i32 => {
+            println!("Service successfully registered")
+        }
+        _ => panic!("Unexpected message received"),
+    }
+
     reader
         .filter_map(|msg| {
             async {

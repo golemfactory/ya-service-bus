@@ -1,3 +1,4 @@
+use std::env;
 use structopt::StructOpt;
 
 #[derive(StructOpt)]
@@ -12,11 +13,12 @@ struct Options {
 #[tokio::main]
 async fn main() -> failure::Fallible<()> {
     let options = Options::from_args();
+    env::set_var(
+        "RUST_LOG",
+        env::var("RUST_LOG").unwrap_or(options.log_level),
+    );
+    env_logger::init();
     let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
-
-    flexi_logger::Logger::with_env_or_str(format!("ya_sb_router={},info", options.log_level))
-        .start()
-        .unwrap();
 
     ya_sb_router::bind_router(listen_addr).await?;
     tokio::signal::ctrl_c().await?;

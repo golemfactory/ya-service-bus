@@ -2,8 +2,7 @@ use actix::prelude::*;
 use failure::Fallible;
 use futures::prelude::*;
 
-use std::path::PathBuf;
-use std::time::Duration;
+use std::{env, path::PathBuf, time::Duration};
 use structopt::StructOpt;
 use ya_service_bus::connection;
 use ya_service_bus::connection::LocalRouterHandler;
@@ -17,6 +16,7 @@ enum Args {
 }
 
 fn main() -> Fallible<()> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     let bus_addr = "127.0.0.1:8245".parse().unwrap();
     let args = Args::from_args();
