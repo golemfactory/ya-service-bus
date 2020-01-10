@@ -494,10 +494,10 @@ where
     }
 }
 
-pub async fn bind_router(addr: SocketAddr) -> failure::Fallible<()> {
+pub async fn bind_router(addr: SocketAddr) -> Result<(), std::io::Error> {
     let mut listener = TcpListener::bind(&addr)
         .map_err(|e| {
-            log::error!("Unable to bind TCP listener at {}: {}", addr, e);
+            log::error!("Failed to bind TCP listener at {}: {}", addr, e);
             e
         })
         .await?;
@@ -506,35 +506,37 @@ pub async fn bind_router(addr: SocketAddr) -> failure::Fallible<()> {
 
     log::info!("Router listening on: {}", addr);
 
-    listener
-        .incoming()
-        .map_err(|e| {
-            log::error!("Accept failed: {:?}", e);
-            e
-        })
-        .try_for_each(move |sock| {
-            let addr = sock.peer_addr().unwrap();
-            let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
-            router
-                .lock()
-                .unwrap()
-                .connect(addr.clone(), writer)
-                .unwrap();
-            let router1 = router.clone();
-            let router2 = router.clone();
+    let _ = tokio::spawn(async move {
+        listener
+            .incoming()
+            .map_err(|e| {
+                log::error!("Accept failed: {:?}", e);
+                e
+            })
+            .try_for_each(move |sock| {
+                let addr = sock.peer_addr().unwrap();
+                let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
+                router
+                    .lock()
+                    .unwrap()
+                    .connect(addr.clone(), writer)
+                    .unwrap();
+                let router1 = router.clone();
+                let router2 = router.clone();
 
-            let _ = tokio::spawn(
-                reader
-                    .map_err(From::from)
-                    .try_for_each(move |msg: GsbMessage| {
-                        future::ready(router1.lock().unwrap().handle_message(addr.clone(), msg))
-                    })
-                    .and_then(move |_| future::ready(router2.lock().unwrap().disconnect(&addr)))
-                    .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
-            );
-            future::ok(())
-        })
-        .await?;
+                let _ = tokio::spawn(
+                    reader
+                        .map_err(From::from)
+                        .try_for_each(move |msg: GsbMessage| {
+                            future::ready(router1.lock().unwrap().handle_message(addr.clone(), msg))
+                        })
+                        .and_then(move |_| future::ready(router2.lock().unwrap().disconnect(&addr)))
+                        .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
+                );
+                future::ok(())
+            })
+            .await
+    });
     Ok(())
 }
 
