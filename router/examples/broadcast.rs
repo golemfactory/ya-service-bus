@@ -1,7 +1,5 @@
 use futures::prelude::*;
 
-use uuid::Uuid;
-
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
 use ya_sb_router::tcp_connect;

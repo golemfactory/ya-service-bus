@@ -22,7 +22,7 @@ where
 impl<A, M, E> MessageDispatcher<A, M, E>
 where
     A: Hash + Eq + Display,
-    M: Send + 'static + Debug,
+    M: Send + 'static,
     E: Send + 'static + From<mpsc::error::RecvError> + Debug,
 {
     fn new() -> Self {
@@ -69,7 +69,6 @@ where
             Some(sender) => {
                 let sender = sender.clone();
                 let msg = msg.into();
-                log::info!("sending msg {:?}", msg);
                 tokio::spawn(async move {
                     futures::pin_mut!(sender);
                     let _ = sender
@@ -124,7 +123,7 @@ where
 impl<A, M, E> Router<A, M, E>
 where
     A: Hash + Eq + Display + Clone,
-    M: Send + 'static + From<GsbMessage> + Debug,
+    M: Send + 'static + From<GsbMessage>,
     E: Send + 'static + From<mpsc::error::RecvError> + Debug,
 {
     pub fn new() -> Self {

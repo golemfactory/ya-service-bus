@@ -312,18 +312,21 @@ where
         let (tx, rx) = oneshot::channel();
         self.register_reply.push_back(tx);
         let service_id = msg.addr;
-        let n = service_id.clone();
         match self
             .writer
-            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id })) {
+            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id }))
+        {
             Ok(()) => (),
-            Err(e) => return ActorResponse::reply(Err(Error::GsbFailure(e.to_string())))
+            Err(e) => return ActorResponse::reply(Err(Error::GsbFailure(e.to_string()))),
         };
 
-        ActorResponse::r#async(async move {
-            let v = rx.await;
-            Ok(())
-        }.into_actor(self))
+        ActorResponse::r#async(
+            async move {
+                rx.await??;
+                Ok(())
+            }
+            .into_actor(self),
+        )
     }
 }
 
@@ -359,12 +362,13 @@ impl<
         addr: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
         let addr = addr.into();
-        self.0
-            .send(Bind { addr })
-            .then(|v| async {
+        log::info!("Binding remote service '{}'", addr);
+        self.0.send(Bind { addr }).then(|v| {
+            async {
                 log::trace!("send bind result: {:?}", v);
                 v?
-            })
+            }
+        })
     }
 
     pub fn call(
@@ -412,7 +416,7 @@ where
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {
         let _h = Connection::add_stream(split_stream, ctx);
-        Connection::new( split_sink, handler, ctx)
+        Connection::new(split_sink, handler, ctx)
     }))
 }
 
