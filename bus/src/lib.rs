@@ -27,6 +27,7 @@ pub struct RpcEnvelope<T: RpcMessage> {
     body: T,
 }
 
+#[derive(Debug)]
 pub struct RpcRawCall {
     pub caller: String,
     pub addr: String,

@@ -40,7 +40,8 @@ async fn server() -> Result<(), Error> {
     Ok(())
 }
 
-fn main() -> Result<(), Error> {
+#[actix_rt::main]
+async fn main() -> Result<(), Error> {
     env_logger::init();
-    actix::System::new("w").block_on(server())
+    server().await
 }

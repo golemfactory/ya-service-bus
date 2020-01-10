@@ -128,7 +128,10 @@ impl Handler<UpdateService> for RemoteRouter {
                         }),
                     )
                 } else {
-                    log::warn!("Not adding remote service '{}'; not connected to router", service_id)
+                    log::warn!(
+                        "Not adding remote service '{}'; not connected to router",
+                        service_id
+                    )
                 }
                 log::debug!("Adding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);

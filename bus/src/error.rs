@@ -1,5 +1,3 @@
-#![allow(unused)]
-
 use actix::MailboxError;
 use failure::Fail;
 use futures::channel::oneshot;
