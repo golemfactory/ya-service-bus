@@ -23,6 +23,7 @@ trait RawEndpoint: Any {
 
 impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
     fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+        // TODO: do not panic with unwrap, but rather return Error
         let body: T = rmp_serde::decode::from_read(msg.body.as_slice()).unwrap();
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
@@ -106,11 +107,12 @@ impl Router {
 
     pub fn bind<T: RpcMessage>(
         &mut self,
+        visibility: &str,
         addr: &str,
         endpoint: impl RpcHandler<T> + 'static,
     ) -> Handle {
         let slot = Slot::from_handler(endpoint);
-        let addr = format!("{}/{}", addr, T::ID);
+        let addr = format!("{}{}/{}", visibility, addr, T::ID);
         log::debug!("binding {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));

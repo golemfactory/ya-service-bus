@@ -1,13 +1,16 @@
-/// Using GSB with actix 0.8
-use super::error::Error as BusError;
-use super::Handle;
-use crate::local_router::{router, Router};
-use crate::{RpcEnvelope, RpcMessage};
+/// Using GSB with actix 0.9
 use actix::prelude::*;
-
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
+
+use ya_service_api::constants::PRIVATE_SERVICE;
+
+use crate::local_router::{router, Router};
+use crate::{RpcEnvelope, RpcMessage};
+
+use super::error::Error as BusError;
+use super::Handle;
 
 pub fn bind<M: RpcMessage>(addr: &str, actor: Recipient<RpcEnvelope<M>>) -> Handle
 where
@@ -17,9 +20,9 @@ where
     Handle { _inner: {} }
 }
 
-pub fn service(addr: &str) -> Endpoint {
+pub fn private_service(addr: &str) -> Endpoint {
     Endpoint {
-        addr: addr.into(),
+        addr: format!("{}{}", PRIVATE_SERVICE, addr),
         router: router(),
     }
 }

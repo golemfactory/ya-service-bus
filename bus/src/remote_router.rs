@@ -9,7 +9,6 @@ use crate::{
     {error::Error, RpcRawCall},
 };
 
-// TODO: make it configurable
 fn gsb_addr() -> SocketAddr {
     *YAGNA_BUS_ADDR
 }
@@ -32,7 +31,7 @@ impl RemoteRouter {
     fn try_connect(&mut self, ctx: &mut <Self as Actor>::Context) {
         let addr = gsb_addr();
         let connect_fut = connection::tcp(addr)
-            .map_err(Error::BusConnectionFail)
+            .map_err(move |e| Error::BusConnectionFail(addr, e))
             .into_actor(self)
             .then(|tcp_transport, act, ctx| {
                 let tcp_transport = match tcp_transport {
@@ -126,11 +125,6 @@ impl Handler<UpdateService> for RemoteRouter {
                         c.bind(service_id.clone()).then(|v| {
                             async { v.unwrap_or_else(|e| log::error!("bind error: {}", e)) }
                         }),
-                    )
-                } else {
-                    log::warn!(
-                        "Not adding remote service '{}'; not connected to router",
-                        service_id
                     )
                 }
                 log::info!("Binding local service '{}'", service_id);

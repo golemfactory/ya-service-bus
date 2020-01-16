@@ -5,8 +5,20 @@ use futures::prelude::*;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
-pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
-    router().lock().unwrap().bind(addr, endpoint)
+use ya_service_api::constants::{PRIVATE_SERVICE, PUBLIC_SERVICE};
+
+pub fn bind_private<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
+    router()
+        .lock()
+        .unwrap()
+        .bind(PRIVATE_SERVICE, addr, endpoint)
+}
+
+pub fn bind_public<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
+    router()
+        .lock()
+        .unwrap()
+        .bind(PUBLIC_SERVICE, addr, endpoint)
 }
 
 #[derive(Clone)]
@@ -30,10 +42,10 @@ where
     }
 }
 
-pub fn service<T: RpcMessage + Unpin>(addr: &str) -> impl RpcEndpoint<T> {
+pub fn private_service<T: RpcMessage + Unpin>(addr: &str) -> impl RpcEndpoint<T> {
     Forward {
         router: router(),
-        addr: addr.to_string(),
+        addr: format!("{}{}", PRIVATE_SERVICE, addr),
     }
 }
 

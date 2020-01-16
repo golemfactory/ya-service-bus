@@ -140,7 +140,12 @@ where
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) {
-        log::debug!("got call request_id={}, address={}", request_id, address);
+        log::debug!(
+            "handling call from = {}, to = {}, request_id={}, ",
+            caller,
+            address,
+            request_id
+        );
         let do_call = self
             .handler
             .do_call(request_id.clone(), caller, address, data)
@@ -186,6 +191,11 @@ where
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), failure::Error> {
+        log::debug!(
+            "handling replay for request_id={}, code={}",
+            request_id,
+            code
+        );
         if let Some(r) = self.call_reply.remove(&request_id) {
             // TODO: check error
             let _ = r.send(match code.try_into()? {
@@ -284,6 +294,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
+        log::info!("handling caller: {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,

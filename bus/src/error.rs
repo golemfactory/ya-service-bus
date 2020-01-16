@@ -2,11 +2,12 @@ use actix::MailboxError;
 use failure::Fail;
 use futures::channel::oneshot;
 use std::io;
+use std::net::SocketAddr;
 
 #[derive(Debug, Fail)]
 pub enum Error {
-    #[fail(display = "bus connection fail: {}", _0)]
-    BusConnectionFail(io::Error),
+    #[fail(display = "bus connection to {} fail: {}", _0, _1)]
+    BusConnectionFail(SocketAddr, io::Error),
     #[fail(display = "Mailbox has closed")]
     Closed,
     #[fail(display = "has closed")]

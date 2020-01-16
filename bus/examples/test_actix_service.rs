@@ -93,7 +93,7 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, failure::E
     async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        let result = actix_rpc::service(SERVICE_ID)
+        let result = actix_rpc::private_service(SERVICE_ID)
             .send(Execute(commands))
             .await?;
         result.map_err(|e| failure::err_msg(e))
@@ -132,7 +132,7 @@ fn main() -> failure::Fallible<()> {
             eprintln!("got result: {:?}", result);
         }
         Args::Ping { dst, msg } => {
-            let result = sys.block_on(actix_rpc::service(&dst).send(Ping(msg)))?;
+            let result = sys.block_on(actix_rpc::private_service(&dst).send(Ping(msg)))?;
             eprintln!("got result: {:?}", result);
         }
 

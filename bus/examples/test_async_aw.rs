@@ -29,13 +29,13 @@ async fn server() -> Result<(), Error> {
         }
     };
 
-    let _ = bus::bind("/local/test", |p: Ping| {
+    let _ = bus::bind_private("/test", |p: Ping| {
         async move {
             eprintln!("test!!");
             Ok(format!("pong {}", p.0))
         }
     });
-    let _ = bus::bind("/local/quit", quit);
+    let _ = bus::bind_private("/quit", quit);
 
     let _ = rx.await;
     Ok(())
