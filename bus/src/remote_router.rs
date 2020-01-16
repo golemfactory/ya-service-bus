@@ -1,17 +1,17 @@
-use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
-use crate::error::Error;
-use crate::RpcRawCall;
-use actix::prelude::*;
-use futures::channel::oneshot;
-use futures::prelude::*;
+use actix::{prelude::*, WrapFuture};
+use futures::{channel::oneshot, prelude::*};
+use std::{collections::HashSet, net::SocketAddr};
 
-use actix::WrapFuture;
-use std::collections::HashSet;
+use ya_service_api::constants::YAGNA_BUS_ADDR;
 
-static DEFAULT_URL: &str = "127.0.0.1:8245";
+use crate::{
+    connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
+    {error::Error, RpcRawCall},
+};
 
-fn gsb_addr() -> std::net::SocketAddr {
-    DEFAULT_URL.parse().unwrap()
+// TODO: make it configurable
+fn gsb_addr() -> SocketAddr {
+    *YAGNA_BUS_ADDR
 }
 
 pub struct RemoteRouter {

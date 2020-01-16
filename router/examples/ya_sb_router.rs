@@ -1,12 +1,13 @@
 use std::env;
 use structopt::StructOpt;
+use ya_service_api::constants::YAGNA_BUS_ADDR_STR;
 
 #[derive(StructOpt)]
 #[structopt(name = "Router", about = "Service Bus Router")]
 struct Options {
-    #[structopt(short = "l", default_value = "127.0.0.1:8245")]
+    #[structopt(short = "l", default_value = &YAGNA_BUS_ADDR_STR)]
     ip_port: String,
-    #[structopt(default_value = "debug")]
+    #[structopt(long, default_value = "debug")]
     log_level: String,
 }
 

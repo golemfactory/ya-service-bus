@@ -1,12 +1,13 @@
 [package]
 name = "ya-service-bus"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
 [dependencies]
 ya-sb-proto = "0.1"
 ya-sb-util = "0.1"
+ya-service-api = "0.1"
 
 actix = "0.9"
 failure = "0.1"
