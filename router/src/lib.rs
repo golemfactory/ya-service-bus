@@ -81,7 +81,7 @@ where
     }
 
     pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
-        log::info!("Closed connection with {}", addr);
+        log::info!("Closing connection with {}", addr);
         self.dispatcher.unregister(addr)?;
 
         // IDs of all endpoints registered by this server
@@ -91,6 +91,7 @@ where
         };
 
         service_ids.iter().for_each(|service_id| {
+            log::info!("unregistering service: {}", service_id);
             self.registered_endpoints.remove(service_id);
         });
 
