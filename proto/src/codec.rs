@@ -5,23 +5,40 @@ use prost::Message;
 
 use crate::gsb_api::*;
 use crate::{MessageHeader, MessageType};
+use thiserror::Error;
 
 use tokio_util::codec::{Decoder, Encoder};
 use ya_sb_util::bytes::BytesCompat;
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
-pub type ProtocolError = failure::Error;
+#[derive(Debug, Error)]
+pub enum ProtocolError {
+    #[error("Unrecognized message type: {0}")]
+    UnrecognizedMessageType(i32),
+    #[error("Cannot decode message header: not enough bytes")]
+    HeaderNotEnoughBytes,
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+    #[error("encode error: {0}")]
+    Encode(#[from] prost::EncodeError),
+    #[error("decode {0}")]
+    Decode(#[from] prost::DecodeError),
+    #[error("{0}")]
+    RecvError(#[from] tokio::sync::mpsc::error::RecvError),
+    #[error("packet too big")]
+    MsgTooBig,
+}
 
 trait Encodable {
     // This trait exists because prost::Message has template methods
 
-    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()>;
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> Result<(), ProtocolError>;
     fn encoded_len_(&self) -> usize;
 }
 
 impl<T: Message> Encodable for T {
-    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()> {
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> Result<(), ProtocolError> {
         let mut c = buf.compat();
         Ok(self.encode(&mut c)?)
     }
@@ -138,7 +155,7 @@ impl Into<GsbMessage> for BroadcastReply {
     }
 }
 
-fn decode_header(src: &mut tokio_bytes::BytesMut) -> failure::Fallible<Option<MessageHeader>> {
+fn decode_header(src: &mut tokio_bytes::BytesMut) -> Result<Option<MessageHeader>, ProtocolError> {
     if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
     } else {
@@ -150,8 +167,11 @@ fn decode_header(src: &mut tokio_bytes::BytesMut) -> failure::Fallible<Option<Me
 fn decode_message(
     src: &mut tokio_bytes::BytesMut,
     header: &MessageHeader,
-) -> failure::Fallible<Option<GsbMessage>> {
-    let msg_length = header.msg_length.try_into()?;
+) -> Result<Option<GsbMessage>, ProtocolError> {
+    let msg_length = header
+        .msg_length
+        .try_into()
+        .map_err(|_| ProtocolError::MsgTooBig)?;
     if src.len() < msg_length {
         Ok(None)
     } else {
@@ -172,18 +192,13 @@ fn decode_message(
             Some(MessageType::UnsubscribeReply) => UnsubscribeReply::decode(buf.as_ref())?.into(),
             Some(MessageType::BroadcastRequest) => BroadcastRequest::decode(buf.as_ref())?.into(),
             Some(MessageType::BroadcastReply) => BroadcastReply::decode(buf.as_ref())?.into(),
-            None => {
-                return Err(failure::err_msg(format!(
-                    "Unrecognized message type: {}",
-                    header.msg_type
-                )))
-            }
+            None => return Err(ProtocolError::UnrecognizedMessageType(header.msg_type)),
         };
         Ok(Some(msg))
     }
 }
 
-fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> failure::Fallible<()> {
+fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> Result<(), ProtocolError> {
     let (msg_type, msg) = msg.unpack();
     encode_message_unpacked(dst, msg_type, msg.as_ref())?;
     Ok(())
@@ -193,7 +208,7 @@ fn encode_message_unpacked(
     dst: &mut tokio_bytes::BytesMut,
     msg_type: MessageType,
     msg: &dyn Encodable,
-) -> failure::Fallible<()> {
+) -> Result<(), ProtocolError> {
     let msg_type = msg_type as i32;
     let msg_length = msg.encoded_len_() as u32;
     let header = MessageHeader {
@@ -218,7 +233,7 @@ impl GsbMessageDecoder {
 
 impl Decoder for GsbMessageDecoder {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn decode(
         &mut self,
@@ -248,7 +263,7 @@ pub struct GsbMessageEncoder;
 
 impl Encoder for GsbMessageEncoder {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn encode(
         &mut self,
@@ -267,7 +282,7 @@ pub struct GsbMessageCodec {
 
 impl Encoder for GsbMessageCodec {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn encode(
         &mut self,
@@ -280,7 +295,7 @@ impl Encoder for GsbMessageCodec {
 
 impl Decoder for GsbMessageCodec {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn decode(
         &mut self,

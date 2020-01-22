@@ -1,7 +1,7 @@
 use actix::prelude::*;
-use failure::Fallible;
 use futures::prelude::*;
 
+use std::error::Error;
 use std::{env, path::PathBuf, time::Duration};
 use structopt::StructOpt;
 use ya_service_bus::connection;
@@ -15,7 +15,7 @@ enum Args {
     Client { script: PathBuf },
 }
 
-fn main() -> Fallible<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     let bus_addr = *ya_service_api::constants::YAGNA_BUS_ADDR;
@@ -64,7 +64,7 @@ fn main() -> Fallible<()> {
 
                             let msg = c.call("me", "/local/raw/echo", data).await?;
                             eprintln!("body={}", String::from_utf8_lossy(msg.as_ref()));
-                            Ok::<_, failure::Error>(())
+                            Ok::<_, Box<dyn Error>>(())
                         }
                     })
                     .then(|v| async move { v.unwrap_or_else(|e| eprintln!("send error={}", e)) });

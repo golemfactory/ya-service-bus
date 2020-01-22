@@ -42,6 +42,13 @@ where
     }
 }
 
+pub fn service<T: RpcMessage + Unpin>(addr: impl Into<String>) -> impl RpcEndpoint<T> {
+    Forward {
+        router: router(),
+        addr: addr.into(),
+    }
+}
+
 pub fn private_service<T: RpcMessage + Unpin>(addr: &str) -> impl RpcEndpoint<T> {
     Forward {
         router: router(),

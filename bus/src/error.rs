@@ -1,28 +1,27 @@
 use actix::MailboxError;
-use failure::Fail;
 use futures::channel::oneshot;
 use std::io;
 use std::net::SocketAddr;
 
-#[derive(Debug, Fail)]
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    #[fail(display = "bus connection to {} fail: {}", _0, _1)]
+    #[error("bus connection to {0} fail: {1}")]
     BusConnectionFail(SocketAddr, io::Error),
-    #[fail(display = "Mailbox has closed")]
+    #[error("Mailbox has closed")]
     Closed,
-    #[fail(display = "has closed")]
+    #[error("has closed")]
     NoEndpoint,
-    #[fail(display = "bad content {}", _0)]
-    BadContent(#[cause] rmp_serde::decode::Error),
-    #[fail(display = "{}", _0)]
+    #[error("bad content {0}")]
+    BadContent(#[from] rmp_serde::decode::Error),
+    #[error("{0}")]
     EncodingProblem(String),
-    #[fail(display = "Message delivery timed out")]
+    #[error("Message delivery timed out")]
     Timeout,
-    #[fail(display = "bad request: {}", _0)]
+    #[error("bad request: {0}")]
     GsbBadRequest(String),
-    #[fail(display = "already registered: {}", _0)]
+    #[error("already registered: {0}")]
     GsbAlreadyRegistered(String),
-    #[fail(display = "{}", _0)]
+    #[error("{0}")]
     GsbFailure(String),
 }
 
@@ -38,12 +37,6 @@ impl From<MailboxError> for Error {
 impl From<oneshot::Canceled> for Error {
     fn from(_: oneshot::Canceled) -> Self {
         Error::Closed
-    }
-}
-
-impl From<rmp_serde::decode::Error> for Error {
-    fn from(e: rmp_serde::decode::Error) -> Self {
-        Error::BadContent(e)
     }
 }
 

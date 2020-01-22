@@ -1,9 +1,7 @@
 use std::convert::TryFrom;
 use std::mem::size_of;
 
-use failure;
-use failure::Fail;
-
+use crate::codec::ProtocolError;
 pub use gsb_api::*;
 
 mod gsb_api {
@@ -42,11 +40,9 @@ impl MessageHeader {
         buf.extend_from_slice(&self.msg_length.to_be_bytes());
     }
 
-    pub fn decode(mut src: tokio_bytes::BytesMut) -> failure::Fallible<Self> {
+    pub fn decode(mut src: tokio_bytes::BytesMut) -> Result<Self, ProtocolError> {
         if src.len() < size_of::<MessageHeader>() {
-            return Err(failure::err_msg(
-                "Cannot decode message header: not enough bytes",
-            ));
+            return Err(ProtocolError::HeaderNotEnoughBytes);
         }
 
         let mut msg_type: [u8; 4] = [0; 4];
@@ -61,8 +57,8 @@ impl MessageHeader {
     }
 }
 
-#[derive(Fail, Debug)]
-#[fail(display = "invalid value: {}", _0)]
+#[derive(thiserror::Error, Debug)]
+#[error("invalid value: {0}")]
 pub struct EnumError(pub i32);
 
 impl TryFrom<i32> for CallReplyCode {

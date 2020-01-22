@@ -1,9 +1,10 @@
 use actix::prelude::*;
-use failure::_core::time::Duration;
 use serde::{Deserialize, Serialize};
 use std::{env, fs::OpenOptions, path::PathBuf};
 use structopt::StructOpt;
 
+use std::error::Error;
+use std::time::Duration;
 use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
 
 #[derive(Serialize, Deserialize)]
@@ -89,18 +90,18 @@ enum Args {
     },
 }
 
-fn run_script(script: PathBuf) -> impl Future<Output = Result<String, failure::Error>> {
+fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Error>>> {
     async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
         let result = actix_rpc::private_service(SERVICE_ID)
             .send(Execute(commands))
             .await?;
-        result.map_err(|e| failure::err_msg(e))
+        result.map_err(From::from)
     }
 }
 
-async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failure::Error> {
+async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, Box<dyn Error>> {
     let bytes = rmp_serde::to_vec(&serde_json::from_slice::<Vec<Command>>(
         std::fs::read(script)?.as_slice(),
     )?)?;
@@ -116,7 +117,7 @@ async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failu
     )?)
 }
 
-fn main() -> failure::Fallible<()> {
+fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     let mut sys = System::new("test");

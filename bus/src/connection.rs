@@ -190,7 +190,7 @@ where
         _reply_type: i32,
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
             "handling replay for request_id={}, code={}",
             request_id,

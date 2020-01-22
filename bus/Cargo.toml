@@ -10,7 +10,7 @@ ya-sb-util = "0.1"
 ya-service-api = "0.1"
 
 actix = "0.9"
-failure = "0.1"
+thiserror = "1.0.9"
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4"

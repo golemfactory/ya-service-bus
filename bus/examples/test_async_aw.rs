@@ -1,7 +1,7 @@
-use failure::Error;
 use serde::{Deserialize, Serialize};
 use std::env;
 
+use std::error::Error;
 use ya_service_bus::{typed as bus, RpcMessage};
 
 #[derive(Serialize, Deserialize)]
@@ -13,7 +13,7 @@ impl RpcMessage for Ping {
     type Error = ();
 }
 
-async fn server() -> Result<(), Error> {
+async fn server() -> Result<(), Box<dyn Error>> {
     log::info!("starting");
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
 
@@ -42,7 +42,7 @@ async fn server() -> Result<(), Error> {
 }
 
 #[actix_rt::main]
-async fn main() -> Result<(), Error> {
+async fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     server().await
