@@ -4,8 +4,6 @@ use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
 
-use ya_service_api::constants::PRIVATE_SERVICE;
-
 use crate::local_router::{router, Router};
 use crate::{RpcEnvelope, RpcMessage};
 
@@ -20,9 +18,9 @@ where
     Handle { _inner: {} }
 }
 
-pub fn private_service(addr: &str) -> Endpoint {
+pub fn service(addr: &str) -> Endpoint {
     Endpoint {
-        addr: format!("{}{}", PRIVATE_SERVICE, addr),
+        addr: addr.to_string(),
         router: router(),
     }
 }

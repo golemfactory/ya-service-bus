@@ -107,12 +107,11 @@ impl Router {
 
     pub fn bind<T: RpcMessage>(
         &mut self,
-        visibility: &str,
         addr: &str,
         endpoint: impl RpcHandler<T> + 'static,
     ) -> Handle {
         let slot = Slot::from_handler(endpoint);
-        let addr = format!("{}{}/{}", visibility, addr, T::ID);
+        let addr = format!("{}/{}", addr, T::ID);
         log::debug!("binding {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));

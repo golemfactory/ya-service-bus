@@ -18,7 +18,7 @@ enum Args {
 fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
-    let bus_addr = *ya_service_api::constants::YAGNA_BUS_ADDR;
+    let bus_addr = "127.0.0.1:7464".parse().unwrap();
     let args = Args::from_args();
     match args {
         Args::Server { .. } => {

@@ -94,7 +94,7 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Er
     async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        let result = actix_rpc::private_service(SERVICE_ID)
+        let result = actix_rpc::service(SERVICE_ID)
             .send(Execute(commands))
             .await?;
         result.map_err(From::from)
@@ -133,7 +133,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             eprintln!("got result: {:?}", result);
         }
         Args::Ping { dst, msg } => {
-            let result = sys.block_on(actix_rpc::private_service(&dst).send(Ping(msg)))?;
+            let result = sys.block_on(actix_rpc::service(&dst).send(Ping(msg)))?;
             eprintln!("got result: {:?}", result);
         }
 

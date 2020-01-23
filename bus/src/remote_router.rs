@@ -2,15 +2,25 @@ use actix::{prelude::*, WrapFuture};
 use futures::{channel::oneshot, prelude::*};
 use std::{collections::HashSet, net::SocketAddr};
 
-use ya_service_api::constants::YAGNA_BUS_ADDR;
-
 use crate::{
     connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
     {error::Error, RpcRawCall},
 };
+use std::borrow::Cow;
+
 
 fn gsb_addr() -> SocketAddr {
-    *YAGNA_BUS_ADDR
+    let addr: Cow<'static, str> = if let Some(gsb_url) = std::env::var("GSB_URL").ok() {
+        let url = url::Url::parse(&gsb_url).unwrap();
+        if url.scheme() != "tcp" {
+            panic!("unimplemented protocol: {}", url.scheme());
+        }
+        Cow::Owned(format!("{}:{}", url.host_str().unwrap_or("127.0.0.1"), url.port().unwrap_or(7464)))
+    }
+    else {
+        Cow::Borrowed("127.0.0.1:7464")
+    };
+    addr.parse().unwrap()
 }
 
 pub struct RemoteRouter {

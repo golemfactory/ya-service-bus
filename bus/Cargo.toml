@@ -7,7 +7,6 @@ edition = "2018"
 [dependencies]
 ya-sb-proto = "0.1"
 ya-sb-util = "0.1"
-ya-service-api = "0.1"
 
 actix = "0.9"
 thiserror = "1.0.9"
@@ -19,6 +18,7 @@ rmp-serde = "0.14.0"
 serde = { version = "1.0.102", features = ["derive"] }
 tokio = { version = "0.2.6", features = ["tcp", "time"] }
 tokio-util = "0.2.0"
+url="2.1.1"
 
 [dev-dependencies]
 actix-rt = "1.0"
