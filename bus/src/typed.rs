@@ -7,26 +7,17 @@ use std::sync::{Arc, Mutex};
 
 pub fn bind_private<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
     let addr = format!("/private{}", addr);
-    router()
-        .lock()
-        .unwrap()
-        .bind(&addr, endpoint)
+    router().lock().unwrap().bind(&addr, endpoint)
 }
 
 pub fn bind_public<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
     let addr = format!("/public{}", addr);
-    router()
-        .lock()
-        .unwrap()
-        .bind(&addr, endpoint)
+    router().lock().unwrap().bind(&addr, endpoint)
 }
 
 #[inline]
 pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
-    router()
-        .lock()
-        .unwrap()
-        .bind(addr, endpoint)
+    router().lock().unwrap().bind(addr, endpoint)
 }
 
 #[derive(Clone)]
