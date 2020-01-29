@@ -101,13 +101,13 @@ pub trait RpcEndpoint<T: RpcMessage>: Clone {
 pub trait RpcHandler<T: RpcMessage> {
     type Result: Future<Output = <RpcEnvelope<T> as Message>::Result> + 'static;
 
-    fn handle(&mut self, caller: &str, msg: T) -> Self::Result;
+    fn handle(&mut self, caller: String, msg: T) -> Self::Result;
 }
 
 pub trait RpcStreamHandler<T: RpcMessage> {
     type Result: Stream<Item = <RpcEnvelope<T> as Message>::Result>;
 
-    fn handle(&mut self, caller: &str, msgs: Vec<T>) -> Self::Result;
+    fn handle(&mut self, caller: String, msgs: Vec<T>) -> Self::Result;
 }
 
 pub struct Handle {

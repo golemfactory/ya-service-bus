@@ -24,7 +24,7 @@ pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -
 pub fn bind_with_caller<T: RpcMessage, Output, F>(addr: &str, f: F) -> Handle
 where
     Output: Future<Output = Result<T::Item, T::Error>> + 'static,
-    F: FnMut(&str, T) -> Output + 'static,
+    F: FnMut(String, T) -> Output + 'static,
 {
     router().lock().unwrap().bind(addr, WithCaller(f))
 }
@@ -65,7 +65,7 @@ impl<
 {
     type Result = Output;
 
-    fn handle(&mut self, _caller: &str, msg: T) -> Self::Result {
+    fn handle(&mut self, _caller: String, msg: T) -> Self::Result {
         self(msg)
     }
 }
@@ -75,12 +75,12 @@ struct WithCaller<F>(F);
 impl<
         T: RpcMessage,
         Output: Future<Output = Result<T::Item, T::Error>> + 'static,
-        F: FnMut(&str, T) -> Output + 'static,
+        F: FnMut(String, T) -> Output + 'static,
     > RpcHandler<T> for WithCaller<F>
 {
     type Result = Output;
 
-    fn handle(&mut self, caller: &str, msg: T) -> Self::Result {
+    fn handle(&mut self, caller: String, msg: T) -> Self::Result {
         (self.0)(caller, msg)
     }
 }
