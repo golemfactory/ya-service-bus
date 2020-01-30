@@ -427,6 +427,10 @@ where
     }
 }
 
+pub async fn bind_gsb_router() -> Result<(), std::io::Error> {
+    bind_router(gsb_addr()).await
+}
+
 pub async fn bind_router(addr: SocketAddr) -> Result<(), std::io::Error> {
     let mut listener = TcpListener::bind(&addr)
         .map_err(|e| {

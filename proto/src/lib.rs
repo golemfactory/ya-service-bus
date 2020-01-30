@@ -3,6 +3,8 @@ use std::mem::size_of;
 
 use crate::codec::ProtocolError;
 pub use gsb_api::*;
+use std::borrow::Cow;
+use std::net::SocketAddr;
 
 mod gsb_api {
     include!(concat!(env!("OUT_DIR"), "/gsb_api.rs"));
@@ -84,4 +86,25 @@ impl TryFrom<i32> for CallReplyType {
             _ => return Err(EnumError(value)),
         })
     }
+}
+
+pub const DEFAULT_GSB_URL :&str = "tcp://127.0.0.1:7464";
+
+pub fn gsb_url() -> Cow<'static, str> {
+    if let Some(gsb_url) = std::env::var("GSB_URL").ok() {
+        Cow::Owned(gsb_url)
+    }
+    else {
+        Cow::Borrowed(DEFAULT_GSB_URL)
+    }
+}
+
+pub fn gsb_addr() -> SocketAddr {
+    let gsb_url = gsb_url();
+    let url = url::Url::parse(&gsb_url).unwrap();
+    if url.scheme() != "tcp" {
+        panic!("unimplemented protocol: {}", url.scheme());
+    }
+
+    SocketAddr::new(url.host_str().unwrap().parse().unwrap(), url.port().unwrap_or(7464))
 }

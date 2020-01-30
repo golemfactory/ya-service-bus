@@ -1,29 +1,14 @@
 use actix::{prelude::*, WrapFuture};
 use futures::{channel::oneshot, prelude::*};
-use std::{collections::HashSet, net::SocketAddr};
+use std::{collections::HashSet};
+
+const CONNECT_TIMEOUT : Duration = Duration::from_secs(3);
 
 use crate::{
     connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
     {error::Error, RpcRawCall},
 };
-use std::borrow::Cow;
-
-fn gsb_addr() -> SocketAddr {
-    let addr: Cow<'static, str> = if let Some(gsb_url) = std::env::var("GSB_URL").ok() {
-        let url = url::Url::parse(&gsb_url).unwrap();
-        if url.scheme() != "tcp" {
-            panic!("unimplemented protocol: {}", url.scheme());
-        }
-        Cow::Owned(format!(
-            "{}:{}",
-            url.host_str().unwrap_or("127.0.0.1"),
-            url.port().unwrap_or(7464)
-        ))
-    } else {
-        Cow::Borrowed("127.0.0.1:7464")
-    };
-    addr.parse().unwrap()
-}
+use std::time::Duration;
 
 pub struct RemoteRouter {
     local_bindings: HashSet<String>,
@@ -35,13 +20,18 @@ impl Actor for RemoteRouter {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.try_connect(ctx)
+        self.try_connect(ctx);
+        let _ = ctx.run_later(CONNECT_TIMEOUT, |act, _ctx| {
+            if act.connection.is_none() {
+                act.pending_calls.clear();
+            }
+        });
     }
 }
 
 impl RemoteRouter {
     fn try_connect(&mut self, ctx: &mut <Self as Actor>::Context) {
-        let addr = gsb_addr();
+        let addr = ya_sb_proto::gsb_addr();
         let connect_fut = connection::tcp(addr)
             .map_err(move |e| Error::BusConnectionFail(addr, e))
             .into_actor(self)
