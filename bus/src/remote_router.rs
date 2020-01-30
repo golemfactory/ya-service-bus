@@ -134,8 +134,8 @@ impl Handler<UpdateService> for RemoteRouter {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
                     Arbiter::spawn(
-                        c.bind(service_id.clone()).then(|v| {
-                            async { v.unwrap_or_else(|e| log::error!("bind error: {}", e)) }
+                        c.bind(service_id.clone()).then(|v| async {
+                            v.unwrap_or_else(|e| log::error!("bind error: {}", e))
                         }),
                     )
                 }
