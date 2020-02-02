@@ -1,8 +1,8 @@
 use actix::{prelude::*, WrapFuture};
 use futures::{channel::oneshot, prelude::*};
-use std::{collections::HashSet};
+use std::collections::HashSet;
 
-const CONNECT_TIMEOUT : Duration = Duration::from_secs(3);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 use crate::{
     connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
@@ -124,8 +124,8 @@ impl Handler<UpdateService> for RemoteRouter {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
                     Arbiter::spawn(
-                        c.bind(service_id.clone()).then(|v| {
-                            async { v.unwrap_or_else(|e| log::error!("bind error: {}", e)) }
+                        c.bind(service_id.clone()).then(|v| async {
+                            v.unwrap_or_else(|e| log::error!("bind error: {}", e))
                         }),
                     )
                 }

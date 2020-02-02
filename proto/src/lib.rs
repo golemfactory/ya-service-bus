@@ -88,13 +88,12 @@ impl TryFrom<i32> for CallReplyType {
     }
 }
 
-pub const DEFAULT_GSB_URL :&str = "tcp://127.0.0.1:7464";
+pub const DEFAULT_GSB_URL: &str = "tcp://127.0.0.1:7464";
 
 pub fn gsb_url() -> Cow<'static, str> {
     if let Some(gsb_url) = std::env::var("GSB_URL").ok() {
         Cow::Owned(gsb_url)
-    }
-    else {
+    } else {
         Cow::Borrowed(DEFAULT_GSB_URL)
     }
 }
@@ -106,5 +105,8 @@ pub fn gsb_addr() -> SocketAddr {
         panic!("unimplemented protocol: {}", url.scheme());
     }
 
-    SocketAddr::new(url.host_str().unwrap().parse().unwrap(), url.port().unwrap_or(7464))
+    SocketAddr::new(
+        url.host_str().unwrap().parse().unwrap(),
+        url.port().unwrap_or(7464),
+    )
 }
