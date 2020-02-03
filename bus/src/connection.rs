@@ -374,9 +374,11 @@ impl<
     ) -> impl Future<Output = Result<(), Error>> + 'static {
         let addr = addr.into();
         log::info!("Binding remote service '{}'", addr);
-        self.0.send(Bind { addr }).then(|v| async {
-            log::trace!("send bind result: {:?}", v);
-            v?
+        self.0.send(Bind { addr }).then(|v| {
+            async {
+                log::trace!("send bind result: {:?}", v);
+                v?
+            }
         })
     }
 

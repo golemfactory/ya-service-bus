@@ -29,9 +29,11 @@ async fn server() -> Result<(), Box<dyn Error>> {
         }
     };
 
-    let _ = bus::bind_private("/test", |p: Ping| async move {
-        eprintln!("test!!");
-        Ok(format!("pong {}", p.0))
+    let _ = bus::bind_private("/test", |p: Ping| {
+        async move {
+            eprintln!("test!!");
+            Ok(format!("pong {}", p.0))
+        }
     });
     let _ = bus::bind_private("/quit", quit);
 
