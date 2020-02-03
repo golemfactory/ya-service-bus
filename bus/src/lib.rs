@@ -12,6 +12,9 @@ mod remote_router;
 pub mod typed;
 pub mod untyped;
 
+pub mod macros;
+pub mod timeout;
+
 pub use error::Error;
 
 pub trait BusMessage {}
