@@ -33,10 +33,11 @@ pub struct Endpoint {
 impl Endpoint {
     pub fn send<M: RpcMessage + Serialize + DeserializeOwned + Sync + Send + Unpin>(
         &self,
+        caller: Option<String>,
         msg: M,
     ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + Unpin + 'static
     {
         let mut b = self.router.lock().unwrap();
-        b.forward(self.addr.as_ref(), msg)
+        b.forward(self.addr.as_ref(), caller, msg)
     }
 }

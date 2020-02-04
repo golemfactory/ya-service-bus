@@ -10,13 +10,13 @@ macro_rules! bind_gsb_method {
 
 #[macro_export]
 macro_rules! gsb_send {
-    ($msg:expr, $uri:expr, $timeout:expr) => {{
+    ($caller:expr, $msg:expr, $uri:expr, $timeout:expr) => {{
         use ya_service_bus::actix_rpc;
         use $crate::timeout::IntoTimeoutFuture;
 
         // TODO: this is not enough for the net service, bc it does not contain caller addr
         actix_rpc::service($uri)
-            .send($msg)
+            .send($caller, $msg)
             .timeout($timeout)
             .map_err(Error::from)
             .await?

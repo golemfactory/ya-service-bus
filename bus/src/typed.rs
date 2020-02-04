@@ -45,7 +45,15 @@ where
         self.router
             .lock()
             .unwrap()
-            .forward(&self.addr, msg)
+            .forward(&self.addr, None, msg)
+            .boxed_local()
+    }
+
+    fn send_with_caller(&self, caller: String, msg: T) -> Self::Result {
+        self.router
+            .lock()
+            .unwrap()
+            .forward(&self.addr, Some(caller), msg)
             .boxed_local()
     }
 }
