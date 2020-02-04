@@ -139,7 +139,6 @@ impl Router {
         msg: T,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
         let caller = caller.unwrap_or("local".into());
-        log::debug!("caller: {}, addr: {}", caller, addr);
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
             (if let Some(h) = slot.recipient() {
