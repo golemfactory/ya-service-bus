@@ -51,24 +51,26 @@ async fn run_server() {
     }
 
     reader
-        .filter_map(|msg| async {
-            match msg {
-                Ok(GsbMessage::CallRequest(msg)) => {
-                    println!(
-                        "Received call request request_id = {} caller = {} address = {}",
-                        msg.request_id, msg.caller, msg.address
-                    );
-                    Some(Ok(CallReply {
-                        request_id: msg.request_id,
-                        code: CallReplyCode::CallReplyOk as i32,
-                        reply_type: CallReplyType::Full as i32,
-                        data: msg.data,
+        .filter_map(|msg| {
+            async {
+                match msg {
+                    Ok(GsbMessage::CallRequest(msg)) => {
+                        println!(
+                            "Received call request request_id = {} caller = {} address = {}",
+                            msg.request_id, msg.caller, msg.address
+                        );
+                        Some(Ok(CallReply {
+                            request_id: msg.request_id,
+                            code: CallReplyCode::CallReplyOk as i32,
+                            reply_type: CallReplyType::Full as i32,
+                            data: msg.data,
+                        }
+                        .into()))
                     }
-                    .into()))
-                }
-                _ => {
-                    eprintln!("Unexpected message received");
-                    None
+                    _ => {
+                        eprintln!("Unexpected message received");
+                        None
+                    }
                 }
             }
         })
