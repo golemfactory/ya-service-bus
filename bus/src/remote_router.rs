@@ -129,7 +129,7 @@ impl Handler<UpdateService> for RemoteRouter {
                         }),
                     )
                 }
-                log::info!("Binding local service '{}'", service_id);
+                log::debug!("Binding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);
             }
             UpdateService::Remove(service_id) => {

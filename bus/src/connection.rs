@@ -294,7 +294,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
-        log::info!("handling caller: {}, addr:{}", caller, address);
+        log::debug!("handling caller: {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,
@@ -373,7 +373,7 @@ impl<
         addr: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
         let addr = addr.into();
-        log::info!("Binding remote service '{}'", addr);
+        log::debug!("Binding remote service '{}'", addr);
         self.0.send(Bind { addr }).then(|v| async {
             log::trace!("send bind result: {:?}", v);
             v?
