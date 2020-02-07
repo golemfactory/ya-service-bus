@@ -50,7 +50,7 @@ impl<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static> Handler<RpcStreamCal
 {
     type Result = ActorResponse<Self, (), Error>;
 
-    fn handle(&mut self, msg: RpcStreamCall<T>, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: RpcStreamCall<T>, _ctx: &mut Self::Context) -> Self::Result {
         use futures::stream::{Stream, StreamExt, TryStream, TryStreamExt};
         // TryStream<Ok = T::Item, Error = T::Error> + Unpin
         //

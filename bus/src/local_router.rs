@@ -77,8 +77,8 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
         msg: RpcRawCall,
     ) -> Pin<Box<dyn Stream<Item = Result<ResponseChunk, Error>>>> {
         let body: T = rmp_serde::decode::from_read(msg.body.as_slice()).unwrap();
-        let (mut tx, rx) = futures::channel::mpsc::channel(16);
-        let (mut txe, rxe) = futures::channel::oneshot::channel();
+        let (tx, rx) = futures::channel::mpsc::channel(16);
+        let (txe, rxe) = futures::channel::oneshot::channel();
 
         let call = RpcStreamCall {
             caller: msg.caller,
@@ -90,10 +90,10 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
         Arbiter::spawn(async move {
             match me.send(call).await {
                 Err(e) => {
-                    txe.send(Err(e.into()));
+                    let _ = txe.send(Err(e.into()));
                 }
                 Ok(Err(e)) => {
-                    txe.send(Err(e));
+                    let _ = txe.send(Err(e));
                 }
                 Ok(Ok(())) => (),
             };
@@ -146,7 +146,7 @@ impl RawEndpoint for Recipient<RpcRawCall> {
 
 impl RawEndpoint for Recipient<RpcRawStreamCall> {
     fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
-        let (tx, mut rx) = futures::channel::mpsc::channel(1);
+        let (tx, rx) = futures::channel::mpsc::channel(1);
         // TODO: send error to caller
         Arbiter::spawn(
             self.send(RpcRawStreamCall {
@@ -157,7 +157,7 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
             })
             .flatten_fut()
             .map_err(|e| eprintln!("cell error={}", e))
-            .then(|v| future::ready(())),
+            .then(|_v| future::ready(())),
         );
         async move {
             futures::pin_mut!(rx);

@@ -155,7 +155,7 @@ impl Handler<RpcRawCall> for RemoteRouter {
 impl Handler<RpcRawStreamCall> for RemoteRouter {
     type Result = Result<(), Error>;
 
-    fn handle(&mut self, msg: RpcRawStreamCall, ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, _msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
         unimplemented!()
     }
 }

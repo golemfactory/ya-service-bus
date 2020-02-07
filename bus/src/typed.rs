@@ -139,7 +139,7 @@ impl<
 {
     type Result = Output;
 
-    fn handle(&mut self, caller: &str, msg: T) -> Self::Result {
+    fn handle(&mut self, _caller: &str, msg: T) -> Self::Result {
         self(msg)
     }
 }

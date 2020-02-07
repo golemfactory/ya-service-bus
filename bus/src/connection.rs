@@ -62,7 +62,7 @@ impl CallRequestHandler for LocalRouterHandler {
 
     fn do_call(
         &mut self,
-        request_id: String,
+        _request_id: String,
         caller: String,
         address: String,
         data: Vec<u8>,
