@@ -17,6 +17,8 @@ pub use error::Error;
 use futures::TryStream;
 use rmp_serde::encode::UnderlyingWrite;
 
+pub mod timeout;
+
 pub trait RpcMessage: Serialize + DeserializeOwned + 'static + Sync + Send {
     const ID: &'static str;
     type Item: Serialize + DeserializeOwned + 'static + Sync + Send;

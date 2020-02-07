@@ -1,27 +1,26 @@
+use crate::local_router::into_actix::RpcHandlerWrapper;
+use crate::remote_router::{RemoteRouter, UpdateService};
+use crate::untyped::RawHandler;
+use crate::ResponseChunk::Full;
 use crate::{
     error::Error, Handle, ResponseChunk, RpcEnvelope, RpcHandler, RpcMessage, RpcRawCall,
     RpcRawStreamCall, RpcStreamCall, RpcStreamHandler, RpcStreamMessage,
 };
 use actix::prelude::*;
+use actix::{Actor, SystemService};
+use futures::future::ErrInto;
 use futures::prelude::*;
-use futures::{future, FutureExt, StreamExt, TryStreamExt, SinkExt};
+use futures::{future, FutureExt, SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::pin::Pin;
+use std::sync::{Arc, Mutex};
+use ya_sb_util::futures::IntoFlatten;
 use ya_sb_util::PrefixLookupBag;
 
 mod into_actix;
-
-use crate::local_router::into_actix::RpcHandlerWrapper;
-use crate::remote_router::{RemoteRouter, UpdateService};
-use crate::untyped::RawHandler;
-use crate::ResponseChunk::Full;
-use actix::{Actor, SystemService};
-use futures::future::ErrInto;
-use std::sync::{Arc, Mutex};
-use ya_sb_util::futures::IntoFlatten;
 
 trait RawEndpoint: Any {
     fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>>;
@@ -67,7 +66,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 }
 
 impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+    fn send(&self, _msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
         Box::pin(future::err(Error::GsbBadRequest(
             "non-streaming-request on streaming endpoint".into(),
         )))
@@ -96,7 +95,7 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
                 Ok(Err(e)) => {
                     txe.send(Err(e));
                 }
-                Ok(Ok(s)) => (),
+                Ok(Ok(())) => (),
             };
         });
 
@@ -140,7 +139,7 @@ impl RawEndpoint for Recipient<RpcRawCall> {
         )
     }
 
-    fn recipient(&self) -> &Any {
+    fn recipient(&self) -> &dyn Any {
         self
     }
 }
@@ -158,17 +157,17 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
             })
             .flatten_fut()
             .map_err(|e| eprintln!("cell error={}", e))
-                .then(|v| future::ready(()))
+            .then(|v| future::ready(())),
         );
         async move {
             futures::pin_mut!(rx);
             if let Some(ResponseChunk::Full(v)) = StreamExt::next(&mut rx).await {
                 Ok(v)
-            }
-            else {
+            } else {
                 Err(Error::GsbBadRequest("partial response".into()))
             }
-        }.boxed_local()
+        }
+        .boxed_local()
     }
 
     fn call_stream(
@@ -186,12 +185,12 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
             })
             .flatten_fut()
             .map_err(|e| eprintln!("cell error={}", e))
-                .then(|_| future::ready(()))
+            .then(|_| future::ready(())),
         );
         Box::pin(rx.map(|v| Ok(v)))
     }
 
-    fn recipient(&self) -> &Any {
+    fn recipient(&self) -> &dyn Any {
         self
     }
 }
@@ -201,7 +200,7 @@ struct Slot {
 }
 
 impl Slot {
-    fn from_handler<T: RpcMessage, H: RpcHandler<T> + 'static + Unpin>(handler: H) -> Self {
+    fn from_handler<T: RpcMessage, H: RpcHandler<T> + 'static>(handler: H) -> Self {
         Slot {
             inner: Box::new(
                 into_actix::RpcHandlerWrapper::new(handler)
@@ -211,7 +210,7 @@ impl Slot {
         }
     }
 
-    fn from_stream_handler<T: RpcStreamMessage + Unpin, H: RpcStreamHandler<T> + 'static + Unpin>(
+    fn from_stream_handler<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static>(
         handler: H,
     ) -> Self {
         Slot {
@@ -285,7 +284,7 @@ impl Router {
     pub fn bind<T: RpcMessage>(
         &mut self,
         addr: &str,
-        endpoint: impl RpcHandler<T> + 'static + Unpin,
+        endpoint: impl RpcHandler<T> + 'static,
     ) -> Handle {
         let slot = Slot::from_handler(endpoint);
         let addr = format!("{}/{}", addr, T::ID);

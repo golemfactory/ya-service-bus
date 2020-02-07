@@ -4,14 +4,16 @@ use crate::{
 };
 use actix::prelude::*;
 
-use std::marker::PhantomData;
 use futures::SinkExt;
+use std::marker::PhantomData;
 
 pub struct RpcHandlerWrapper<T, H>(pub(super) H, PhantomData<T>);
 
-impl<T: 'static, H: 'static + Unpin> Actor for RpcHandlerWrapper<T, H> {
+impl<T: 'static, H: 'static> Actor for RpcHandlerWrapper<T, H> {
     type Context = Context<Self>;
 }
+
+impl<T: 'static, H: 'static> Unpin for RpcHandlerWrapper<T, H> {}
 
 impl<T, H> RpcHandlerWrapper<T, H> {
     pub fn new(h: H) -> Self {
@@ -19,7 +21,7 @@ impl<T, H> RpcHandlerWrapper<T, H> {
     }
 }
 
-impl<T: RpcMessage, H: RpcHandler<T> + Unpin + 'static> Handler<RpcEnvelope<T>>
+impl<T: RpcMessage, H: RpcHandler<T> + 'static> Handler<RpcEnvelope<T>>
     for RpcHandlerWrapper<T, H>
 {
     type Result = ActorResponse<Self, T::Item, T::Error>;
@@ -31,23 +33,20 @@ impl<T: RpcMessage, H: RpcHandler<T> + Unpin + 'static> Handler<RpcEnvelope<T>>
 
 pub struct RpcStreamHandlerWrapper<T, H>(pub(super) H, PhantomData<T>);
 
-impl<T: 'static, H: 'static + Unpin> Unpin for RpcHandlerWrapper<T, H> {}
-
-impl<T, H: Unpin> RpcStreamHandlerWrapper<T, H> {
+impl<T, H> RpcStreamHandlerWrapper<T, H> {
     pub fn new(h: H) -> Self {
         RpcStreamHandlerWrapper(h, PhantomData)
     }
 }
 
-impl<T: 'static, H: 'static + Unpin> Actor for RpcStreamHandlerWrapper<T, H>
-where
-    Self: Unpin,
-{
+impl<T: 'static, H: 'static> Actor for RpcStreamHandlerWrapper<T, H> {
     type Context = Context<Self>;
 }
 
-impl<T: RpcStreamMessage + Unpin, H: RpcStreamHandler<T> + Unpin + 'static>
-    Handler<RpcStreamCall<T>> for RpcStreamHandlerWrapper<T, H>
+impl<T: 'static, H: 'static> Unpin for RpcStreamHandlerWrapper<T, H> {}
+
+impl<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static> Handler<RpcStreamCall<T>>
+    for RpcStreamHandlerWrapper<T, H>
 {
     type Result = ActorResponse<Self, (), Error>;
 

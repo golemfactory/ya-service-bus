@@ -1,22 +1,12 @@
-use actix::{prelude::*, WrapFuture};
-use futures::{channel::oneshot, prelude::*};
 use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
 use crate::{Handle, RpcRawCall, RpcRawStreamCall};
-use actix::prelude::*;
-use futures::channel::oneshot;
-use futures::prelude::*;
-
-use actix::WrapFuture;
+use actix::{prelude::*, WrapFuture};
+use futures::{channel::oneshot, prelude::*};
 use std::collections::HashSet;
+use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
-
-use crate::{
-    connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
-    {error::Error, RpcRawCall},
-};
-use std::time::Duration;
 
 pub struct RemoteRouter {
     local_bindings: HashSet<String>,

@@ -34,23 +34,22 @@ use std::sync::{Arc, Mutex};
 ///  }
 ///
 #[inline]
-pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
+pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + Unpin + 'static) -> Handle {
     router().lock().unwrap().bind(addr, endpoint)
 }
 
 #[doc(hidden)]
-#[deprecated(note="use bind instead")]
+#[deprecated(note = "use bind instead")]
 pub fn bind_private<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
     let addr = format!("/private{}", addr);
     router().lock().unwrap().bind(&addr, endpoint)
 }
 #[doc(hidden)]
-#[deprecated(note="use bind instead")]
+#[deprecated(note = "use bind instead")]
 pub fn bind_public<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
     let addr = format!("/public{}", addr);
     router().lock().unwrap().bind(&addr, endpoint)
 }
-
 
 #[inline]
 pub fn bind_with_caller<T: RpcMessage, Output, F>(addr: &str, f: F) -> Handle
@@ -72,7 +71,7 @@ impl Endpoint {
         &self,
         msg: T,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
-        self.router.lock().unwrap().forward(&self.addr, msg)
+        self.router.lock().unwrap().forward(&self.addr, None, msg)
     }
 
     pub fn call_streaming<T: RpcStreamMessage>(
@@ -95,10 +94,9 @@ where
     fn send(&self, msg: T) -> Self::Result {
         Endpoint::call(self, msg).boxed_local()
     }
-
 }
 
-pub fn service<T: RpcMessage + Unpin>(addr: impl Into<String>) -> Endpoint {
+pub fn service(addr: impl Into<String>) -> Endpoint {
     Endpoint {
         router: router(),
         addr: addr.into(),

@@ -47,7 +47,7 @@ impl Endpoint {
     ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + Unpin + 'static
     {
         let mut b = self.router.lock().unwrap();
-        b.forward(self.addr.as_ref(), msg)
+        b.forward(self.addr.as_ref(), caller, msg)
     }
 
     pub fn call_stream<M: RpcStreamMessage>(
