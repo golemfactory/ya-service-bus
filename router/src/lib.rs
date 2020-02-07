@@ -76,12 +76,12 @@ where
         addr: A,
         sink: B,
     ) -> failure::Fallible<()> {
-        log::info!("Accepted connection from {}", addr);
+        log::debug!("Accepted connection from {}", addr);
         self.dispatcher.register(addr, sink)
     }
 
     pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
-        log::info!("Closing connection with {}", addr);
+        log::debug!("Closing connection with {}", addr);
         self.dispatcher.unregister(addr)?;
 
         // IDs of all endpoints registered by this server
@@ -91,7 +91,7 @@ where
         };
 
         service_ids.iter().for_each(|service_id| {
-            log::info!("unregistering service: {}", service_id);
+            log::debug!("unregistering service: {}", service_id);
             self.registered_endpoints.remove(service_id);
         });
 
@@ -175,7 +175,7 @@ where
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
-        log::info!(
+        log::debug!(
             "Received RegisterRequest from {}. service_id = {}",
             addr,
             &msg.service_id
@@ -204,12 +204,12 @@ where
                 }
             }
         };
-        log::info!("{}", msg.message);
+        log::trace!("register_endpoint msg: {}", msg.message);
         self.send_message(addr, msg)
     }
 
     fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> failure::Fallible<()> {
-        log::info!(
+        log::debug!(
             "Received UnregisterRequest from {}. service_id = {}",
             addr,
             &msg.service_id
@@ -221,7 +221,7 @@ where
                     .get_mut(addr)
                     .ok_or(failure::err_msg("Address not found"))?
                     .remove(&msg.service_id);
-                log::info!("Service successfully unregistered");
+                log::debug!("Service successfully unregistered");
                 UnregisterReply {
                     code: UnregisterReplyCode::UnregisteredOk as i32,
                 }
@@ -315,7 +315,7 @@ where
     }
 
     pub fn subscribe(&mut self, addr: &A, msg: SubscribeRequest) -> failure::Fallible<()> {
-        log::info!(
+        log::debug!(
             "Received SubscribeRequest from {} topic = {}",
             addr,
             &msg.topic
@@ -347,12 +347,12 @@ where
                 }
             }
         };
-        log::info!("{}", msg.message);
+        log::trace!("subscribe msg: {}", msg.message);
         self.send_message(addr, msg)
     }
 
     pub fn unsubscribe(&mut self, addr: &A, msg: UnsubscribeRequest) -> failure::Fallible<()> {
-        log::info!(
+        log::debug!(
             "Received UnsubscribeRequest from {} topic = {}",
             addr,
             &msg.topic
@@ -367,12 +367,12 @@ where
                 .get_mut(addr)
                 .ok_or(failure::err_msg("Address not found"))?
                 .remove(&msg.topic);
-            log::info!("Successfully unsubscribed");
+            log::debug!("Successfully unsubscribed");
             UnsubscribeReply {
                 code: UnsubscribeReplyCode::UnsubscribedOk as i32,
             }
         } else {
-            log::warn!("Not subscribed");
+            log::warn!("Addr {} not subscribed for topic: {}", addr, msg.topic);
             UnsubscribeReply {
                 code: UnsubscribeReplyCode::NotSubscribed as i32,
             }
