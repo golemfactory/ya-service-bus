@@ -6,7 +6,6 @@ use crate::error::Error;
 use crate::local_router::router;
 use crate::{ResponseChunk, RpcRawCall};
 use futures::stream::SplitSink;
-use futures::task::SpawnExt;
 
 use futures::StreamExt;
 use std::collections::{HashMap, VecDeque};
@@ -99,7 +98,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
-    writer: actix::io::SinkWrite<GsbMessage, W>,
+    writer: actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>,
     register_reply: VecDeque<oneshot::Sender<Result<(), Error>>>,
     call_reply: HashMap<String, oneshot::Sender<Result<Vec<u8>, Error>>>,
     handler: H,
@@ -119,7 +118,7 @@ where
 {
     fn new(w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
-            writer: io::SinkWrite::new(w, ctx),
+            writer: io::SinkWrite::new(w.buffer(256), ctx),
             register_reply: Default::default(),
             call_reply: Default::default(),
             handler,
@@ -132,6 +131,7 @@ where
         msg: String,
         ctx: &mut <Self as Actor>::Context,
     ) {
+        log::trace!("got reply: {}", msg);
         if let Some(r) = self.register_reply.pop_front() {
             let _ = match code {
                 RegisterReplyCode::RegisteredOk => r.send(Ok(())),
@@ -158,7 +158,12 @@ where
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) {
-        log::debug!("got call request_id={}, address={}", request_id, address);
+        log::debug!(
+            "handling call from = {}, to = {}, request_id={}, ",
+            caller,
+            address,
+            request_id
+        );
         let do_call = self
             .handler
             .do_call(request_id.clone(), caller, address, data)
@@ -204,7 +209,12 @@ where
         _reply_type: i32,
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
-    ) -> Result<(), failure::Error> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        log::debug!(
+            "handling replay for request_id={}, code={}",
+            request_id,
+            code
+        );
         if let Some(r) = self.call_reply.remove(&request_id) {
             // TODO: check error
             let _ = r.send(match code.try_into()? {
@@ -303,6 +313,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
+        log::info!("handling caller: {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,
@@ -331,11 +342,21 @@ where
         let (tx, rx) = oneshot::channel();
         self.register_reply.push_back(tx);
         let service_id = msg.addr;
-        let _r = self
+        match self
             .writer
-            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id }));
+            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id }))
+        {
+            Ok(()) => (),
+            Err(e) => return ActorResponse::reply(Err(Error::GsbFailure(e.to_string()))),
+        };
 
-        ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
+        ActorResponse::r#async(
+            async move {
+                rx.await??;
+                Ok(())
+            }
+            .into_actor(self),
+        )
     }
 }
 
@@ -370,9 +391,12 @@ impl<
         &self,
         addr: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
-        self.0
-            .send(Bind { addr: addr.into() })
-            .then(|v| async { v? })
+        let addr = addr.into();
+        log::info!("Binding remote service '{}'", addr);
+        self.0.send(Bind { addr }).then(|v| async {
+            log::trace!("send bind result: {:?}", v);
+            v?
+        })
     }
 
     pub fn call(

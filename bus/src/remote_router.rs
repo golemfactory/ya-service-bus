@@ -1,3 +1,5 @@
+use actix::{prelude::*, WrapFuture};
+use futures::{channel::oneshot, prelude::*};
 use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
 use crate::{Handle, RpcRawCall, RpcRawStreamCall};
@@ -8,11 +10,13 @@ use futures::prelude::*;
 use actix::WrapFuture;
 use std::collections::HashSet;
 
-static DEFAULT_URL: &str = "127.0.0.1:8245";
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
-fn gsb_addr() -> std::net::SocketAddr {
-    DEFAULT_URL.parse().unwrap()
-}
+use crate::{
+    connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
+    {error::Error, RpcRawCall},
+};
+use std::time::Duration;
 
 pub struct RemoteRouter {
     local_bindings: HashSet<String>,
@@ -24,15 +28,20 @@ impl Actor for RemoteRouter {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.try_connect(ctx)
+        self.try_connect(ctx);
+        let _ = ctx.run_later(CONNECT_TIMEOUT, |act, _ctx| {
+            if act.connection.is_none() {
+                act.pending_calls.clear();
+            }
+        });
     }
 }
 
 impl RemoteRouter {
     fn try_connect(&mut self, ctx: &mut <Self as Actor>::Context) {
-        let addr = gsb_addr();
+        let addr = ya_sb_proto::gsb_addr();
         let connect_fut = connection::tcp(addr)
-            .map_err(Error::BusConnectionFail)
+            .map_err(move |e| Error::BusConnectionFail(addr, e))
             .into_actor(self)
             .then(|tcp_transport, act, ctx| {
                 let tcp_transport = match tcp_transport {
@@ -49,11 +58,16 @@ impl RemoteRouter {
                             .into_iter()
                             .map(move |service_id| connection.bind(service_id)),
                     )
-                    .and_then(|_| async { Ok(log::info!("registed all services")) })
+                    .and_then(|_| async { Ok(log::info!("registered all services")) })
                     .into_actor(act),
                 )
             })
-            .then(|_v: Result<(), Error>, _, _| fut::ready(()));
+            .then(|v: Result<(), Error>, _, _| {
+                if let Err(e) = v {
+                    log::warn!("routing error: {}", e);
+                }
+                fut::ready(())
+            });
 
         ctx.spawn(connect_fut);
     }
@@ -118,11 +132,12 @@ impl Handler<UpdateService> for RemoteRouter {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
                     Arbiter::spawn(
-                        c.bind(service_id.clone()).then(|v| {
-                            async { v.unwrap_or_else(|e| log::error!("bind error: {}", e)) }
+                        c.bind(service_id.clone()).then(|v| async {
+                            v.unwrap_or_else(|e| log::error!("bind error: {}", e))
                         }),
                     )
                 }
+                log::info!("Binding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);
             }
             UpdateService::Remove(service_id) => {

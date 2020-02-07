@@ -1,7 +1,8 @@
-use failure::Error;
-use futures::prelude::*;
 use serde::{Deserialize, Serialize};
-use ya_service_bus::{typed as bus, RpcMessage, RpcStreamMessage};
+use std::env;
+
+use std::error::Error;
+use ya_service_bus::{typed as bus, RpcMessage};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
@@ -12,19 +13,13 @@ impl RpcMessage for Ping {
     type Error = ();
 }
 
-impl RpcStreamMessage for Ping {
-    const ID: &'static str = "ping";
-    type Item = String;
-    type Error = ();
-}
-
-async fn server() -> Result<(), Error> {
+async fn server() -> Result<(), Box<dyn Error>> {
     log::info!("starting");
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
 
     let mut txh = Some(tx);
     let quit = move |_p: Ping| {
-        let mut tx = txh.take().unwrap();
+        let tx = txh.take().unwrap();
         async move {
             eprintln!("quit!!");
             let _ = tx.send(());
@@ -34,27 +29,19 @@ async fn server() -> Result<(), Error> {
         }
     };
 
-    let _ = bus::bind("/local/test", |p: Ping| {
-        async move {
-            eprintln!("got ping: {:?}", p.0);
-            Ok(format!("pong {}", p.0))
-        }
+    let _ = bus::bind_private("/test", |p: Ping| async move {
+        eprintln!("test!!");
+        Ok(format!("pong {}", p.0))
     });
-    let _ = bus::bind("/local/quit", quit);
-    let _ = bus::bind_streaming("/local/stream", |p: Ping| {
-        let s = async_stream::stream! {
-            for i in 0..3 {
-                yield Ok(format!("ack {}", i))
-            }
-        };
-        Box::pin(s)
-    });
+    let _ = bus::bind_private("/quit", quit);
 
     let _ = rx.await;
     Ok(())
 }
 
-fn main() -> Result<(), Error> {
+#[actix_rt::main]
+async fn main() -> Result<(), Box<dyn Error>> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
-    actix::System::new("w").block_on(server())
+    server().await
 }

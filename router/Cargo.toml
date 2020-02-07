@@ -7,16 +7,18 @@ edition = "2018"
 [dependencies]
 ya-sb-proto = "0.1"
 ya-sb-util = "0.1"
+
 bytes = "0.4.12"
 failure = "0.1.6"
-futures = { version = "0.3" }
-lazy_static = "1.4.0"
+futures = "0.3"
+log = "0.4.8"
 prost = "0.5.0"
 structopt = "0.3"
-tokio = {version="0.2", features=["tcp", "sync", "macros", "rt-core", "stream"]}
+tokio = { version = "0.2", features = ["tcp", "sync", "macros", "rt-core", "stream"] }
 tokio-util = "0.2.0"
 uuid = { version = "0.8.1", features = ["v4"] }
-log = "0.4.8"
 
 [dev-dependencies]
-flexi_logger= "0.14.5"
+env_logger = "0.7"
+tokio = { version = "0.2", features = ["signal"] }
+ya-service-api = "0.1"

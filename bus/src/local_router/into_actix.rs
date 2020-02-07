@@ -25,11 +25,7 @@ impl<T: RpcMessage, H: RpcHandler<T> + Unpin + 'static> Handler<RpcEnvelope<T>>
     type Result = ActorResponse<Self, T::Item, T::Error>;
 
     fn handle(&mut self, msg: RpcEnvelope<T>, _ctx: &mut Self::Context) -> Self::Result {
-        ActorResponse::r#async(
-            self.0
-                .handle(msg.caller.as_str(), msg.body)
-                .into_actor(self),
-        )
+        ActorResponse::r#async(self.0.handle(msg.caller, msg.body).into_actor(self))
     }
 }
 

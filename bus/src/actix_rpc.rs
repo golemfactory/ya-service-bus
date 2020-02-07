@@ -1,14 +1,15 @@
-/// Using GSB with actix 0.8
-use super::error::Error as BusError;
-use super::Handle;
-use crate::local_router::{router, Router};
-use crate::{RpcEnvelope, RpcMessage, RpcStreamCall, RpcStreamMessage};
+/// Using GSB with actix 0.9
+use crate::{RpcStreamCall, RpcStreamMessage};
 use actix::prelude::*;
-use futures::prelude::*;
-
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};
+
+use crate::local_router::{router, Router};
+use crate::{RpcEnvelope, RpcMessage};
+
+use super::error::Error as BusError;
+use super::Handle;
 
 pub fn bind<M: RpcMessage>(addr: &str, actor: Recipient<RpcEnvelope<M>>) -> Handle
 where
@@ -28,7 +29,7 @@ where
 
 pub fn service(addr: &str) -> Endpoint {
     Endpoint {
-        addr: addr.into(),
+        addr: addr.to_string(),
         router: router(),
     }
 }
@@ -41,6 +42,7 @@ pub struct Endpoint {
 impl Endpoint {
     pub fn send<M: RpcMessage + Serialize + DeserializeOwned + Sync + Send + Unpin>(
         &self,
+        caller: Option<String>,
         msg: M,
     ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + Unpin + 'static
     {

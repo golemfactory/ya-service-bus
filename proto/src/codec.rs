@@ -5,23 +5,40 @@ use prost::Message;
 
 use crate::gsb_api::*;
 use crate::{MessageHeader, MessageType};
+use thiserror::Error;
 
 use tokio_util::codec::{Decoder, Encoder};
 use ya_sb_util::bytes::BytesCompat;
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
-pub type ProtocolError = failure::Error;
+#[derive(Debug, Error)]
+pub enum ProtocolError {
+    #[error("Unrecognized message type: {0}")]
+    UnrecognizedMessageType(i32),
+    #[error("Cannot decode message header: not enough bytes")]
+    HeaderNotEnoughBytes,
+    #[error("{0}")]
+    Io(#[from] std::io::Error),
+    #[error("encode error: {0}")]
+    Encode(#[from] prost::EncodeError),
+    #[error("decode {0}")]
+    Decode(#[from] prost::DecodeError),
+    #[error("{0}")]
+    RecvError(#[from] tokio::sync::mpsc::error::RecvError),
+    #[error("packet too big")]
+    MsgTooBig,
+}
 
 trait Encodable {
     // This trait exists because prost::Message has template methods
 
-    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()>;
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> Result<(), ProtocolError>;
     fn encoded_len_(&self) -> usize;
 }
 
 impl<T: Message> Encodable for T {
-    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> failure::Fallible<()> {
+    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> Result<(), ProtocolError> {
         let mut c = buf.compat();
         Ok(self.encode(&mut c)?)
     }
@@ -39,6 +56,12 @@ pub enum GsbMessage {
     UnregisterReply(UnregisterReply),
     CallRequest(CallRequest),
     CallReply(CallReply),
+    SubscribeRequest(SubscribeRequest),
+    SubscribeReply(SubscribeReply),
+    UnsubscribeRequest(UnsubscribeRequest),
+    UnsubscribeReply(UnsubscribeReply),
+    BroadcastRequest(BroadcastRequest),
+    BroadcastReply(BroadcastReply),
 }
 
 impl GsbMessage {
@@ -50,6 +73,12 @@ impl GsbMessage {
             GsbMessage::UnregisterReply(msg) => (MessageType::UnregisterReply, Box::new(msg)),
             GsbMessage::CallRequest(msg) => (MessageType::CallRequest, Box::new(msg)),
             GsbMessage::CallReply(msg) => (MessageType::CallReply, Box::new(msg)),
+            GsbMessage::SubscribeRequest(msg) => (MessageType::SubscribeRequest, Box::new(msg)),
+            GsbMessage::SubscribeReply(msg) => (MessageType::SubscribeReply, Box::new(msg)),
+            GsbMessage::UnsubscribeRequest(msg) => (MessageType::UnsubscribeRequest, Box::new(msg)),
+            GsbMessage::UnsubscribeReply(msg) => (MessageType::UnsubscribeReply, Box::new(msg)),
+            GsbMessage::BroadcastRequest(msg) => (MessageType::BroadcastRequest, Box::new(msg)),
+            GsbMessage::BroadcastReply(msg) => (MessageType::BroadcastReply, Box::new(msg)),
         }
     }
 }
@@ -90,7 +119,43 @@ impl Into<GsbMessage> for CallReply {
     }
 }
 
-fn decode_header(src: &mut tokio_bytes::BytesMut) -> failure::Fallible<Option<MessageHeader>> {
+impl Into<GsbMessage> for SubscribeRequest {
+    fn into(self) -> GsbMessage {
+        GsbMessage::SubscribeRequest(self)
+    }
+}
+
+impl Into<GsbMessage> for SubscribeReply {
+    fn into(self) -> GsbMessage {
+        GsbMessage::SubscribeReply(self)
+    }
+}
+
+impl Into<GsbMessage> for UnsubscribeRequest {
+    fn into(self) -> GsbMessage {
+        GsbMessage::UnsubscribeRequest(self)
+    }
+}
+
+impl Into<GsbMessage> for UnsubscribeReply {
+    fn into(self) -> GsbMessage {
+        GsbMessage::UnsubscribeReply(self)
+    }
+}
+
+impl Into<GsbMessage> for BroadcastRequest {
+    fn into(self) -> GsbMessage {
+        GsbMessage::BroadcastRequest(self)
+    }
+}
+
+impl Into<GsbMessage> for BroadcastReply {
+    fn into(self) -> GsbMessage {
+        GsbMessage::BroadcastReply(self)
+    }
+}
+
+fn decode_header(src: &mut tokio_bytes::BytesMut) -> Result<Option<MessageHeader>, ProtocolError> {
     if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
     } else {
@@ -102,8 +167,11 @@ fn decode_header(src: &mut tokio_bytes::BytesMut) -> failure::Fallible<Option<Me
 fn decode_message(
     src: &mut tokio_bytes::BytesMut,
     header: &MessageHeader,
-) -> failure::Fallible<Option<GsbMessage>> {
-    let msg_length = header.msg_length.try_into()?;
+) -> Result<Option<GsbMessage>, ProtocolError> {
+    let msg_length = header
+        .msg_length
+        .try_into()
+        .map_err(|_| ProtocolError::MsgTooBig)?;
     if src.len() < msg_length {
         Ok(None)
     } else {
@@ -116,20 +184,22 @@ fn decode_message(
             Some(MessageType::UnregisterReply) => UnregisterReply::decode(buf.as_ref())?.into(),
             Some(MessageType::CallRequest) => CallRequest::decode(buf.as_ref())?.into(),
             Some(MessageType::CallReply) => CallReply::decode(buf.as_ref())?.into(),
-            None => {
-                return Err(failure::err_msg(format!(
-                    "Unrecognized message type: {}",
-                    header.msg_type
-                )))
+            Some(MessageType::SubscribeRequest) => SubscribeRequest::decode(buf.as_ref())?.into(),
+            Some(MessageType::SubscribeReply) => SubscribeReply::decode(buf.as_ref())?.into(),
+            Some(MessageType::UnsubscribeRequest) => {
+                UnsubscribeRequest::decode(buf.as_ref())?.into()
             }
+            Some(MessageType::UnsubscribeReply) => UnsubscribeReply::decode(buf.as_ref())?.into(),
+            Some(MessageType::BroadcastRequest) => BroadcastRequest::decode(buf.as_ref())?.into(),
+            Some(MessageType::BroadcastReply) => BroadcastReply::decode(buf.as_ref())?.into(),
+            None => return Err(ProtocolError::UnrecognizedMessageType(header.msg_type)),
         };
         Ok(Some(msg))
     }
 }
 
-fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> failure::Fallible<()> {
+fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> Result<(), ProtocolError> {
     let (msg_type, msg) = msg.unpack();
-    //let mut dst_vec = dst.compat();
     encode_message_unpacked(dst, msg_type, msg.as_ref())?;
     Ok(())
 }
@@ -138,7 +208,7 @@ fn encode_message_unpacked(
     dst: &mut tokio_bytes::BytesMut,
     msg_type: MessageType,
     msg: &dyn Encodable,
-) -> failure::Fallible<()> {
+) -> Result<(), ProtocolError> {
     let msg_type = msg_type as i32;
     let msg_length = msg.encoded_len_() as u32;
     let header = MessageHeader {
@@ -163,7 +233,7 @@ impl GsbMessageDecoder {
 
 impl Decoder for GsbMessageDecoder {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn decode(
         &mut self,
@@ -193,7 +263,7 @@ pub struct GsbMessageEncoder;
 
 impl Encoder for GsbMessageEncoder {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn encode(
         &mut self,
@@ -212,7 +282,7 @@ pub struct GsbMessageCodec {
 
 impl Encoder for GsbMessageCodec {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn encode(
         &mut self,
@@ -225,7 +295,7 @@ impl Encoder for GsbMessageCodec {
 
 impl Decoder for GsbMessageCodec {
     type Item = GsbMessage;
-    type Error = failure::Error;
+    type Error = ProtocolError;
 
     fn decode(
         &mut self,

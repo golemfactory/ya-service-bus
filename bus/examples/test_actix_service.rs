@@ -1,26 +1,16 @@
 use actix::prelude::*;
-use failure::_core::time::Duration;
-use futures::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::fs::OpenOptions;
-use std::path::PathBuf;
+use std::{env, fs::OpenOptions, path::PathBuf};
 use structopt::StructOpt;
-use ya_service_bus::{
-    actix_rpc, untyped, Error, Handle, RpcMessage, RpcStreamCall, RpcStreamMessage,
-};
-use futures::SinkExt;
-use futures::task::Poll;
+
+use std::error::Error;
+use std::time::Duration;
+use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
 
 impl RpcMessage for Ping {
-    const ID: &'static str = "ping";
-    type Item = String;
-    type Error = ();
-}
-
-impl RpcStreamMessage for Ping {
     const ID: &'static str = "ping";
     type Item = String;
     type Error = ();
@@ -51,7 +41,7 @@ enum Command {
 #[derive(Serialize, Deserialize, Debug)]
 struct Execute(Vec<Command>);
 
-impl RpcStreamMessage for Execute {
+impl RpcMessage for Execute {
     const ID: &'static str = "execute";
     type Item = String;
     type Error = String;
@@ -64,34 +54,19 @@ impl Actor for ExeUnit {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.0 = Some(actix_rpc::binds::<Execute>(
+        self.0 = Some(actix_rpc::bind::<Execute>(
             SERVICE_ID,
             ctx.address().recipient(),
         ))
     }
 }
 
-impl Handler<RpcStreamCall<Execute>> for ExeUnit {
-    type Result = ActorResponse<Self, (), Error>;
+impl Handler<RpcEnvelope<Execute>> for ExeUnit {
+    type Result = Result<String, String>;
 
-    fn handle(&mut self, msg: RpcStreamCall<Execute>, _ctx: &mut Self::Context) -> Self::Result {
-        eprintln!("got {:?}", msg.body);
-        let mut it = msg.body.0.into_iter();
-        let reply = msg.reply;
-        let mut s = stream::poll_fn(move |_| -> Poll<Option<Result<Result<String, String>, Error>>>{
-            if let Some(command) = it.next() {
-                Poll::Ready(Some(Ok(Ok(format!("{:?}", command)))))
-            } else {
-                Poll::Ready(None)
-            }
-        });
-
-        ActorResponse::r#async(async move {
-            let v = reply.sink_map_err(|_| Error::Closed).
-                send_all(&mut s).await;
-            eprintln!("r={:?}", v);
-            Ok(())
-        }.into_actor(self))
+    fn handle(&mut self, msg: RpcEnvelope<Execute>, _ctx: &mut Self::Context) -> Self::Result {
+        eprintln!("got {:?}", msg.as_ref());
+        Ok(format!("{:?}", msg.into_inner()))
     }
 }
 
@@ -113,30 +88,20 @@ enum Args {
         dst: String,
         msg: String,
     },
-    Pings {
-        dst: String,
-        msg: String,
-    },
 }
 
-fn run_script(script: PathBuf) -> impl Future<Output = Result<Vec<String>, failure::Error>> {
+fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Error>>> {
     async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        let result: Result<Vec<_>, _> = actix_rpc::service(SERVICE_ID)
-            .call_stream(Execute(commands))
-            .try_collect()
-            .await;
-
-        let it = result?;
-
-        it.into_iter().collect::<Result<Vec<_>,_>>().map_err(|_| failure::err_msg("invalid"))
-
-        //result.)
+        let result = actix_rpc::service(SERVICE_ID)
+            .send(None, Execute(commands))
+            .await?;
+        result.map_err(From::from)
     }
 }
 
-async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failure::Error> {
+async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, Box<dyn Error>> {
     let bytes = rmp_serde::to_vec(&serde_json::from_slice::<Vec<Command>>(
         std::fs::read(script)?.as_slice(),
     )?)?;
@@ -152,7 +117,8 @@ async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, failu
     )?)
 }
 
-fn main() -> failure::Fallible<()> {
+fn main() -> Result<(), Box<dyn Error>> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     let mut sys = System::new("test");
     let args = Args::from_args();
@@ -167,18 +133,10 @@ fn main() -> failure::Fallible<()> {
             eprintln!("got result: {:?}", result);
         }
         Args::Ping { dst, msg } => {
-            let result = sys.block_on(actix_rpc::service(&dst).send(Ping(msg)))?;
+            let result = sys.block_on(actix_rpc::service(&dst).send(None, Ping(msg)))?;
             eprintln!("got result: {:?}", result);
         }
 
-        Args::Pings { dst, msg } => {
-            let result = sys.block_on(
-                actix_rpc::service(&dst)
-                    .call_stream(Ping(msg))
-                    .try_for_each(|result| future::ok(eprintln!("got result: {:?}", result))),
-            )?;
-            eprintln!("done = {:?}", result);
-        }
         Args::Local { script } => {
             let _ = ExeUnit::default().start();
 

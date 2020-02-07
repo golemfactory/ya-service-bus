@@ -37,6 +37,7 @@ trait RawEndpoint: Any {
 // Implementation for non-streaming service
 impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
     fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+        // TODO: do not panic with unwrap, but rather return Error
         let body: T = rmp_serde::decode::from_read(msg.body.as_slice()).unwrap();
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
@@ -288,6 +289,7 @@ impl Router {
     ) -> Handle {
         let slot = Slot::from_handler(endpoint);
         let addr = format!("{}/{}", addr, T::ID);
+        log::debug!("binding {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
         Handle { _inner: () }
@@ -333,40 +335,33 @@ impl Router {
     pub fn forward<T: RpcMessage + Unpin>(
         &mut self,
         addr: &str,
+        caller: Option<String>,
         msg: T,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
-        let caller = "local";
+        let caller = caller.unwrap_or("local".into());
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
             (if let Some(h) = slot.recipient() {
-                h.send(RpcEnvelope::local(msg))
+                h.send(RpcEnvelope::with_caller(caller, msg))
                     .map_err(Error::from)
                     .left_future()
             } else {
                 let body = rmp_serde::to_vec(&msg).unwrap();
-                slot.send(RpcRawCall {
-                    caller: caller.into(),
-                    addr,
-                    body,
-                })
-                .then(|b| {
-                    future::ready(match b {
-                        Ok(b) => rmp_serde::from_read_ref(&b).map_err(From::from),
-                        Err(e) => Err(e),
+                slot.send(RpcRawCall { caller, addr, body })
+                    .then(|b| {
+                        future::ready(match b {
+                            Ok(b) => rmp_serde::from_read_ref(&b).map_err(From::from),
+                            Err(e) => Err(e),
+                        })
                     })
-                })
-                .right_future()
+                    .right_future()
             })
             .left_future()
         } else {
             let body = rmp_serde::to_vec(&msg).unwrap();
 
             RemoteRouter::from_registry()
-                .send(RpcRawCall {
-                    caller: caller.into(),
-                    addr,
-                    body,
-                })
+                .send(RpcRawCall { caller, addr, body })
                 .then(|v| {
                     future::ready(match v {
                         Ok(v) => v,

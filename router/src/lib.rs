@@ -12,83 +12,22 @@ use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
-struct MessageDispatcher<A, M, E>
-where
-    A: Hash + Eq,
-{
-    senders: HashMap<A, mpsc::Sender<Result<M, E>>>,
-}
-
-impl<A, M, E> MessageDispatcher<A, M, E>
-where
-    A: Hash + Eq,
-    M: Send + 'static,
-    E: Send + 'static + From<mpsc::error::RecvError> + Debug,
-{
-    fn new() -> Self {
-        MessageDispatcher {
-            senders: HashMap::new(),
-        }
-    }
-
-    fn register<B: Sink<M, Error = E> + Send + 'static>(
-        &mut self,
-        addr: A,
-        sink: B,
-    ) -> failure::Fallible<()> {
-        match self.senders.entry(addr) {
-            Entry::Occupied(_) => Err(failure::err_msg("Sender already registered")),
-            Entry::Vacant(entry) => {
-                let (tx, rx) = mpsc::channel(1000);
-                tokio::spawn(async move {
-                    let mut rx = rx;
-                    futures::pin_mut!(sink);
-                    if let Err(e) = sink.send_all(&mut rx).await {
-                        log::error!("Send failed: {:?}", e)
-                    }
-                });
-                entry.insert(tx);
-                Ok(())
-            }
-        }
-    }
-
-    fn unregister(&mut self, addr: &A) -> failure::Fallible<()> {
-        match self.senders.remove(addr) {
-            None => Err(failure::err_msg("Sender not registered")),
-            Some(_) => Ok(()),
-        }
-    }
-
-    fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
-    where
-        T: Into<M>,
-    {
-        match self.senders.get_mut(addr) {
-            None => Err(failure::err_msg("Sender not registered")),
-            Some(sender) => {
-                let sender = sender.clone();
-                let msg = msg.into();
-                tokio::spawn(async move {
-                    futures::pin_mut!(sender);
-                    let _ = sender
-                        .send(Ok(msg))
-                        .await
-                        .unwrap_or_else(|e| log::error!("Send message failed: {}", e));
-                });
-                Ok(())
-            }
-        }
-    }
-}
+mod dispatcher;
 
 type ServiceId = String;
 type RequestId = String;
+type TopicId = String;
 
 fn is_valid_service_id(service_id: &ServiceId) -> bool {
     service_id
         .chars()
         .all(|c| c.is_ascii_alphanumeric() || c == '/' || c == '_' || c == '-')
+}
+
+fn is_valid_topic_id(topic_id: &TopicId) -> bool {
+    topic_id
+        .chars()
+        .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
 struct PendingCall<A>
@@ -103,12 +42,14 @@ pub struct Router<A, M, E>
 where
     A: Hash + Eq,
 {
-    dispatcher: MessageDispatcher<A, M, E>,
+    dispatcher: dispatcher::MessageDispatcher<A, M, E>,
     registered_endpoints: PrefixLookupBag<A>,
     reversed_endpoints: HashMap<A, HashSet<ServiceId>>,
     pending_calls: HashMap<RequestId, PendingCall<A>>,
     client_calls: HashMap<A, HashSet<RequestId>>,
     endpoint_calls: HashMap<ServiceId, HashSet<RequestId>>,
+    topic_subscriptions: HashMap<TopicId, HashSet<A>>,
+    reversed_subscriptions: HashMap<A, HashSet<TopicId>>,
 }
 
 impl<A, M, E> Router<A, M, E>
@@ -119,12 +60,14 @@ where
 {
     pub fn new() -> Self {
         Router {
-            dispatcher: MessageDispatcher::new(),
+            dispatcher: dispatcher::MessageDispatcher::new(),
             registered_endpoints: PrefixLookupBag::default(),
             reversed_endpoints: HashMap::new(),
             pending_calls: HashMap::new(),
             client_calls: HashMap::new(),
             endpoint_calls: HashMap::new(),
+            topic_subscriptions: HashMap::new(),
+            reversed_subscriptions: HashMap::new(),
         }
     }
 
@@ -133,12 +76,12 @@ where
         addr: A,
         sink: B,
     ) -> failure::Fallible<()> {
-        println!("Accepted connection from {}", addr);
+        log::info!("Accepted connection from {}", addr);
         self.dispatcher.register(addr, sink)
     }
 
     pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
-        log::info!("Closed connection with {}", addr);
+        log::info!("Closing connection with {}", addr);
         self.dispatcher.unregister(addr)?;
 
         // IDs of all endpoints registered by this server
@@ -148,6 +91,7 @@ where
         };
 
         service_ids.iter().for_each(|service_id| {
+            log::info!("unregistering service: {}", service_id);
             self.registered_endpoints.remove(service_id);
         });
 
@@ -182,10 +126,7 @@ where
                     reply_type: CallReplyType::Full as i32,
                     data: "Service disconnected".to_owned().into_bytes(),
                 };
-                match self.send_message(&pending_call.caller_addr, msg) {
-                    Err(err) => log::error!("Send message failed: {:?}", err),
-                    _ => (),
-                };
+                self.send_message_safe(&pending_call.caller_addr, msg);
             });
 
         // Remove all pending calls coming from this client
@@ -202,6 +143,19 @@ where
             Entry::Vacant(_) => {}
         }
 
+        // Unsubscribe from all topics
+        match self.reversed_subscriptions.entry(addr.clone()) {
+            Entry::Occupied(entry) => {
+                entry.remove().drain().for_each(|topic_id| {
+                    self.topic_subscriptions
+                        .get_mut(&topic_id)
+                        .unwrap()
+                        .remove(&addr);
+                });
+            }
+            Entry::Vacant(_) => {}
+        }
+
         Ok(())
     }
 
@@ -210,6 +164,14 @@ where
         T: Into<GsbMessage>,
     {
         self.dispatcher.send_message(addr, msg.into())
+    }
+
+    fn send_message_safe<T>(&mut self, addr: &A, msg: T) -> ()
+    where
+        T: Into<GsbMessage>,
+    {
+        self.send_message(addr, msg)
+            .unwrap_or_else(|err| log::error!("Send message failed: {:?}", err));
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
@@ -227,22 +189,22 @@ where
             match self.registered_endpoints.entry(msg.service_id.clone()) {
                 Entry::Occupied(_) => RegisterReply {
                     code: RegisterReplyCode::RegisterConflict as i32,
-                    message: "Service ID already registered".to_string(),
+                    message: format!("Service ID '{}' already registered", msg.service_id),
                 },
                 Entry::Vacant(entry) => {
                     entry.insert(addr.clone());
                     self.reversed_endpoints
                         .entry(addr.clone())
                         .or_insert_with(|| HashSet::new())
-                        .insert(msg.service_id);
+                        .insert(msg.service_id.clone());
                     RegisterReply {
                         code: RegisterReplyCode::RegisteredOk as i32,
-                        message: "Service successfully registered".to_string(),
+                        message: format!("Service ID '{}' successfully registered", msg.service_id),
                     }
                 }
             }
         };
-        log::debug!("{}", msg.message);
+        log::info!("{}", msg.message);
         self.send_message(addr, msg)
     }
 
@@ -352,12 +314,111 @@ where
         }
     }
 
+    pub fn subscribe(&mut self, addr: &A, msg: SubscribeRequest) -> failure::Fallible<()> {
+        log::info!(
+            "Received SubscribeRequest from {} topic = {}",
+            addr,
+            &msg.topic
+        );
+        let msg = if !is_valid_topic_id(&msg.topic) {
+            SubscribeReply {
+                code: SubscribeReplyCode::SubscribeBadRequest as i32,
+                message: "Invalid topic ID".to_string(),
+            }
+        } else {
+            if self
+                .topic_subscriptions
+                .entry(msg.topic.clone())
+                .or_insert_with(|| HashSet::new())
+                .insert(addr.clone())
+            {
+                self.reversed_subscriptions
+                    .entry(addr.clone())
+                    .or_insert_with(|| HashSet::new())
+                    .insert(msg.topic);
+                SubscribeReply {
+                    code: SubscribeReplyCode::SubscribedOk as i32,
+                    message: "Successfully subscribed to topic".to_string(),
+                }
+            } else {
+                SubscribeReply {
+                    code: SubscribeReplyCode::SubscribeBadRequest as i32,
+                    message: "Already subscribed".to_string(),
+                }
+            }
+        };
+        log::info!("{}", msg.message);
+        self.send_message(addr, msg)
+    }
+
+    pub fn unsubscribe(&mut self, addr: &A, msg: UnsubscribeRequest) -> failure::Fallible<()> {
+        log::info!(
+            "Received UnsubscribeRequest from {} topic = {}",
+            addr,
+            &msg.topic
+        );
+        let msg = if self
+            .topic_subscriptions
+            .entry(msg.topic.clone())
+            .or_insert_with(|| HashSet::new())
+            .remove(addr)
+        {
+            self.reversed_subscriptions
+                .get_mut(addr)
+                .ok_or(failure::err_msg("Address not found"))?
+                .remove(&msg.topic);
+            log::info!("Successfully unsubscribed");
+            UnsubscribeReply {
+                code: UnsubscribeReplyCode::UnsubscribedOk as i32,
+            }
+        } else {
+            log::warn!("Not subscribed");
+            UnsubscribeReply {
+                code: UnsubscribeReplyCode::NotSubscribed as i32,
+            }
+        };
+        self.send_message(addr, msg)
+    }
+
+    pub fn broadcast(&mut self, addr: &A, msg: BroadcastRequest) -> failure::Fallible<()> {
+        log::debug!(
+            "Received BroadcastRequest from {} topic = {}",
+            addr,
+            &msg.topic
+        );
+        let reply = if is_valid_topic_id(&msg.topic) {
+            BroadcastReply {
+                code: BroadcastReplyCode::BroadcastOk as i32,
+                message: "OK".to_string(),
+            }
+        } else {
+            BroadcastReply {
+                code: BroadcastReplyCode::BroadcastBadRequest as i32,
+                message: "Invalid topic ID".to_string(),
+            }
+        };
+        self.send_message_safe(addr, reply);
+
+        let subscribers = match self.topic_subscriptions.get(&msg.topic) {
+            Some(subscribers) => subscribers.iter().map(|a| a.clone()).collect(),
+            None => vec![],
+        };
+        subscribers.iter().for_each(|addr| {
+            self.send_message_safe(addr, msg.clone());
+        });
+
+        Ok(())
+    }
+
     pub fn handle_message(&mut self, addr: A, msg: GsbMessage) -> failure::Fallible<()> {
         match msg {
             GsbMessage::RegisterRequest(msg) => self.register_endpoint(&addr, msg),
             GsbMessage::UnregisterRequest(msg) => self.unregister_endpoint(&addr, msg),
             GsbMessage::CallRequest(msg) => self.call(&addr, msg),
             GsbMessage::CallReply(msg) => self.reply(&addr, msg),
+            GsbMessage::SubscribeRequest(msg) => self.subscribe(&addr, msg),
+            GsbMessage::UnsubscribeRequest(msg) => self.unsubscribe(&addr, msg),
+            GsbMessage::BroadcastRequest(msg) => self.broadcast(&addr, msg),
             _ => Err(failure::err_msg(format!(
                 "Unexpected message received: {:?}",
                 msg
@@ -366,38 +427,54 @@ where
     }
 }
 
-pub async fn bind_router(addr: SocketAddr) {
+pub async fn bind_gsb_router() -> Result<(), std::io::Error> {
+    bind_router(gsb_addr()).await
+}
+
+pub async fn bind_router(addr: SocketAddr) -> Result<(), std::io::Error> {
     let mut listener = TcpListener::bind(&addr)
-        .await
-        .expect(&format!("Unable to bind TCP listener at {}", addr));
+        .map_err(|e| {
+            log::error!("Failed to bind TCP listener at {}: {}", addr, e);
+            e
+        })
+        .await?;
+
     let router = Arc::new(Mutex::new(Router::new()));
 
-    let _ = listener
-        .incoming()
-        .map_err(|e| log::error!("Accept failed: {:?}", e))
-        .try_for_each(move |sock| {
-            let addr = sock.peer_addr().unwrap();
-            let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
-            router
-                .lock()
-                .unwrap()
-                .connect(addr.clone(), writer)
-                .unwrap();
-            let router1 = router.clone();
-            let router2 = router.clone();
+    log::info!("Router listening on: {}", addr);
 
-            let _ = tokio::spawn(
-                reader
-                    .map_err(From::from)
-                    .try_for_each(move |msg: GsbMessage| {
-                        future::ready(router1.lock().unwrap().handle_message(addr.clone(), msg))
-                    })
-                    .and_then(move |_| future::ready(router2.lock().unwrap().disconnect(&addr)))
-                    .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
-            );
-            future::ok(())
-        })
-        .await;
+    let _ = tokio::spawn(async move {
+        listener
+            .incoming()
+            .map_err(|e| {
+                log::error!("Accept failed: {:?}", e);
+                e
+            })
+            .try_for_each(move |sock| {
+                let addr = sock.peer_addr().unwrap();
+                let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
+                router
+                    .lock()
+                    .unwrap()
+                    .connect(addr.clone(), writer)
+                    .unwrap();
+                let router1 = router.clone();
+                let router2 = router.clone();
+
+                let _ = tokio::spawn(
+                    reader
+                        .map_err(From::from)
+                        .try_for_each(move |msg: GsbMessage| {
+                            future::ready(router1.lock().unwrap().handle_message(addr.clone(), msg))
+                        })
+                        .and_then(move |_| future::ready(router2.lock().unwrap().disconnect(&addr)))
+                        .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
+                );
+                future::ok(())
+            })
+            .await
+    });
+    Ok(())
 }
 
 pub async fn tcp_connect(
@@ -409,8 +486,4 @@ pub async fn tcp_connect(
     let sock = TcpStream::connect(&addr).await.expect("Connect failed");
     let framed = tokio_util::codec::Framed::new(sock, GsbMessageCodec::default());
     framed.split()
-    /*let (reader, writer) = sock.split();
-    let reader = FramedRead::new(reader, GsbMessageDecoder::new());
-    let writer = FramedWrite::new(writer, GsbMessageEncoder {});
-    (reader, writer)*/
 }

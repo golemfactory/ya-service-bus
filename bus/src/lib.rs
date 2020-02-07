@@ -34,6 +34,7 @@ pub struct RpcEnvelope<T> {
     body: T,
 }
 
+#[derive(Debug)]
 pub struct RpcStreamCall<T: RpcStreamMessage> {
     pub caller: String,
     pub addr: String,
@@ -135,7 +136,7 @@ pub trait RpcEndpoint<T: RpcMessage>: Clone {
 pub trait RpcHandler<T: RpcMessage> {
     type Result: Future<Output = <RpcEnvelope<T> as Message>::Result> + 'static;
 
-    fn handle(&mut self, caller: &str, msg: T) -> Self::Result;
+    fn handle(&mut self, caller: String, msg: T) -> Self::Result;
 }
 
 pub trait RpcStreamHandler<T: RpcStreamMessage> {

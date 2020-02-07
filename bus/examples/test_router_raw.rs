@@ -1,9 +1,8 @@
 use actix::prelude::*;
-use failure::Fallible;
 use futures::prelude::*;
 
-use std::path::PathBuf;
-use std::time::Duration;
+use std::error::Error;
+use std::{env, path::PathBuf, time::Duration};
 use structopt::StructOpt;
 use ya_service_bus::connection;
 use ya_service_bus::connection::LocalRouterHandler;
@@ -16,35 +15,35 @@ enum Args {
     Client { script: PathBuf },
 }
 
-fn main() -> Fallible<()> {
-    let bus_addr = "127.0.0.1:8245".parse().unwrap();
+fn main() -> Result<(), Box<dyn Error>> {
+    env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
+    env_logger::init();
+    let bus_addr = "127.0.0.1:7464".parse().unwrap();
     let args = Args::from_args();
     match args {
         Args::Server { .. } => {
             System::run(move || {
-                let a = connection::tcp(bus_addr).and_then(|tcp_connection| {
-                    async move {
-                        let c = connection::connect::<_, LocalRouterHandler>(tcp_connection);
+                let a = connection::tcp(bus_addr).and_then(|tcp_connection| async move {
+                    let c = connection::connect::<_, LocalRouterHandler>(tcp_connection);
 
-                        let handle_echo = |caller: &str, addr: &str, msg: &[u8]| {
-                            eprintln!("got msg from {} to {}", caller, addr);
-                            eprintln!("body={}", String::from_utf8_lossy(msg));
-                            let msg: Vec<u8> = msg.into();
-                            async move {
-                                tokio::time::delay_for(Duration::from_secs(20)).await;
-                                Ok(msg.into())
-                            }
-                        };
+                    let handle_echo = |caller: &str, addr: &str, msg: &[u8]| {
+                        eprintln!("got msg from {} to {}", caller, addr);
+                        eprintln!("body={}", String::from_utf8_lossy(msg));
+                        let msg: Vec<u8> = msg.into();
+                        async move {
+                            tokio::time::delay_for(Duration::from_secs(20)).await;
+                            Ok(msg.into())
+                        }
+                    };
 
-                        let _ = ya_service_bus::untyped::subscribe("/local/raw/echo", handle_echo);
-                        Arbiter::spawn(async move {
-                            c.bind("/local/raw/echo")
-                                .await
-                                .expect("unabled to bind echo")
-                        });
+                    let _ = ya_service_bus::untyped::subscribe("/local/raw/echo", handle_echo);
+                    Arbiter::spawn(async move {
+                        c.bind("/local/raw/echo")
+                            .await
+                            .expect("unabled to bind echo")
+                    });
 
-                        Ok(())
-                    }
+                    Ok(())
                 });
                 Arbiter::spawn(async {
                     let _result = a.await;
@@ -57,14 +56,12 @@ fn main() -> Fallible<()> {
             System::run(move || {
                 let a = connection::tcp(bus_addr)
                     .map_err(From::from)
-                    .and_then(|tcp_connection| {
-                        async move {
-                            let c = connection::connect::<_, LocalRouterHandler>(tcp_connection);
+                    .and_then(|tcp_connection| async move {
+                        let c = connection::connect::<_, LocalRouterHandler>(tcp_connection);
 
-                            let msg = c.call("me", "/local/raw/echo", data).await?;
-                            eprintln!("body={}", String::from_utf8_lossy(msg.as_ref()));
-                            Ok::<_, failure::Error>(())
-                        }
+                        let msg = c.call("me", "/local/raw/echo", data).await?;
+                        eprintln!("body={}", String::from_utf8_lossy(msg.as_ref()));
+                        Ok::<_, Box<dyn Error>>(())
                     })
                     .then(|v| async move { v.unwrap_or_else(|e| eprintln!("send error={}", e)) });
                 Arbiter::spawn(a)
