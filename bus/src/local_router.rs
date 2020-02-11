@@ -14,6 +14,7 @@ use futures::{future, FutureExt, SinkExt, StreamExt, TryStreamExt};
 use serde::{Deserialize, Serialize};
 use std::any::Any;
 use std::collections::HashMap;
+use std::io::Cursor;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
@@ -161,10 +162,13 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
         );
         async move {
             futures::pin_mut!(rx);
-            if let Some(ResponseChunk::Full(v)) = StreamExt::next(&mut rx).await {
-                Ok(v)
-            } else {
-                Err(Error::GsbBadRequest("partial response".into()))
+            match StreamExt::next(&mut rx).await {
+                Some(Ok(ResponseChunk::Full(v))) => Ok(v),
+                Some(Ok(ResponseChunk::Part(_))) => {
+                    Err(Error::GsbBadRequest("partial response".into()))
+                }
+                Some(Err(e)) => Err(e),
+                None => Err(Error::GsbBadRequest("unexpected EOS".into())),
             }
         }
         .boxed_local()
@@ -187,7 +191,7 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
             .map_err(|e| eprintln!("cell error={}", e))
             .then(|_| future::ready(())),
         );
-        Box::pin(rx.map(|v| Ok(v)))
+        Box::pin(rx)
     }
 
     fn recipient(&self) -> &dyn Any {
@@ -267,6 +271,51 @@ impl Slot {
 
     fn send_streaming(&self, msg: RpcRawCall) -> impl Stream<Item = Result<ResponseChunk, Error>> {
         self.inner.call_stream(msg)
+    }
+
+    fn streaming_forward<T: RpcStreamMessage>(
+        &self,
+        caller: String,
+        addr: String,
+        body: T,
+    ) -> impl Stream<Item = Result<Result<T::Item, T::Error>, Error>> {
+        if let Some(h) = self.stream_recipient() {
+            let (reply, rx) = futures::channel::mpsc::channel(16);
+            let call = RpcStreamCall {
+                caller,
+                addr,
+                body,
+                reply,
+            };
+
+            Arbiter::spawn(async move {
+                h.send(call)
+                    .await
+                    .unwrap_or_else(|e| Ok(log::error!("streaming forward error: {}", e)))
+                    .unwrap_or_else(|e| log::error!("streaming forward error: {}", e));
+            });
+            rx.map(|v| Ok(v)).left_stream()
+        } else {
+            (move || {
+                let body = match rmp_serde::to_vec(&body) {
+                    Ok(body) => body,
+                    Err(e) => return stream::once(future::err(Error::from(e))).right_stream(),
+                };
+                self.send_streaming(RpcRawCall { caller, addr, body })
+                    .map(|chunk_result| {
+                        (move || -> Result<Result<T::Item, T::Error>, Error> {
+                            let chunk = match chunk_result {
+                                Ok(ResponseChunk::Part(chunk)) => chunk,
+                                Ok(ResponseChunk::Full(chunk)) => chunk,
+                                Err(e) => return Err(e),
+                            };
+                            Ok(rmp_serde::from_read(Cursor::new(chunk))?)
+                        })()
+                    })
+                    .left_stream()
+            })()
+            .right_stream()
+        }
     }
 }
 
@@ -385,34 +434,8 @@ impl Router {
         let caller = "local";
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
-            (if let Some(h) = slot.stream_recipient() {
-                let (tx, rx) = futures::channel::mpsc::channel(16);
-                let call = RpcStreamCall {
-                    caller: caller.to_string(),
-                    addr: addr.to_string(),
-                    body: msg,
-                    reply: tx,
-                };
-                Arbiter::spawn(async move {
-                    h.send(call)
-                        .await
-                        .unwrap_or_else(|e| Ok(log::error!("streaming forward error: {}", e)))
-                        .unwrap_or_else(|e| log::error!("streaming forward error: {}", e));
-                });
-                rx.map(|v| Ok(v))
-            } else {
-                /*let body = rmp_serde::to_vec(&msg).unwrap();
-                futures_01::future::Either::B(
-                    slot.send(RpcRawCall {
-                        caller: caller.into(),
-                        addr,
-                        body,
-                    })
-                        .and_then(|b| Ok(rmp_serde::from_read_ref(&b)?)),
-                )*/
-                unimplemented!()
-            })
-            .left_stream()
+            slot.streaming_forward(caller.to_string(), addr, msg)
+                .left_stream()
         } else {
             futures::stream::once(future::ready(Err(Error::NoEndpoint))).right_stream()
         }

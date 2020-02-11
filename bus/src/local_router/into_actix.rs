@@ -50,26 +50,14 @@ impl<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static> Handler<RpcStreamCal
 {
     type Result = ActorResponse<Self, (), Error>;
 
-    fn handle(&mut self, _msg: RpcStreamCall<T>, _ctx: &mut Self::Context) -> Self::Result {
+    fn handle(&mut self, msg: RpcStreamCall<T>, _ctx: &mut Self::Context) -> Self::Result {
         use futures::stream::{Stream, StreamExt, TryStream, TryStreamExt};
-        // TryStream<Ok = T::Item, Error = T::Error> + Unpin
-        //
-        //fn send_all<S>(self : Sink, stream: S) -> SendAll<Self, S>
-        //    where S: Stream<Item = Self::SinkItem>,
-        //          Self::SinkError: From<S::Error>,
-        //          Self: Sized
-        /*let mut s = self
-            .0
-            .handle(&msg.caller, msg.body)
-            .map(|v| Ok::<_, Error>(v));
-        let pump = msg
-            .reply
-            .sink_map_err(|e| Error::Closed)
-            .send_all(s)
-            .map_err(|e| ())
-            .and_then(|(reply, stream)| Ok(()));
-        //        ActorResponse::r#async(pump.into_actor(self))
-        */
-        unimplemented!()
+        // Stream<Item = Result<T::Item, T::Error>> + Unpin
+
+        let mut reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
+        let mut result = self.0.handle(&msg.caller, msg.body).map(|v| Ok(v));
+        let send_all = async move { reply.send_all(&mut result).await };
+
+        ActorResponse::r#async(send_all.into_actor(self))
     }
 }

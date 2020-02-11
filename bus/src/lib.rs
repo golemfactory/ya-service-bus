@@ -51,11 +51,20 @@ pub enum ResponseChunk {
     Full(Vec<u8>),
 }
 
+impl ResponseChunk {
+    pub fn into_bytes(self) -> Vec<u8> {
+        match self {
+            ResponseChunk::Part(data) => data,
+            ResponseChunk::Full(data) => data,
+        }
+    }
+}
+
 pub struct RpcRawStreamCall {
     pub caller: String,
     pub addr: String,
     pub body: Vec<u8>,
-    pub reply: futures::channel::mpsc::Sender<ResponseChunk>,
+    pub reply: futures::channel::mpsc::Sender<Result<ResponseChunk, error::Error>>,
 }
 
 impl Message for RpcRawStreamCall {

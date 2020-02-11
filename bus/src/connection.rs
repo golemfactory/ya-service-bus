@@ -1,13 +1,13 @@
 use actix::prelude::*;
-use futures::channel::oneshot;
+use futures::channel::{mpsc, oneshot};
 use futures::prelude::*;
 
 use crate::error::Error;
 use crate::local_router::router;
-use crate::{ResponseChunk, RpcRawCall};
+use crate::{ResponseChunk, RpcRawCall, RpcRawStreamCall};
 use futures::stream::SplitSink;
 
-use futures::StreamExt;
+use futures::future::ErrInto;
 use std::collections::{HashMap, VecDeque};
 use std::convert::TryInto;
 use std::pin::Pin;
@@ -100,7 +100,7 @@ where
 {
     writer: actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>,
     register_reply: VecDeque<oneshot::Sender<Result<(), Error>>>,
-    call_reply: HashMap<String, oneshot::Sender<Result<Vec<u8>, Error>>>,
+    call_reply: HashMap<String, mpsc::Sender<Result<ResponseChunk, Error>>>,
     handler: H,
 }
 
@@ -206,7 +206,7 @@ where
         &mut self,
         request_id: String,
         code: i32,
-        _reply_type: i32,
+        reply_type: i32,
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), Box<dyn std::error::Error>> {
@@ -215,14 +215,23 @@ where
             request_id,
             code
         );
-        if let Some(r) = self.call_reply.remove(&request_id) {
+
+        let chunk = if reply_type == CallReplyType::Partial as i32 {
+            ResponseChunk::Part(data)
+        } else {
+            ResponseChunk::Full(data)
+        };
+
+        if let Some(mut r) = self.call_reply.remove(&request_id) {
             // TODO: check error
             let _ = r.send(match code.try_into()? {
-                CallReplyCode::CallReplyOk => Ok(data),
+                CallReplyCode::CallReplyOk => Ok(chunk),
                 CallReplyCode::CallReplyBadRequest => {
-                    Err(Error::GsbBadRequest(String::from_utf8(data)?))
+                    Err(Error::GsbBadRequest(String::from_utf8(chunk.into_bytes())?))
                 }
-                CallReplyCode::ServiceFailure => Err(Error::GsbFailure(String::from_utf8(data)?)),
+                CallReplyCode::ServiceFailure => {
+                    Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
+                }
             });
         } else {
             log::error!("unmatched call reply");
@@ -307,7 +316,7 @@ where
     type Result = ActorResponse<Self, Vec<u8>, Error>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
-        let (tx, rx) = oneshot::channel();
+        let (tx, mut rx) = mpsc::channel(1);
         let request_id = format!("{}", gen_id());
         let _ = self.call_reply.insert(request_id.clone(), tx);
         let caller = msg.caller;
@@ -320,7 +329,42 @@ where
             address,
             data,
         }));
-        ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
+        let fetch_response = async move {
+            match futures::StreamExt::next(&mut rx).await {
+                Some(Ok(ResponseChunk::Full(data))) => Ok(data),
+                Some(Err(e)) => Err(e),
+                Some(Ok(ResponseChunk::Part(_))) => {
+                    Err(Error::GsbFailure("streaming response".to_string()))
+                }
+                None => Err(Error::GsbFailure("unexpected EOS".to_string())),
+            }
+        };
+        ActorResponse::r#async(fetch_response.into_actor(self))
+    }
+}
+
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<RpcRawStreamCall>
+    for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError>,
+{
+    type Result = ActorResponse<Self, (), Error>;
+
+    fn handle(&mut self, msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
+        let request_id = format!("{}", gen_id());
+        let rx = msg.reply;
+        let _ = self.call_reply.insert(request_id.clone(), rx);
+        let caller = msg.caller;
+        let address = msg.addr;
+        let data = msg.body;
+        log::debug!("handling caller: {}, addr:{}", caller, address);
+        let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
+            request_id,
+            caller,
+            address,
+            data,
+        }));
+        ActorResponse::reply(Ok(()))
     }
 }
 
@@ -412,6 +456,40 @@ impl<
                 body: body.into(),
             })
             .then(|v| async { v? })
+    }
+
+    pub fn call_streaming(
+        &self,
+        caller: impl Into<String>,
+        addr: impl Into<String>,
+        body: impl Into<Vec<u8>>,
+    ) -> impl Stream<Item = Result<ResponseChunk, Error>> {
+        let (tx, rx) = futures::channel::mpsc::channel(16);
+
+        let args = RpcRawStreamCall {
+            caller: caller.into(),
+            addr: addr.into(),
+            body: body.into(),
+            reply: tx.clone(),
+        };
+        let connection = self.0.clone();
+        let _ = Arbiter::spawn(async move {
+            let mut tx = tx;
+            match connection.send(args).await {
+                Ok(Ok(())) => (),
+                Ok(Err(e)) => {
+                    tx.send(Err(e))
+                        .await
+                        .unwrap_or_else(|e| log::error!("fail: {}", e));
+                }
+                Err(e) => {
+                    tx.send(Err(e.into()))
+                        .await
+                        .unwrap_or_else(|e| log::error!("fail: {}", e));
+                }
+            }
+        });
+        rx
     }
 
     pub fn connected(&self) -> bool {

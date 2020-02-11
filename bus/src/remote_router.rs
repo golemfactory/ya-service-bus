@@ -1,8 +1,9 @@
 use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
 use crate::error::Error;
+use crate::error::Error::GsbFailure;
 use crate::{Handle, RpcRawCall, RpcRawStreamCall};
 use actix::{prelude::*, WrapFuture};
-use futures::{channel::oneshot, prelude::*};
+use futures::{channel::oneshot, prelude::*, SinkExt, StreamExt};
 use std::collections::HashSet;
 use std::time::Duration;
 
@@ -153,9 +154,29 @@ impl Handler<RpcRawCall> for RemoteRouter {
 }
 
 impl Handler<RpcRawStreamCall> for RemoteRouter {
-    type Result = Result<(), Error>;
+    type Result = ActorResponse<Self, (), Error>;
 
-    fn handle(&mut self, _msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
-        unimplemented!()
+    fn handle(&mut self, msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
+        if let Some(c) = &self.connection {
+            let c = c.clone();
+            ActorResponse::r#async(
+                async move {
+                    let reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
+                    futures::pin_mut!(reply);
+
+                    let result = SinkExt::send_all(
+                        &mut reply,
+                        &mut c
+                            .call_streaming(msg.caller, msg.addr, msg.body)
+                            .map(|v| Ok(v)),
+                    )
+                    .await;
+                    result
+                }
+                .into_actor(self),
+            )
+        } else {
+            ActorResponse::reply(Err(GsbFailure("no connection".to_string())))
+        }
     }
 }
