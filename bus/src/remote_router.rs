@@ -3,16 +3,18 @@ use crate::error::Error;
 use crate::error::Error::GsbFailure;
 use crate::{Handle, RpcRawCall, RpcRawStreamCall};
 use actix::{prelude::*, WrapFuture};
-use futures::{channel::oneshot, prelude::*, SinkExt, StreamExt};
+use futures::{channel::oneshot, prelude::*, FutureExt, SinkExt, StreamExt};
 use std::collections::HashSet;
 use std::time::Duration;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
+type RemoteConncetion = ConnectionRef<TcpTransport, LocalRouterHandler>;
+
 pub struct RemoteRouter {
     local_bindings: HashSet<String>,
-    pending_calls: Vec<(RpcRawCall, oneshot::Sender<Result<Vec<u8>, Error>>)>,
-    connection: Option<ConnectionRef<TcpTransport, LocalRouterHandler>>,
+    pending_calls: Vec<oneshot::Sender<RemoteConncetion>>,
+    connection: Option<RemoteConncetion>,
 }
 
 impl Actor for RemoteRouter {
@@ -68,16 +70,28 @@ impl RemoteRouter {
         connection: ConnectionRef<TcpTransport, LocalRouterHandler>,
         ctx: &mut <Self as Actor>::Context,
     ) {
-        for (msg, tx) in std::mem::replace(&mut self.pending_calls, Default::default()) {
-            let send_fut = connection
-                .call(msg.caller, msg.addr, msg.body)
-                .then(|r| {
-                    let _ = tx.send(r);
-                    future::ready(())
-                })
-                .into_actor(self);
-            ctx.spawn(send_fut);
+        log::debug!(
+            "got connection activating {} calls",
+            self.pending_calls.len()
+        );
+        for tx in std::mem::replace(&mut self.pending_calls, Default::default()) {
+            let connection = connection.clone();
+            let send_fut = async move {
+                let _v = tx.send(connection);
+            }
+            .into_actor(self);
+            let _ = ctx.spawn(send_fut);
         }
+    }
+
+    fn connection(&mut self) -> impl Future<Output = Result<RemoteConncetion, Error>> + 'static {
+        if let Some(c) = &self.connection {
+            return future::ok((*c).clone()).left_future();
+        }
+        log::debug!("wait for connection");
+        let (tx, rx) = oneshot::channel();
+        self.pending_calls.push(tx);
+        rx.map_err(From::from).right_future()
     }
 }
 
@@ -143,13 +157,11 @@ impl Handler<RpcRawCall> for RemoteRouter {
     type Result = ActorResponse<Self, Vec<u8>, Error>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
-        if let Some(c) = &self.connection {
-            ActorResponse::r#async(c.call(msg.caller, msg.addr, msg.body).into_actor(self))
-        } else {
-            let (tx, rx) = oneshot::channel();
-            self.pending_calls.push((msg, tx));
-            ActorResponse::r#async(rx.then(|v| async { v? }).into_actor(self))
-        }
+        ActorResponse::r#async(
+            self.connection()
+                .and_then(|connection| connection.call(msg.caller, msg.addr, msg.body))
+                .into_actor(self),
+        )
     }
 }
 
@@ -157,26 +169,22 @@ impl Handler<RpcRawStreamCall> for RemoteRouter {
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
-        if let Some(c) = &self.connection {
-            let c = c.clone();
-            ActorResponse::r#async(
-                async move {
+        ActorResponse::r#async(
+            self.connection()
+                .and_then(|connection| async move {
                     let reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
                     futures::pin_mut!(reply);
 
                     let result = SinkExt::send_all(
                         &mut reply,
-                        &mut c
+                        &mut connection
                             .call_streaming(msg.caller, msg.addr, msg.body)
                             .map(|v| Ok(v)),
                     )
                     .await;
                     result
-                }
+                })
                 .into_actor(self),
-            )
-        } else {
-            ActorResponse::reply(Err(GsbFailure("no connection".to_string())))
-        }
+        )
     }
 }

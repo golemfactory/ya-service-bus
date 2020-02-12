@@ -1,16 +1,25 @@
 use actix::prelude::*;
+use futures::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::{env, fs::OpenOptions, path::PathBuf};
-use structopt::StructOpt;
-
 use std::error::Error;
 use std::time::Duration;
-use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage};
+use std::{env, fs::OpenOptions, path::PathBuf};
+use structopt::StructOpt;
+use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage, RpcStreamMessage};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
 
 impl RpcMessage for Ping {
+    const ID: &'static str = "ping";
+    type Item = String;
+    type Error = ();
+}
+
+#[derive(Serialize, Deserialize)]
+struct StreamPing(String);
+
+impl RpcStreamMessage for StreamPing {
     const ID: &'static str = "ping";
     type Item = String;
     type Error = ();
@@ -88,6 +97,10 @@ enum Args {
         dst: String,
         msg: String,
     },
+    StreamPing {
+        dst: String,
+        msg: String,
+    },
 }
 
 fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Error>>> {
@@ -134,6 +147,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         Args::Ping { dst, msg } => {
             let result = sys.block_on(actix_rpc::service(&dst).send(None, Ping(msg)))?;
+            eprintln!("got result: {:?}", result);
+        }
+        Args::StreamPing { dst, msg } => {
+            let result = sys.block_on(
+                actix_rpc::service(&dst)
+                    .call_stream(StreamPing(msg))
+                    .for_each(|item| future::ready(eprintln!("got={:?}", item))),
+            );
             eprintln!("got result: {:?}", result);
         }
 

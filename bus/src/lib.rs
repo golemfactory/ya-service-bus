@@ -58,6 +58,21 @@ impl ResponseChunk {
             ResponseChunk::Full(data) => data,
         }
     }
+
+    #[inline]
+    pub fn is_full(&self) -> bool {
+        match self {
+            ResponseChunk::Full(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_eos(&self) -> bool {
+        match self {
+            ResponseChunk::Full(data) => data.is_empty(),
+            _ => false,
+        }
+    }
 }
 
 pub struct RpcRawStreamCall {

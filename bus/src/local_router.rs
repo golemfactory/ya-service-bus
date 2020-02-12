@@ -343,7 +343,7 @@ impl Router {
         Handle { _inner: () }
     }
 
-    pub fn bind_stream<T: RpcStreamMessage + Unpin>(
+    pub fn bind_stream<T: RpcStreamMessage>(
         &mut self,
         addr: &str,
         endpoint: impl RpcStreamHandler<T> + Unpin + 'static,
@@ -431,13 +431,32 @@ impl Router {
         addr: &str,
         msg: T,
     ) -> impl Stream<Item = Result<Result<T::Item, T::Error>, Error>> {
-        let caller = "local";
+        let caller = "local".to_string();
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
-            slot.streaming_forward(caller.to_string(), addr, msg)
-                .left_stream()
+            slot.streaming_forward(caller, addr, msg).left_stream()
         } else {
-            futures::stream::once(future::ready(Err(Error::NoEndpoint))).right_stream()
+            //use futures::StreamExt;
+            log::debug!("call remote");
+            let body = rmp_serde::to_vec(&msg).unwrap();
+            let (reply, tx) = futures::channel::mpsc::channel(16);
+            let call = RpcRawStreamCall {
+                caller,
+                addr,
+                body,
+                reply,
+            };
+            let _ = Arbiter::spawn(async move {
+                let v = RemoteRouter::from_registry().send(call).await;
+                log::debug!("call result={:?}", v);
+            });
+
+            tx.filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
+                .map(|b| {
+                    let body = b?.into_bytes();
+                    Ok(rmp_serde::from_read_ref(&body)?)
+                })
+                .right_stream()
         }
     }
 

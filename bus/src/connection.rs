@@ -164,39 +164,56 @@ where
             address,
             request_id
         );
+        let eos_request_id = request_id.clone();
         let do_call = self
             .handler
             .do_call(request_id.clone(), caller, address, data)
             .into_actor(self)
-            .fold((), move |(), r, act: &mut Self, _ctx| {
+            .fold(false, move |_got_eos, r, act: &mut Self, _ctx| {
                 let request_id = request_id.clone();
-                // TODO: handle write error
-                let _ = act.writer.write(GsbMessage::CallReply(match r {
+                let (got_eos, reply) = match r {
                     Ok(data) => {
                         let code = CallReplyCode::CallReplyOk as i32;
                         let reply_type = data.reply_type() as i32;
-                        CallReply {
-                            request_id,
-                            code,
-                            reply_type,
-                            data: data.into_vec(),
-                        }
+                        (
+                            reply_type == 0,
+                            CallReply {
+                                request_id,
+                                code,
+                                reply_type,
+                                data: data.into_vec(),
+                            },
+                        )
                     }
                     Err(e) => {
                         let code = CallReplyCode::ServiceFailure as i32;
                         let reply_type = Default::default();
                         let data = format!("{}", e).into_bytes();
-                        CallReply {
-                            request_id,
-                            code,
-                            reply_type,
-                            data,
-                        }
+                        (
+                            true,
+                            CallReply {
+                                request_id,
+                                code,
+                                reply_type,
+                                data,
+                            },
+                        )
                     }
-                }));
-                //Ok(())
+                };
+                // TODO: handle write error
+                let _ = act.writer.write(GsbMessage::CallReply(reply));
+                fut::ready(got_eos)
+            })
+            .then(|got_eos, act, _ctx| {
+                if !got_eos {
+                    let _ = act.writer.write(GsbMessage::CallReply(CallReply {
+                        request_id: eos_request_id,
+                        code: 0,
+                        reply_type: 0,
+                        data: Default::default(),
+                    }));
+                }
                 fut::ready(())
-                //fut::ok::<_, Error, _>(())
             });
         //do_call.spawn(ctx);
         ctx.spawn(do_call);
@@ -211,9 +228,10 @@ where
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::debug!(
-            "handling replay for request_id={}, code={}",
+            "handling replay for request_id={}, code={}, reply_type={}",
             request_id,
-            code
+            code,
+            reply_type
         );
 
         let chunk = if reply_type == CallReplyType::Partial as i32 {
@@ -222,9 +240,13 @@ where
             ResponseChunk::Full(data)
         };
 
-        if let Some(mut r) = self.call_reply.remove(&request_id) {
+        let is_full = chunk.is_full();
+
+        if let Some(r) = self.call_reply.get_mut(&request_id) {
             // TODO: check error
-            let _ = r.send(match code.try_into()? {
+            let mut r = (*r).clone();
+            let code: CallReplyCode = code.try_into()?;
+            let item = match code {
                 CallReplyCode::CallReplyOk => Ok(chunk),
                 CallReplyCode::CallReplyBadRequest => {
                     Err(Error::GsbBadRequest(String::from_utf8(chunk.into_bytes())?))
@@ -232,11 +254,24 @@ where
                 CallReplyCode::ServiceFailure => {
                     Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
                 }
-            });
+            };
+            let _ = ctx.spawn(
+                async move {
+                    let s = r.send(item);
+                    s.await
+                        .unwrap_or_else(|e| log::warn!("undelivered reply: {}", e))
+                }
+                .into_actor(self),
+            );
         } else {
             log::error!("unmatched call reply");
             ctx.stop()
         }
+
+        if is_full {
+            let _ = self.call_reply.remove(&request_id);
+        }
+
         Ok(())
     }
 }

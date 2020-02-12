@@ -38,6 +38,13 @@ pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + Unpin + 's
     router().lock().unwrap().bind(addr, endpoint)
 }
 
+pub fn bind_stream<T: RpcStreamMessage>(
+    addr: &str,
+    endpoint: impl RpcStreamHandler<T> + Unpin + 'static,
+) -> Handle {
+    router().lock().unwrap().bind_stream(addr, endpoint)
+}
+
 #[doc(hidden)]
 #[deprecated(note = "use bind instead")]
 pub fn bind_private<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
