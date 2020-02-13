@@ -1,3 +1,4 @@
+use super::serialization::{DecodeError, EncodeError};
 use actix::MailboxError;
 use futures::channel::oneshot;
 use std::io;
@@ -12,7 +13,7 @@ pub enum Error {
     #[error("has closed")]
     NoEndpoint,
     #[error("bad content {0}")]
-    BadContent(#[from] rmp_serde::decode::Error),
+    BadContent(#[from] DecodeError),
     #[error("{0}")]
     EncodingProblem(String),
     #[error("Message delivery timed out")]
@@ -40,8 +41,8 @@ impl From<oneshot::Canceled> for Error {
     }
 }
 
-impl From<rmp_serde::encode::Error> for Error {
-    fn from(e: rmp_serde::encode::Error) -> Self {
+impl From<EncodeError> for Error {
+    fn from(e: EncodeError) -> Self {
         Error::EncodingProblem(format!("{}", e))
     }
 }

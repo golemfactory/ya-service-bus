@@ -90,9 +90,6 @@ enum Args {
     Local {
         script: PathBuf,
     },
-    LocalRaw {
-        script: PathBuf,
-    },
     Ping {
         dst: String,
         msg: String,
@@ -112,22 +109,6 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Er
             .await?;
         result.map_err(From::from)
     }
-}
-
-async fn run_script_raw(script: PathBuf) -> Result<Result<String, String>, Box<dyn Error>> {
-    let bytes = rmp_serde::to_vec(&serde_json::from_slice::<Vec<Command>>(
-        std::fs::read(script)?.as_slice(),
-    )?)?;
-
-    Ok(rmp_serde::from_slice(
-        untyped::send(
-            &format!("{}/{}", SERVICE_ID, Execute::ID),
-            "local",
-            bytes.as_ref(),
-        )
-        .await?
-        .as_slice(),
-    )?)
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -165,15 +146,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 tokio::time::delay_for(Duration::from_millis(500)).await;
                 run_script(script).await
             })?;
-            eprintln!("got result: {:?}", result);
-        }
-        Args::LocalRaw { script } => {
-            let _ = ExeUnit::default().start();
-
-            let result = sys.block_on(async {
-                tokio::time::delay_for(Duration::from_millis(500)).await;
-                run_script_raw(script).await.map_err(|e| format!("{}", e))?
-            });
             eprintln!("got result: {:?}", result);
         }
     }

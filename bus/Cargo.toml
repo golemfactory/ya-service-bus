@@ -4,6 +4,12 @@ version = "0.2.1"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 
+[features]
+default=["json"]
+
+json=["serde_json"]
+msgpack=["rmp-serde"]
+
 [dependencies]
 ya-sb-proto = "0.1"
 ya-sb-util = "0.1"
@@ -14,7 +20,8 @@ futures = "0.3"
 lazy_static = "1.4"
 log = "0.4"
 rand = "0.7.2"
-rmp-serde = "=0.14.0"
+rmp-serde = {version = "=0.14.3", optional=true }
+serde_json = { version = "1.0.48", optional = true }
 serde = { version = "1.0.102", features = ["derive"] }
 tokio = { version = "0.2.6", features = ["tcp", "time"] }
 tokio-util = "0.2.0"
