@@ -5,7 +5,7 @@ use std::error::Error;
 use std::time::Duration;
 use std::{env, fs::OpenOptions, path::PathBuf};
 use structopt::StructOpt;
-use ya_service_bus::{actix_rpc, untyped, Handle, RpcEnvelope, RpcMessage, RpcStreamMessage};
+use ya_service_bus::{actix_rpc, Handle, RpcEnvelope, RpcMessage, RpcStreamMessage};
 
 #[derive(Serialize, Deserialize)]
 struct Ping(String);
