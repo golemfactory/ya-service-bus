@@ -51,7 +51,7 @@ impl RemoteRouter {
                             .into_iter()
                             .map(move |service_id| connection.bind(service_id)),
                     )
-                    .and_then(|_| async { Ok(log::info!("registered all services")) })
+                    .and_then(|_| async { Ok(log::debug!("registered all services")) })
                     .into_actor(act),
                 )
             })
@@ -142,7 +142,7 @@ impl Handler<UpdateService> for RemoteRouter {
                         }),
                     )
                 }
-                log::debug!("Binding local service '{}'", service_id);
+                log::trace!("Binding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);
             }
             UpdateService::Remove(service_id) => {

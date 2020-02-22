@@ -175,11 +175,7 @@ where
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
-        log::debug!(
-            "Received RegisterRequest from {}. service_id = {}",
-            addr,
-            &msg.service_id
-        );
+        log::trace!("{} is registering endpoint {}", addr, &msg.service_id);
         let msg = if !is_valid_service_id(&msg.service_id) {
             RegisterReply {
                 code: RegisterReplyCode::RegisterBadRequest as i32,

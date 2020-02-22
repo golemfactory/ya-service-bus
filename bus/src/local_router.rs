@@ -350,6 +350,7 @@ impl Router {
     ) -> Handle {
         let slot = Slot::from_stream_handler(endpoint);
         let addr = format!("{}/{}", addr, T::ID);
+        log::debug!("binding stream {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
         Handle { _inner: () }
@@ -362,6 +363,7 @@ impl Router {
     ) {
         let slot = Slot::from_stream_actor(endpoint);
         let addr = format!("{}/{}", addr, T::ID);
+        log::debug!("binding stream actor {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr));
     }
@@ -369,12 +371,14 @@ impl Router {
     pub fn bind_actor<T: RpcMessage>(&mut self, addr: &str, endpoint: Recipient<RpcEnvelope<T>>) {
         let slot = Slot::from_actor(endpoint);
         let addr = format!("{}/{}", addr, T::ID);
+        log::debug!("binding actor {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr));
     }
 
     pub fn bind_raw(&mut self, addr: &str, endpoint: Recipient<RpcRawCall>) -> Handle {
         let slot = Slot::from_raw(endpoint);
+        log::debug!("binding raw {}", addr);
         let _ = self.handlers.insert(addr.to_string(), slot);
         RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
         Handle { _inner: () }
