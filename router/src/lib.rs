@@ -1,11 +1,11 @@
+use futures::lock::Mutex;
 use futures::prelude::*;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::mpsc;
 use tokio_util::codec::*;
 
 use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
@@ -38,7 +38,7 @@ where
     service_id: ServiceId,
 }
 
-pub struct Router<A, M, E>
+struct RawRouter<A, M, E>
 where
     A: Hash + Eq,
 {
@@ -52,14 +52,14 @@ where
     reversed_subscriptions: HashMap<A, HashSet<TopicId>>,
 }
 
-impl<A, M, E> Router<A, M, E>
+impl<A, M, E> RawRouter<A, M, E>
 where
     A: Hash + Eq + Display + Clone,
-    M: Send + 'static + From<GsbMessage>,
-    E: Send + 'static + From<mpsc::error::RecvError> + Debug,
+    M: Send + From<GsbMessage> + 'static,
+    E: Send + Debug + 'static,
 {
     pub fn new() -> Self {
-        Router {
+        RawRouter {
             dispatcher: dispatcher::MessageDispatcher::new(),
             registered_endpoints: PrefixLookupBag::default(),
             reversed_endpoints: HashMap::new(),
@@ -423,11 +423,56 @@ where
     }
 }
 
-pub async fn bind_gsb_router() -> Result<(), std::io::Error> {
-    bind_router(gsb_addr()).await
+pub struct Router<A, M, E>
+where
+    A: Hash + Eq,
+{
+    router: Arc<Mutex<RawRouter<A, M, E>>>,
 }
 
-pub async fn bind_router(addr: SocketAddr) -> Result<(), std::io::Error> {
+impl<A, M, E> Router<A, M, E>
+where
+    A: Send + Sync + Hash + Eq + Display + Clone + 'static,
+    M: Send + From<GsbMessage> + 'static,
+    E: Send + Sync + Debug + 'static,
+{
+    pub fn new() -> Self {
+        Router {
+            router: Arc::new(Mutex::new(RawRouter::new())),
+        }
+    }
+
+    pub fn handle_connection<R, W>(&self, addr: A, reader: R, writer: W)
+    where
+        R: TryStream<Ok = GsbMessage> + Send + 'static,
+        R::Error: Into<failure::Error>,
+        W: Sink<M, Error = E> + Send + 'static,
+    {
+        let router = self.router.clone();
+        tokio::spawn(async move {
+            router.lock().await.connect(addr.clone(), writer).unwrap();
+
+            let addr1 = addr.clone();
+            let router1 = router.clone();
+            let router2 = router.clone();
+
+            reader
+                .map_err(Into::into)
+                .try_for_each(|msg: GsbMessage| async {
+                    router1.lock().await.handle_message(addr.clone(), msg)
+                })
+                .and_then(|_| async { router2.lock().await.disconnect(&addr1) })
+                .await
+                .unwrap_or_else(|e| log::error!("Error handling connection: {:?}", e));
+        });
+    }
+}
+
+pub async fn bind_gsb_router() -> Result<(), std::io::Error> {
+    bind_tcp_router(gsb_addr()).await
+}
+
+pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
     let mut listener = TcpListener::bind(&addr)
         .map_err(|e| {
             log::error!("Failed to bind TCP listener at {}: {}", addr, e);
@@ -435,39 +480,19 @@ pub async fn bind_router(addr: SocketAddr) -> Result<(), std::io::Error> {
         })
         .await?;
 
-    let router = Arc::new(Mutex::new(Router::new()));
-
+    let router = Router::new();
     log::info!("Router listening on: {}", addr);
 
     let _ = tokio::spawn(async move {
         listener
             .incoming()
-            .map_err(|e| {
-                log::error!("Accept failed: {:?}", e);
-                e
-            })
             .try_for_each(move |sock| {
                 let addr = sock.peer_addr().unwrap();
                 let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
-                router
-                    .lock()
-                    .unwrap()
-                    .connect(addr.clone(), writer)
-                    .unwrap();
-                let router1 = router.clone();
-                let router2 = router.clone();
-
-                let _ = tokio::spawn(
-                    reader
-                        .map_err(From::from)
-                        .try_for_each(move |msg: GsbMessage| {
-                            future::ready(router1.lock().unwrap().handle_message(addr.clone(), msg))
-                        })
-                        .and_then(move |_| future::ready(router2.lock().unwrap().disconnect(&addr)))
-                        .map_err(|e| log::error!("Error occurred handling message: {:?}", e)),
-                );
+                router.handle_connection(addr, reader, writer);
                 future::ok(())
             })
+            .map_err(|e| log::error!("Connection handling failed: {:?}", e))
             .await
     });
     Ok(())

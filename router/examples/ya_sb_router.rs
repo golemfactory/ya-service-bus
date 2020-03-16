@@ -21,7 +21,7 @@ async fn main() -> failure::Fallible<()> {
     env_logger::init();
     let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
 
-    ya_sb_router::bind_router(listen_addr).await?;
+    ya_sb_router::bind_tcp_router(listen_addr).await?;
     tokio::signal::ctrl_c().await?;
     println!();
     log::info!("SIGINT received, exiting");
