@@ -62,6 +62,8 @@ pub enum GsbMessage {
     UnsubscribeReply(UnsubscribeReply),
     BroadcastRequest(BroadcastRequest),
     BroadcastReply(BroadcastReply),
+    Ping(Ping),
+    Pong(Pong),
 }
 
 impl GsbMessage {
@@ -79,6 +81,8 @@ impl GsbMessage {
             GsbMessage::UnsubscribeReply(msg) => (MessageType::UnsubscribeReply, Box::new(msg)),
             GsbMessage::BroadcastRequest(msg) => (MessageType::BroadcastRequest, Box::new(msg)),
             GsbMessage::BroadcastReply(msg) => (MessageType::BroadcastReply, Box::new(msg)),
+            GsbMessage::Ping(msg) => (MessageType::Ping, Box::new(msg)),
+            GsbMessage::Pong(msg) => (MessageType::Pong, Box::new(msg)),
         }
     }
 }
@@ -155,6 +159,18 @@ impl Into<GsbMessage> for BroadcastReply {
     }
 }
 
+impl Into<GsbMessage> for Ping {
+    fn into(self) -> GsbMessage {
+        GsbMessage::Ping(self)
+    }
+}
+
+impl Into<GsbMessage> for Pong {
+    fn into(self) -> GsbMessage {
+        GsbMessage::Pong(self)
+    }
+}
+
 fn decode_header(src: &mut tokio_bytes::BytesMut) -> Result<Option<MessageHeader>, ProtocolError> {
     if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
@@ -192,6 +208,8 @@ fn decode_message(
             Some(MessageType::UnsubscribeReply) => UnsubscribeReply::decode(buf.as_ref())?.into(),
             Some(MessageType::BroadcastRequest) => BroadcastRequest::decode(buf.as_ref())?.into(),
             Some(MessageType::BroadcastReply) => BroadcastReply::decode(buf.as_ref())?.into(),
+            Some(MessageType::Ping) => Ping::decode(buf.as_ref())?.into(),
+            Some(MessageType::Pong) => Pong::decode(buf.as_ref())?.into(),
             None => return Err(ProtocolError::UnrecognizedMessageType(header.msg_type)),
         };
         Ok(Some(msg))

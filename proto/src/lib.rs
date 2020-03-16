@@ -28,6 +28,8 @@ pub enum MessageType {
     UnsubscribeReply = 9,
     BroadcastRequest = 10,
     BroadcastReply = 11,
+    Ping = 12,
+    Pong = 13,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
