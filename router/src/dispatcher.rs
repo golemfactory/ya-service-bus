@@ -38,7 +38,10 @@ where
                     let mut rx = rx;
                     futures::pin_mut!(sink);
                     if let Err(e) = sink.send_all(&mut rx).await {
-                        log::error!("register send failed: {:?}", e)
+                        log::error!("Send failed: {:?}", e)
+                    }
+                    if let Err(e) = sink.close().await {
+                        log::error!("Connection close failed: {:?}", e)
                     }
                 });
                 entry.insert(tx);
@@ -47,11 +50,8 @@ where
         }
     }
 
-    pub fn unregister(&mut self, addr: &A) -> failure::Fallible<()> {
-        match self.senders.remove(addr) {
-            None => Err(failure::err_msg("Sender not registered")),
-            Some(_) => Ok(()),
-        }
+    pub fn unregister(&mut self, addr: &A) -> () {
+        self.senders.remove(addr);
     }
 
     pub fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
@@ -103,7 +103,7 @@ mod test {
         let addr = "test_addr".to_string();
         let msg = "test_msg";
         dispatcher.register(addr.clone(), tx).unwrap();
-        dispatcher.unregister(&addr).unwrap();
+        dispatcher.unregister(&addr);
         dispatcher.send_message(&addr, msg.to_string()).unwrap_err(); // Should be error
     }
 }

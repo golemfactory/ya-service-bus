@@ -1,6 +1,10 @@
+use chrono::{Duration, NaiveDateTime, Utc};
+use futures::future::{AbortHandle, Abortable};
 use futures::lock::Mutex;
 use futures::prelude::*;
+use lazy_static::lazy_static;
 use std::collections::{hash_map::Entry, HashMap, HashSet};
+use std::env;
 use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::net::SocketAddr;
@@ -13,6 +17,13 @@ use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
 mod dispatcher;
+
+lazy_static! {
+    pub static ref GSB_PING_TIMEOUT: u64 = env::var("GSB_PING_TIMEOUT")
+        .unwrap_or("60".into())
+        .parse()
+        .unwrap();
+}
 
 type ServiceId = String;
 type RequestId = String;
@@ -50,6 +61,7 @@ where
     endpoint_calls: HashMap<ServiceId, HashSet<RequestId>>,
     topic_subscriptions: HashMap<TopicId, HashSet<A>>,
     reversed_subscriptions: HashMap<A, HashSet<TopicId>>,
+    last_seen: HashMap<A, NaiveDateTime>,
 }
 
 impl<A, M, E> RawRouter<A, M, E>
@@ -68,6 +80,7 @@ where
             endpoint_calls: HashMap::new(),
             topic_subscriptions: HashMap::new(),
             reversed_subscriptions: HashMap::new(),
+            last_seen: HashMap::new(),
         }
     }
 
@@ -77,83 +90,70 @@ where
         sink: B,
     ) -> failure::Fallible<()> {
         log::debug!("Accepted connection from {}", addr);
-        self.dispatcher.register(addr, sink)
+        self.dispatcher.register(addr.clone(), sink)?;
+        self.last_seen.insert(addr, Utc::now().naive_utc());
+        Ok(())
     }
 
     pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
         log::debug!("Closing connection with {}", addr);
-        self.dispatcher.unregister(addr)?;
+        self.dispatcher.unregister(addr);
+        self.last_seen.remove(addr);
 
         // IDs of all endpoints registered by this server
-        let service_ids = match self.reversed_endpoints.entry(addr.clone()) {
-            Entry::Occupied(entry) => entry.remove().into_iter().collect(),
-            Entry::Vacant(_) => vec![],
-        };
+        let service_ids = self
+            .reversed_endpoints
+            .remove(addr)
+            .unwrap_or(HashSet::new());
 
-        service_ids.iter().for_each(|service_id| {
+        for service_id in service_ids.iter() {
             log::debug!("unregistering service: {}", service_id);
             self.registered_endpoints.remove(service_id);
-        });
+        }
 
         // IDs of all pending call requests unanswered by this server
         let pending_call_ids: Vec<RequestId> = service_ids
-            .into_iter()
-            .filter_map(|service_id| match self.endpoint_calls.entry(service_id) {
-                Entry::Occupied(entry) => Some(entry.remove().into_iter()),
-                Entry::Vacant(_) => None,
-            })
+            .iter()
+            .filter_map(|service_id| self.endpoint_calls.remove(service_id))
             .flatten()
             .collect();
         let pending_calls: Vec<(RequestId, PendingCall<A>)> = pending_call_ids
-            .into_iter()
-            .filter_map(|request_id| match self.pending_calls.entry(request_id) {
-                Entry::Occupied(entry) => Some(entry.remove_entry()),
-                Entry::Vacant(_) => None,
-            })
+            .iter()
+            .filter_map(|request_id| self.pending_calls.remove_entry(request_id))
             .collect();
 
         // Answer all pending calls with ServiceFailure reply
-        pending_calls
-            .into_iter()
-            .for_each(|(request_id, pending_call)| {
-                self.client_calls
-                    .get_mut(&pending_call.caller_addr)
-                    .unwrap()
-                    .remove(&request_id);
-                let msg = CallReply {
-                    request_id,
-                    code: CallReplyCode::ServiceFailure as i32,
-                    reply_type: CallReplyType::Full as i32,
-                    data: "Service disconnected".to_owned().into_bytes(),
-                };
-                self.send_message_safe(&pending_call.caller_addr, msg);
-            });
+        for (request_id, pending_call) in pending_calls {
+            self.client_calls
+                .get_mut(&pending_call.caller_addr)
+                .unwrap()
+                .remove(&request_id);
+            let msg = CallReply {
+                request_id,
+                code: CallReplyCode::ServiceFailure as i32,
+                reply_type: CallReplyType::Full as i32,
+                data: "Service disconnected".to_owned().into_bytes(),
+            };
+            self.send_message_safe(&pending_call.caller_addr, msg);
+        }
 
         // Remove all pending calls coming from this client
-        match self.client_calls.entry(addr.clone()) {
-            Entry::Occupied(entry) => {
-                entry.remove().drain().for_each(|request_id| {
-                    let pending_call = self.pending_calls.remove(&request_id).unwrap();
-                    self.endpoint_calls
-                        .get_mut(&pending_call.service_id)
-                        .unwrap()
-                        .remove(&request_id);
-                });
-            }
-            Entry::Vacant(_) => {}
+        for request_id in self.client_calls.remove(addr).unwrap_or(HashSet::new()) {
+            let pending_call = self.pending_calls.remove(&request_id).unwrap();
+            self.endpoint_calls
+                .get_mut(&pending_call.service_id)
+                .unwrap()
+                .remove(&request_id);
         }
 
         // Unsubscribe from all topics
-        match self.reversed_subscriptions.entry(addr.clone()) {
-            Entry::Occupied(entry) => {
-                entry.remove().drain().for_each(|topic_id| {
-                    self.topic_subscriptions
-                        .get_mut(&topic_id)
-                        .unwrap()
-                        .remove(&addr);
-                });
+        if let Some(topic_ids) = self.reversed_subscriptions.remove(addr) {
+            for topic_id in topic_ids {
+                self.topic_subscriptions
+                    .get_mut(&topic_id)
+                    .unwrap()
+                    .remove(&addr);
             }
-            Entry::Vacant(_) => {}
         }
 
         Ok(())
@@ -310,7 +310,7 @@ where
         }
     }
 
-    pub fn subscribe(&mut self, addr: &A, msg: SubscribeRequest) -> failure::Fallible<()> {
+    fn subscribe(&mut self, addr: &A, msg: SubscribeRequest) -> failure::Fallible<()> {
         log::debug!(
             "Received SubscribeRequest from {} topic = {}",
             addr,
@@ -347,7 +347,7 @@ where
         self.send_message(addr, msg)
     }
 
-    pub fn unsubscribe(&mut self, addr: &A, msg: UnsubscribeRequest) -> failure::Fallible<()> {
+    fn unsubscribe(&mut self, addr: &A, msg: UnsubscribeRequest) -> failure::Fallible<()> {
         log::debug!(
             "Received UnsubscribeRequest from {} topic = {}",
             addr,
@@ -376,7 +376,7 @@ where
         self.send_message(addr, msg)
     }
 
-    pub fn broadcast(&mut self, addr: &A, msg: BroadcastRequest) -> failure::Fallible<()> {
+    fn broadcast(&mut self, addr: &A, msg: BroadcastRequest) -> failure::Fallible<()> {
         log::debug!(
             "Received BroadcastRequest from {} topic = {}",
             addr,
@@ -406,7 +406,52 @@ where
         Ok(())
     }
 
+    fn ping(&mut self, addr: &A) -> failure::Fallible<()> {
+        log::debug!("Sending ping to {}", addr);
+        let ping = Ping {};
+        self.send_message(addr, ping)
+    }
+
+    fn pong(&self, addr: &A) -> failure::Fallible<()> {
+        log::debug!("Received pong from {}", addr);
+        Ok(())
+    }
+
+    fn update_last_seen(&mut self, addr: &A) -> failure::Fallible<()> {
+        if !self.last_seen.contains_key(addr) {
+            return Err(failure::err_msg(format!(
+                "Client {} disconnected due to timeout",
+                addr
+            )));
+        }
+        self.last_seen.insert(addr.clone(), Utc::now().naive_utc());
+        Ok(())
+    }
+
+    fn clients_not_seen_since(&self, datetime: NaiveDateTime) -> Vec<A> {
+        self.last_seen
+            .iter()
+            .filter(|(_, dt)| **dt < datetime)
+            .map(|(addr, _)| addr.clone())
+            .collect()
+    }
+
+    pub fn check_for_stale_connections(&mut self) {
+        log::trace!("Checking for stale connections");
+        let now = Utc::now().naive_utc();
+        let timeout = Duration::seconds(*GSB_PING_TIMEOUT as i64);
+        for addr in self.clients_not_seen_since(now - timeout * 2) {
+            self.disconnect(&addr)
+                .unwrap_or_else(|e| log::error!("Error disconnecting client {:?}", e))
+        }
+        for addr in self.clients_not_seen_since(now - timeout) {
+            self.ping(&addr)
+                .unwrap_or_else(|e| log::error!("Error sending ping message {:?}", e))
+        }
+    }
+
     pub fn handle_message(&mut self, addr: A, msg: GsbMessage) -> failure::Fallible<()> {
+        self.update_last_seen(&addr)?;
         match msg {
             GsbMessage::RegisterRequest(msg) => self.register_endpoint(&addr, msg),
             GsbMessage::UnregisterRequest(msg) => self.unregister_endpoint(&addr, msg),
@@ -415,6 +460,7 @@ where
             GsbMessage::SubscribeRequest(msg) => self.subscribe(&addr, msg),
             GsbMessage::UnsubscribeRequest(msg) => self.unsubscribe(&addr, msg),
             GsbMessage::BroadcastRequest(msg) => self.broadcast(&addr, msg),
+            GsbMessage::Pong(_) => self.pong(&addr),
             _ => Err(failure::err_msg(format!(
                 "Unexpected message received: {:?}",
                 msg
@@ -428,6 +474,7 @@ where
     A: Hash + Eq,
 {
     router: Arc<Mutex<RawRouter<A, M, E>>>,
+    ping_abort_handle: AbortHandle,
 }
 
 impl<A, M, E> Router<A, M, E>
@@ -437,8 +484,24 @@ where
     E: Send + Sync + Debug + 'static,
 {
     pub fn new() -> Self {
+        let router = Arc::new(Mutex::new(RawRouter::new()));
+        let router1 = router.clone();
+        let (ping_abort_handle, abort_registration) = AbortHandle::new_pair();
+
+        // Spawn abortable periodic task: checking for stale connections (ping)
+        tokio::spawn(Abortable::new(
+            async move {
+                loop {
+                    tokio::time::delay_for(std::time::Duration::from_secs(*GSB_PING_TIMEOUT)).await;
+                    router1.lock().await.check_for_stale_connections();
+                }
+            },
+            abort_registration,
+        ));
+
         Router {
-            router: Arc::new(Mutex::new(RawRouter::new())),
+            router,
+            ping_abort_handle,
         }
     }
 
@@ -466,6 +529,35 @@ where
                 .unwrap_or_else(|e| log::error!("Error handling connection: {:?}", e));
         });
     }
+
+    pub async fn handle_connection_stream<S, R, W>(&self, conn_stream: S)
+    where
+        S: TryStream<Ok = (A, R, W)>,
+        S::Error: Debug,
+        R: TryStream<Ok = GsbMessage> + Send + 'static,
+        R::Error: Into<failure::Error>,
+        W: Sink<M, Error = E> + Send + 'static,
+    {
+        conn_stream
+            .into_stream()
+            .for_each(|item| {
+                match item {
+                    Ok((addr, reader, writer)) => self.handle_connection(addr, reader, writer),
+                    Err(e) => log::error!("Connection stream error: {:?}", e),
+                }
+                future::ready(())
+            })
+            .await;
+    }
+}
+
+impl<A, M, E> Drop for Router<A, M, E>
+where
+    A: Hash + Eq,
+{
+    fn drop(&mut self) {
+        self.ping_abort_handle.abort();
+    }
 }
 
 pub async fn bind_gsb_router() -> Result<(), std::io::Error> {
@@ -483,17 +575,13 @@ pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
     let router = Router::new();
     log::info!("Router listening on: {}", addr);
 
-    let _ = tokio::spawn(async move {
-        listener
-            .incoming()
-            .try_for_each(move |sock| {
-                let addr = sock.peer_addr().unwrap();
-                let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
-                router.handle_connection(addr, reader, writer);
-                future::ok(())
-            })
-            .map_err(|e| log::error!("Connection handling failed: {:?}", e))
-            .await
+    tokio::spawn(async move {
+        let conn_stream = listener.incoming().map_ok(|sock| {
+            let addr = sock.peer_addr().unwrap();
+            let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
+            (addr, reader, writer)
+        });
+        router.handle_connection_stream(conn_stream).await;
     });
     Ok(())
 }
