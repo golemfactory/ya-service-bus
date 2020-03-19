@@ -27,7 +27,7 @@ async fn run_client() {
                 "Non-zero reply code"
             )
         }
-        GsbMessage::Ping(_) => {}
+        GsbMessage::Ping => {}
         _ => panic!("Unexpected message received"),
     }
 
@@ -51,7 +51,7 @@ async fn run_client() {
                 "Non-zero reply code"
             )
         }
-        GsbMessage::Ping(_) => {}
+        GsbMessage::Ping => {}
         _ => panic!("Unexpected message received"),
     }
 
@@ -65,7 +65,7 @@ async fn run_client() {
             println!("Broadcast message received");
             assert!(msg == broadcast_request, "Wrong data received")
         }
-        GsbMessage::Ping(_) => {}
+        GsbMessage::Ping => {}
         _ => panic!("Unexpected message received"),
     }
 
@@ -87,7 +87,7 @@ async fn run_client() {
                 "Non-zero reply code"
             )
         }
-        GsbMessage::Ping(_) => {}
+        GsbMessage::Ping => {}
         _ => panic!("Unexpected message received"),
     }
 }

@@ -62,8 +62,8 @@ pub enum GsbMessage {
     UnsubscribeReply(UnsubscribeReply),
     BroadcastRequest(BroadcastRequest),
     BroadcastReply(BroadcastReply),
-    Ping(Ping),
-    Pong(Pong),
+    Ping,
+    Pong,
 }
 
 impl GsbMessage {
@@ -81,8 +81,8 @@ impl GsbMessage {
             GsbMessage::UnsubscribeReply(msg) => (MessageType::UnsubscribeReply, Box::new(msg)),
             GsbMessage::BroadcastRequest(msg) => (MessageType::BroadcastRequest, Box::new(msg)),
             GsbMessage::BroadcastReply(msg) => (MessageType::BroadcastReply, Box::new(msg)),
-            GsbMessage::Ping(msg) => (MessageType::Ping, Box::new(msg)),
-            GsbMessage::Pong(msg) => (MessageType::Pong, Box::new(msg)),
+            GsbMessage::Ping => (MessageType::Ping, Box::new(Ping {})),
+            GsbMessage::Pong => (MessageType::Pong, Box::new(Pong {})),
         }
     }
 }
@@ -161,13 +161,13 @@ impl Into<GsbMessage> for BroadcastReply {
 
 impl Into<GsbMessage> for Ping {
     fn into(self) -> GsbMessage {
-        GsbMessage::Ping(self)
+        GsbMessage::Ping
     }
 }
 
 impl Into<GsbMessage> for Pong {
     fn into(self) -> GsbMessage {
-        GsbMessage::Pong(self)
+        GsbMessage::Pong
     }
 }
 

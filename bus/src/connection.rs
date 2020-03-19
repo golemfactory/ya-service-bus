@@ -13,7 +13,7 @@ use std::convert::TryInto;
 use std::pin::Pin;
 use ya_sb_proto::codec::{GsbMessage, ProtocolError};
 use ya_sb_proto::{
-    CallReply, CallReplyCode, CallReplyType, CallRequest, Pong, RegisterReplyCode, RegisterRequest,
+    CallReply, CallReplyCode, CallReplyType, CallRequest, RegisterReplyCode, RegisterRequest,
 };
 
 fn gen_id() -> u64 {
@@ -325,8 +325,8 @@ where
                     ctx.stop();
                 }
             }
-            GsbMessage::Ping(_) => {
-                if let Err(e) = self.writer.write(Pong {}.into()) {
+            GsbMessage::Ping => {
+                if let Err(e) = self.writer.write(GsbMessage::Pong) {
                     log::error!("error sending pong: {}", e);
                     ctx.stop();
                 }

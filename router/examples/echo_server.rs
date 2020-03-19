@@ -26,7 +26,7 @@ async fn run_server() {
         GsbMessage::RegisterReply(msg) if msg.code == RegisterReplyCode::RegisteredOk as i32 => {
             println!("Service successfully registered")
         }
-        GsbMessage::Ping(_) => {}
+        GsbMessage::Ping => {}
         _ => panic!("Unexpected message received"),
     }
 
@@ -48,7 +48,7 @@ async fn run_server() {
         GsbMessage::RegisterReply(msg) if msg.code == RegisterReplyCode::RegisteredOk as i32 => {
             println!("Service successfully registered")
         }
-        GsbMessage::Ping(_) => {}
+        GsbMessage::Ping => {}
         _ => panic!("Unexpected message received"),
     }
 
@@ -68,9 +68,9 @@ async fn run_server() {
                     }
                     .into()))
                 }
-                Ok(GsbMessage::Ping(_)) => {
+                Ok(GsbMessage::Ping) => {
                     println!("Ping received");
-                    Some(Ok(Pong {}.into()))
+                    Some(Ok(GsbMessage::Pong))
                 }
                 _ => {
                     eprintln!("Unexpected message received");

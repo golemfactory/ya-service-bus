@@ -452,7 +452,7 @@ where
             GsbMessage::SubscribeRequest(msg) => self.subscribe(&addr, msg),
             GsbMessage::UnsubscribeRequest(msg) => self.unsubscribe(&addr, msg),
             GsbMessage::BroadcastRequest(msg) => self.broadcast(&addr, msg),
-            GsbMessage::Pong(_) => self.pong(&addr),
+            GsbMessage::Pong => self.pong(&addr),
             _ => Err(failure::err_msg(format!(
                 "Unexpected message received: {:?}",
                 msg
