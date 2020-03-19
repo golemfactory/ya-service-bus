@@ -492,7 +492,9 @@ where
         tokio::spawn(Abortable::new(
             async move {
                 loop {
-                    tokio::time::delay_for(std::time::Duration::from_secs(*GSB_PING_TIMEOUT)).await;
+                    // Check interval should be lower than ping timeout to avoid race conditions
+                    let check_interval = std::time::Duration::from_secs(*GSB_PING_TIMEOUT) / 2;
+                    tokio::time::delay_for(check_interval).await;
                     router1.lock().await.check_for_stale_connections();
                 }
             },
