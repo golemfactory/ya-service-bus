@@ -84,18 +84,13 @@ where
         }
     }
 
-    pub fn connect<B: Sink<M, Error = E> + Send + 'static>(
-        &mut self,
-        addr: A,
-        sink: B,
-    ) -> failure::Fallible<()> {
+    pub fn connect<B: Sink<M, Error = E> + Send + 'static>(&mut self, addr: A, sink: B) {
         log::debug!("Accepted connection from {}", addr);
-        self.dispatcher.register(addr.clone(), sink)?;
+        self.dispatcher.register(addr.clone(), sink).unwrap();
         self.last_seen.insert(addr, Utc::now().naive_utc());
-        Ok(())
     }
 
-    pub fn disconnect(&mut self, addr: &A) -> failure::Fallible<()> {
+    pub fn disconnect(&mut self, addr: &A) {
         log::debug!("Closing connection with {}", addr);
         self.dispatcher.unregister(addr);
         self.last_seen.remove(addr);
@@ -155,8 +150,6 @@ where
                     .remove(&addr);
             }
         }
-
-        Ok(())
     }
 
     fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
@@ -441,8 +434,7 @@ where
         let now = Utc::now().naive_utc();
         let timeout = Duration::seconds(*GSB_PING_TIMEOUT as i64);
         for addr in self.clients_not_seen_since(now - timeout * 2) {
-            self.disconnect(&addr)
-                .unwrap_or_else(|e| log::error!("Error disconnecting client {:?}", e))
+            self.disconnect(&addr);
         }
         for addr in self.clients_not_seen_since(now - timeout) {
             self.ping(&addr)
@@ -515,20 +507,17 @@ where
     {
         let router = self.router.clone();
         tokio::spawn(async move {
-            router.lock().await.connect(addr.clone(), writer).unwrap();
-
-            let addr1 = addr.clone();
-            let router1 = router.clone();
-            let router2 = router.clone();
+            router.lock().await.connect(addr.clone(), writer);
 
             reader
-                .map_err(Into::into)
+                .err_into()
                 .try_for_each(|msg: GsbMessage| async {
-                    router1.lock().await.handle_message(addr.clone(), msg)
+                    router.lock().await.handle_message(addr.clone(), msg)
                 })
-                .and_then(|_| async { router2.lock().await.disconnect(&addr1) })
                 .await
-                .unwrap_or_else(|e| log::error!("Error handling connection: {:?}", e));
+                .unwrap_or_else(|e| log::error!("Error handling messages: {:?}", e));
+
+            router.lock().await.disconnect(&addr);
         });
     }
 
