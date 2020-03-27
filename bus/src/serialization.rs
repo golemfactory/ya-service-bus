@@ -3,10 +3,10 @@ pub use rmp_serde::{
     decode::Error as DecodeError, encode::Error as EncodeError, from_read, to_vec_named as to_vec,
 };
 
+#[allow(dead_code)]
 #[cfg(feature = "json")]
 mod json {
     use serde_json::Error;
-    use std::fmt;
 
     #[derive(Debug, thiserror::Error)]
     #[error("{0}")]

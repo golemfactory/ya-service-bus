@@ -5,8 +5,7 @@ use ya_sb_proto::*;
 use ya_sb_router::tcp_connect;
 
 async fn run_client() {
-    let router_addr = *ya_service_api::constants::YAGNA_BUS_ADDR;
-    let (mut writer, mut reader) = tcp_connect(&router_addr).await;
+    let (mut writer, mut reader) = tcp_connect(&gsb_addr(None)).await;
 
     println!("Sending subscribe request...");
     let topic = "test";

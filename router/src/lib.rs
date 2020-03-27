@@ -551,8 +551,8 @@ where
     }
 }
 
-pub async fn bind_gsb_router() -> Result<(), std::io::Error> {
-    bind_tcp_router(gsb_addr()).await
+pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::Error> {
+    bind_tcp_router(gsb_addr(gsb_url)).await
 }
 
 pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {

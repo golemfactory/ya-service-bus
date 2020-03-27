@@ -25,7 +25,7 @@ impl RpcStreamMessage for StreamPing {
     type Error = ();
 }
 
-const SERVICE_ID: &str = "/local/exeunit";
+const BUS_ID: &str = "/local/exeunit";
 
 #[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -64,7 +64,7 @@ impl Actor for ExeUnit {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.0 = Some(actix_rpc::bind::<Execute>(
-            SERVICE_ID,
+            BUS_ID,
             ctx.address().recipient(),
         ))
     }
@@ -104,9 +104,7 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Er
     async move {
         let commands: Vec<Command> =
             serde_json::from_reader(OpenOptions::new().read(true).open(script)?)?;
-        let result = actix_rpc::service(SERVICE_ID)
-            .send(None, Execute(commands))
-            .await?;
+        let result = actix_rpc::service(BUS_ID).send(Execute(commands)).await?;
         result.map_err(From::from)
     }
 }
@@ -127,7 +125,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             eprintln!("got result: {:?}", result);
         }
         Args::Ping { dst, msg } => {
-            let result = sys.block_on(actix_rpc::service(&dst).send(None, Ping(msg)))?;
+            let result = sys.block_on(actix_rpc::service(&dst).send(Ping(msg)))?;
             eprintln!("got result: {:?}", result);
         }
         Args::StreamPing { dst, msg } => {

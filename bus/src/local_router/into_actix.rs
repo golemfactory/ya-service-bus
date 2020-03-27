@@ -1,11 +1,8 @@
-use crate::Error;
-use crate::{
-    RpcEnvelope, RpcHandler, RpcMessage, RpcStreamCall, RpcStreamHandler, RpcStreamMessage,
-};
 use actix::prelude::*;
-
 use futures::SinkExt;
 use std::marker::PhantomData;
+
+use crate::*;
 
 pub struct RpcHandlerWrapper<T, H>(pub(super) H, PhantomData<T>);
 
@@ -51,8 +48,7 @@ impl<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static> Handler<RpcStreamCal
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: RpcStreamCall<T>, _ctx: &mut Self::Context) -> Self::Result {
-        use futures::stream::{Stream, StreamExt, TryStream, TryStreamExt};
-        // Stream<Item = Result<T::Item, T::Error>> + Unpin
+        use futures::stream::StreamExt;
 
         let mut reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
         let mut result = self.0.handle(&msg.caller, msg.body).map(|v| Ok(v));

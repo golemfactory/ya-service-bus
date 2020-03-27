@@ -1,12 +1,12 @@
 use std::env;
 use structopt::StructOpt;
-use ya_service_api::constants::YAGNA_BUS_ADDR_STR;
+use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
 
 #[derive(StructOpt)]
 #[structopt(name = "Router", about = "Service Bus Router")]
 struct Options {
-    #[structopt(short = "l", default_value = &YAGNA_BUS_ADDR_STR)]
-    ip_port: String,
+    #[structopt(short = "l", env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
+    gsb_url: url::Url,
     #[structopt(long, default_value = "debug")]
     log_level: String,
 }
@@ -19,9 +19,8 @@ async fn main() -> failure::Fallible<()> {
         env::var("RUST_LOG").unwrap_or(options.log_level),
     );
     env_logger::init();
-    let listen_addr = options.ip_port.parse().expect("Invalid ip:port");
 
-    ya_sb_router::bind_tcp_router(listen_addr).await?;
+    ya_sb_router::bind_gsb_router(Some(options.gsb_url)).await?;
     tokio::signal::ctrl_c().await?;
     println!();
     log::info!("SIGINT received, exiting");

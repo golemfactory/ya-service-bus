@@ -45,19 +45,6 @@ pub fn bind_stream<T: RpcStreamMessage>(
     router().lock().unwrap().bind_stream(addr, endpoint)
 }
 
-#[doc(hidden)]
-#[deprecated(note = "use bind instead")]
-pub fn bind_private<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
-    let addr = format!("/private{}", addr);
-    router().lock().unwrap().bind(&addr, endpoint)
-}
-#[doc(hidden)]
-#[deprecated(note = "use bind instead")]
-pub fn bind_public<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + 'static) -> Handle {
-    let addr = format!("/public{}", addr);
-    router().lock().unwrap().bind(&addr, endpoint)
-}
-
 #[inline]
 pub fn bind_with_caller<T: RpcMessage, Output, F>(addr: &str, f: F) -> Handle
 where
@@ -78,7 +65,7 @@ impl Endpoint {
         &self,
         msg: T,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
-        self.router.lock().unwrap().forward(&self.addr, None, msg)
+        self.router.lock().unwrap().forward(&self.addr, msg)
     }
 
     pub fn call_streaming<T: RpcStreamMessage>(
@@ -148,5 +135,68 @@ impl<
 
     fn handle(&mut self, _caller: &str, msg: T) -> Self::Result {
         self(msg)
+    }
+}
+
+pub struct ServiceBinder<'a, 'b, DB, AUX>
+where
+    DB: std::clone::Clone + 'static,
+    AUX: std::clone::Clone,
+{
+    addr: &'b str,
+    db: &'a DB,
+    aux: AUX,
+}
+
+impl<'a, 'b, DB, AUX> ServiceBinder<'a, 'b, DB, AUX>
+where
+    DB: std::clone::Clone + 'static,
+    AUX: std::clone::Clone + 'static,
+{
+    pub fn new(addr: &'b str, db: &'a DB, aux: AUX) -> Self {
+        Self { addr, db, aux }
+    }
+
+    pub fn bind<F: 'static, Msg: RpcMessage, Output: 'static>(self, f: F) -> Self
+    where
+        F: Fn(DB, String, Msg) -> Output,
+        Output: Future<Output = Result<Msg::Item, Msg::Error>>,
+        Msg::Error: std::fmt::Display,
+    {
+        let db = self.db.clone();
+        let _ = bind_with_caller(self.addr, move |addr, msg| {
+            log::debug!("Received call to {}", Msg::ID);
+            let fut = f(db.clone(), addr, msg);
+            fut.map(|res| {
+                match &res {
+                    Ok(_) => log::debug!("Call to {} successful", Msg::ID),
+                    Err(e) => log::debug!("Call to {} failed: {}", Msg::ID, e),
+                }
+                res
+            })
+        });
+        self
+    }
+
+    pub fn bind_with_processor<F: 'static, Msg: RpcMessage, Output: 'static>(self, f: F) -> Self
+    where
+        F: Fn(DB, AUX, String, Msg) -> Output,
+        Output: Future<Output = Result<Msg::Item, Msg::Error>>,
+        Msg::Error: std::fmt::Display,
+    {
+        let db = self.db.clone();
+        let aux = self.aux.clone();
+        let _ = bind_with_caller(self.addr, move |addr, msg| {
+            log::debug!("Received call to {}", Msg::ID);
+            let fut = f(db.clone(), aux.clone(), addr, msg);
+            fut.map(|res| {
+                match &res {
+                    Ok(_) => log::debug!("Call to {} successful", Msg::ID),
+                    Err(e) => log::debug!("Call to {} failed: {}", Msg::ID, e),
+                }
+                res
+            })
+        });
+        self
     }
 }

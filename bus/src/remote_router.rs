@@ -1,11 +1,11 @@
-use crate::connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport};
-use crate::error::Error;
-use crate::error::Error::GsbFailure;
-use crate::{Handle, RpcRawCall, RpcRawStreamCall};
 use actix::{prelude::*, WrapFuture};
-use futures::{channel::oneshot, prelude::*, FutureExt, SinkExt, StreamExt};
-use std::collections::HashSet;
-use std::time::Duration;
+use futures::{channel::oneshot, prelude::*, SinkExt};
+use std::{collections::HashSet, time::Duration};
+
+use crate::{
+    connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
+    Error, RpcRawCall, RpcRawStreamCall,
+};
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -32,7 +32,10 @@ impl Actor for RemoteRouter {
 
 impl RemoteRouter {
     fn try_connect(&mut self, ctx: &mut <Self as Actor>::Context) {
-        let addr = ya_sb_proto::gsb_addr();
+        // FIXME: this is `SystemService` and as such cannot get input being initialized
+        // FIXME: but we need to pass gsb_url from yagnad CLI
+        let addr = ya_sb_proto::gsb_addr(None);
+        log::info!("trying to connect to: {}", addr);
         let connect_fut = connection::tcp(addr)
             .map_err(move |e| Error::BusConnectionFail(addr, e))
             .into_actor(self)
