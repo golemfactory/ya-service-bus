@@ -1,7 +1,11 @@
 [package]
 name = "ya-sb-router"
 version = "0.1.0"
+description = "Yagna Service Bus Router"
 authors = ["Golem Factory <contact@golem.network>"]
+homepage = "https://github.com/golemfactory/yagna/service-bus/router"
+repository = "https://github.com/golemfactory/yagna"
+license = "GPL-3.0"
 edition = "2018"
 
 [dependencies]
@@ -25,3 +29,8 @@ uuid = { version = "0.8.1", features = ["v4"] }
 env_logger = "0.7"
 tokio = { version = "0.2", features = ["signal"] }
 ya-service-api-web = "0.1"
+
+[package.metadata.deb]
+assets = [
+    ["target/release/examples/ya_sb_router", "usr/bin/", "755"],
+]
