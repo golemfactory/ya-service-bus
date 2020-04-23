@@ -12,7 +12,7 @@ struct Options {
 }
 
 #[tokio::main]
-async fn main() -> failure::Fallible<()> {
+async fn main() -> anyhow::Result<()> {
     let options = Options::from_args();
     env::set_var(
         "RUST_LOG",

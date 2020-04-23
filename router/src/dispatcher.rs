@@ -29,9 +29,9 @@ where
         &mut self,
         addr: A,
         sink: B,
-    ) -> failure::Fallible<()> {
+    ) -> anyhow::Result<()> {
         match self.senders.entry(addr) {
-            Entry::Occupied(_) => Err(failure::err_msg("Sender already registered")),
+            Entry::Occupied(entry) => anyhow::bail!("Sender already registered: {}", entry.key()),
             Entry::Vacant(entry) => {
                 let (tx, rx) = mpsc::channel(1000);
                 tokio::spawn(async move {
@@ -54,12 +54,12 @@ where
         self.senders.remove(addr);
     }
 
-    pub fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
+    pub fn send_message<T>(&mut self, addr: &A, msg: T) -> anyhow::Result<()>
     where
-        T: Into<M>,
+        T: Into<M> + Debug,
     {
         match self.senders.get_mut(addr) {
-            None => Err(failure::err_msg("Sender not registered")),
+            None => anyhow::bail!("Sender not registered: {}, msg: {:?}", addr, msg),
             Some(sender) => {
                 let sender = sender.clone();
                 let msg = msg.into();

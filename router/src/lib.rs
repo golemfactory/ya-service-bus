@@ -92,7 +92,6 @@ where
 
     pub fn disconnect(&mut self, addr: &A) {
         log::debug!("Closing connection with {}", addr);
-        self.dispatcher.unregister(addr);
         self.last_seen.remove(addr);
 
         // IDs of all endpoints registered by this server
@@ -127,7 +126,11 @@ where
                 request_id,
                 code: CallReplyCode::ServiceFailure as i32,
                 reply_type: CallReplyType::Full as i32,
-                data: "Service disconnected".to_owned().into_bytes(),
+                data: format!(
+                    "Service {} call aborted due to its provider disconnection.",
+                    pending_call.service_id
+                )
+                .into_bytes(),
             };
             self.send_message_safe(&pending_call.caller_addr, msg);
         }
@@ -150,9 +153,12 @@ where
                     .remove(&addr);
             }
         }
+
+        self.dispatcher.unregister(addr);
+        log::debug!("Connection with {} closed.", addr);
     }
 
-    fn send_message<T>(&mut self, addr: &A, msg: T) -> failure::Fallible<()>
+    fn send_message<T>(&mut self, addr: &A, msg: T) -> anyhow::Result<()>
     where
         T: Into<GsbMessage>,
     {
@@ -167,7 +173,7 @@ where
             .unwrap_or_else(|err| log::error!("Send message failed: {:?}", err));
     }
 
-    fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> failure::Fallible<()> {
+    fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> anyhow::Result<()> {
         log::trace!("{} is registering endpoint {}", addr, &msg.service_id);
         let msg = if !is_valid_service_id(&msg.service_id) {
             RegisterReply {
@@ -197,7 +203,7 @@ where
         self.send_message(addr, msg)
     }
 
-    fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> failure::Fallible<()> {
+    fn unregister_endpoint(&mut self, addr: &A, msg: UnregisterRequest) -> anyhow::Result<()> {
         log::debug!(
             "Received UnregisterRequest from {}. service_id = {}",
             addr,
@@ -208,7 +214,7 @@ where
                 entry.remove();
                 self.reversed_endpoints
                     .get_mut(addr)
-                    .ok_or(failure::err_msg("Address not found"))?
+                    .ok_or(anyhow::anyhow!("Address not found: {}", addr))?
                     .remove(&msg.service_id);
                 log::debug!("Service successfully unregistered");
                 UnregisterReply {
@@ -225,7 +231,7 @@ where
         self.send_message(addr, msg)
     }
 
-    fn call(&mut self, caller_addr: &A, msg: CallRequest) -> failure::Fallible<()> {
+    fn call(&mut self, caller_addr: &A, msg: CallRequest) -> anyhow::Result<()> {
         log::debug!(
             "Received CallRequest from {}. caller = {}, address = {}, request_id = {}",
             caller_addr,
@@ -272,38 +278,43 @@ where
         }
     }
 
-    fn reply(&mut self, server_addr: &A, msg: CallReply) -> failure::Fallible<()> {
+    fn reply(&mut self, server_addr: &A, msg: CallReply) -> anyhow::Result<()> {
         log::debug!(
             "Received CallReply from {} request_id = {}",
             server_addr,
             &msg.request_id
         );
-        let caller_addr = match self.pending_calls.entry(msg.request_id.clone()) {
+        match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(entry) => {
                 let pending_call = entry.get();
                 let caller_addr = pending_call.caller_addr.clone();
                 if msg.reply_type == CallReplyType::Full as i32 {
                     self.endpoint_calls
                         .get_mut(&pending_call.service_id)
-                        .ok_or(failure::err_msg("Service not found"))?
+                        .ok_or(anyhow::anyhow!(
+                            "Service not found: {}",
+                            pending_call.service_id
+                        ))?
                         .remove(&msg.request_id);
                     self.client_calls
                         .get_mut(&pending_call.caller_addr)
-                        .ok_or(failure::err_msg("Client not found"))?
+                        .ok_or(anyhow::anyhow!(
+                            "Caller not found: {}",
+                            pending_call.caller_addr
+                        ))?
                         .remove(&msg.request_id);
                     entry.remove_entry();
                 }
-                Ok(caller_addr)
+                self.send_message(&caller_addr, msg)
             }
-            Entry::Vacant(_) => Err("Unknown request ID"),
-        };
-        match caller_addr {
-            Ok(addr) => self.send_message(&addr, msg),
-            Err(err) => Ok(log::error!("{}", err)),
+            Entry::Vacant(_) => Ok(log::error!(
+                "Got reply for unknown request ID: {}",
+                msg.request_id
+            )),
         }
     }
 
-    fn subscribe(&mut self, addr: &A, msg: SubscribeRequest) -> failure::Fallible<()> {
+    fn subscribe(&mut self, addr: &A, msg: SubscribeRequest) -> anyhow::Result<()> {
         log::debug!(
             "Received SubscribeRequest from {} topic = {}",
             addr,
@@ -312,7 +323,7 @@ where
         let msg = if !is_valid_topic_id(&msg.topic) {
             SubscribeReply {
                 code: SubscribeReplyCode::SubscribeBadRequest as i32,
-                message: "Invalid topic ID".to_string(),
+                message: format!("Invalid topic ID: {}", msg.topic),
             }
         } else {
             if self
@@ -340,7 +351,7 @@ where
         self.send_message(addr, msg)
     }
 
-    fn unsubscribe(&mut self, addr: &A, msg: UnsubscribeRequest) -> failure::Fallible<()> {
+    fn unsubscribe(&mut self, addr: &A, msg: UnsubscribeRequest) -> anyhow::Result<()> {
         log::debug!(
             "Received UnsubscribeRequest from {} topic = {}",
             addr,
@@ -354,7 +365,7 @@ where
         {
             self.reversed_subscriptions
                 .get_mut(addr)
-                .ok_or(failure::err_msg("Address not found"))?
+                .ok_or(anyhow::anyhow!("Address not found: {}", addr))?
                 .remove(&msg.topic);
             log::debug!("Successfully unsubscribed");
             UnsubscribeReply {
@@ -369,7 +380,7 @@ where
         self.send_message(addr, msg)
     }
 
-    fn broadcast(&mut self, addr: &A, msg: BroadcastRequest) -> failure::Fallible<()> {
+    fn broadcast(&mut self, addr: &A, msg: BroadcastRequest) -> anyhow::Result<()> {
         log::debug!(
             "Received BroadcastRequest from {} topic = {}",
             addr,
@@ -383,7 +394,7 @@ where
         } else {
             BroadcastReply {
                 code: BroadcastReplyCode::BroadcastBadRequest as i32,
-                message: "Invalid topic ID".to_string(),
+                message: format!("Invalid topic ID: {}", msg.topic),
             }
         };
         self.send_message_safe(addr, reply);
@@ -399,23 +410,20 @@ where
         Ok(())
     }
 
-    fn ping(&mut self, addr: &A) -> failure::Fallible<()> {
+    fn ping(&mut self, addr: &A) -> anyhow::Result<()> {
         log::debug!("Sending ping to {}", addr);
         let ping = Ping {};
         self.send_message(addr, ping)
     }
 
-    fn pong(&self, addr: &A) -> failure::Fallible<()> {
+    fn pong(&self, addr: &A) -> anyhow::Result<()> {
         log::debug!("Received pong from {}", addr);
         Ok(())
     }
 
-    fn update_last_seen(&mut self, addr: &A) -> failure::Fallible<()> {
+    fn update_last_seen(&mut self, addr: &A) -> anyhow::Result<()> {
         if !self.last_seen.contains_key(addr) {
-            return Err(failure::err_msg(format!(
-                "Client {} disconnected due to timeout",
-                addr
-            )));
+            anyhow::bail!("Client {} disconnected due to timeout", addr);
         }
         self.last_seen.insert(addr.clone(), Utc::now().naive_utc());
         Ok(())
@@ -442,7 +450,7 @@ where
         }
     }
 
-    pub fn handle_message(&mut self, addr: A, msg: GsbMessage) -> failure::Fallible<()> {
+    pub fn handle_message(&mut self, addr: A, msg: GsbMessage) -> anyhow::Result<()> {
         self.update_last_seen(&addr)?;
         match msg {
             GsbMessage::RegisterRequest(msg) => self.register_endpoint(&addr, msg),
@@ -453,10 +461,7 @@ where
             GsbMessage::UnsubscribeRequest(msg) => self.unsubscribe(&addr, msg),
             GsbMessage::BroadcastRequest(msg) => self.broadcast(&addr, msg),
             GsbMessage::Pong => self.pong(&addr),
-            _ => Err(failure::err_msg(format!(
-                "Unexpected message received: {:?}",
-                msg
-            ))),
+            _ => anyhow::bail!("Unexpected message received: {:?}", msg),
         }
     }
 }
@@ -502,7 +507,7 @@ where
     pub fn handle_connection<R, W>(&self, addr: A, reader: R, writer: W)
     where
         R: TryStream<Ok = GsbMessage> + Send + 'static,
-        R::Error: Into<failure::Error>,
+        R::Error: Into<anyhow::Error>,
         W: Sink<M, Error = E> + Send + 'static,
     {
         let router = self.router.clone();
@@ -526,7 +531,7 @@ where
         S: TryStream<Ok = (A, R, W)>,
         S::Error: Debug,
         R: TryStream<Ok = GsbMessage> + Send + 'static,
-        R::Error: Into<failure::Error>,
+        R::Error: Into<anyhow::Error>,
         W: Sink<M, Error = E> + Send + 'static,
     {
         conn_stream
