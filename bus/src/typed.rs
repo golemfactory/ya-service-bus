@@ -10,7 +10,7 @@ use std::sync::{Arc, Mutex};
 ///
 /// ## Example
 ///
-/// ```rust
+/// ```no_run
 /// use ya_service_bus::{typed as bus, RpcMessage};
 /// use serde::{Serialize, Deserialize};
 /// use actix::System;
