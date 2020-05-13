@@ -380,19 +380,14 @@ impl Router {
     pub fn forward<T: RpcMessage + Unpin>(
         &mut self,
         addr: &str,
-        // TODO: add `from: &str` as in `forward_bytes` below
-        msg: T,
+        msg: RpcEnvelope<T>,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
-        let caller = "local".to_string();
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
             (if let Some(h) = slot.recipient() {
-                h.send(RpcEnvelope::local(msg))
-                    .map_err(Error::from)
-                    .left_future()
+                h.send(msg).map_err(Error::from).left_future()
             } else {
-                let body = crate::serialization::to_vec(&msg).unwrap();
-                slot.send(RpcRawCall { caller, addr, body })
+                slot.send(RpcRawCall::from((msg, addr)))
                     .then(|b| {
                         future::ready(match b {
                             Ok(b) => crate::serialization::from_read(std::io::Cursor::new(&b))
@@ -404,10 +399,8 @@ impl Router {
             })
             .left_future()
         } else {
-            let body = crate::serialization::to_vec(&msg).unwrap();
-
             RemoteRouter::from_registry()
-                .send(RpcRawCall { caller, addr, body })
+                .send(RpcRawCall::from((msg, addr)))
                 .then(|v| {
                     future::ready(match v {
                         Ok(v) => v,

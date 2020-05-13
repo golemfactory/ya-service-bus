@@ -87,6 +87,16 @@ pub struct RpcRawCall {
     pub body: Vec<u8>,
 }
 
+impl<T: Serialize> From<(RpcEnvelope<T>, String)> for RpcRawCall {
+    fn from((envelope, addr): (RpcEnvelope<T>, String)) -> Self {
+        RpcRawCall {
+            body: crate::serialization::to_vec(&envelope.body).unwrap(),
+            caller: envelope.caller,
+            addr,
+        }
+    }
+}
+
 impl Message for RpcRawCall {
     type Result = Result<Vec<u8>, error::Error>;
 }
@@ -100,9 +110,9 @@ impl<T: RpcMessage> RpcEnvelope<T> {
         self.body
     }
 
-    pub fn with_caller(caller: impl Into<String>, body: T) -> Self {
+    pub fn with_caller(caller: impl ToString, body: T) -> Self {
         RpcEnvelope {
-            caller: caller.into(),
+            caller: caller.to_string(),
             body,
         }
     }
@@ -153,6 +163,8 @@ pub trait RpcEndpoint<T: RpcMessage>: Clone {
     type Result: Future<Output = Result<<RpcEnvelope<T> as Message>::Result, error::Error>>;
 
     fn send(&self, msg: T) -> Self::Result;
+
+    fn send_as(&self, caller: impl ToString + 'static, msg: T) -> Self::Result;
 }
 
 pub trait RpcHandler<T: RpcMessage> {

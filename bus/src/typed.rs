@@ -1,6 +1,8 @@
 use crate::error::Error;
 use crate::local_router::{router, Router};
-use crate::{Handle, RpcEndpoint, RpcHandler, RpcMessage, RpcStreamHandler, RpcStreamMessage};
+use crate::{
+    Handle, RpcEndpoint, RpcEnvelope, RpcHandler, RpcMessage, RpcStreamHandler, RpcStreamMessage,
+};
 use futures::prelude::*;
 use futures::FutureExt;
 use std::pin::Pin;
@@ -70,7 +72,21 @@ impl Endpoint {
         &self,
         msg: T,
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
-        self.router.lock().unwrap().forward(&self.addr, msg)
+        self.router
+            .lock()
+            .unwrap()
+            .forward(&self.addr, RpcEnvelope::local(msg))
+    }
+
+    pub fn call_as<T: RpcMessage + Unpin>(
+        &self,
+        caller: impl ToString,
+        msg: T,
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+        self.router
+            .lock()
+            .unwrap()
+            .forward(&self.addr, RpcEnvelope::with_caller(caller, msg))
     }
 
     pub fn call_streaming<T: RpcStreamMessage>(
@@ -92,6 +108,10 @@ where
 
     fn send(&self, msg: T) -> Self::Result {
         Endpoint::call(self, msg).boxed_local()
+    }
+
+    fn send_as(&self, caller: impl ToString + 'static, msg: T) -> Self::Result {
+        Endpoint::call_as(self, caller, msg).boxed_local()
     }
 }
 
