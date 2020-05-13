@@ -12,7 +12,9 @@ use std::{
 
 use ya_sb_proto::codec::{GsbMessage, ProtocolError};
 use ya_sb_proto::{
-    CallReply, CallReplyCode, CallReplyType, CallRequest, RegisterReplyCode, RegisterRequest,
+    BroadcastReplyCode, BroadcastRequest, CallReply, CallReplyCode, CallReplyType, CallRequest,
+    RegisterReplyCode, RegisterRequest, SubscribeReplyCode, SubscribeRequest, UnregisterReplyCode,
+    UnregisterRequest, UnsubscribeReplyCode, UnsubscribeRequest,
 };
 
 use crate::local_router::router;
@@ -37,6 +39,10 @@ pub trait CallRequestHandler {
         address: String,
         data: Vec<u8>,
     ) -> Self::Reply;
+
+    fn handle_event(&mut self, address: String, _data: Vec<u8>) {
+        log::warn!("unhandled gsb event: {}", address);
+    }
 }
 
 impl ResponseChunk {
@@ -96,14 +102,21 @@ impl<
     }
 }
 
+type TransportWriter<W> = actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>;
+type ReplyQueue = VecDeque<oneshot::Sender<Result<(), Error>>>;
+
 struct Connection<W, H>
 where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
-    writer: actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>,
-    register_reply: VecDeque<oneshot::Sender<Result<(), Error>>>,
+    writer: TransportWriter<W>,
+    register_reply: ReplyQueue,
+    unregister_reply: ReplyQueue,
+    subscribe_reply: ReplyQueue,
+    unsubscribe_reply: ReplyQueue,
     call_reply: HashMap<String, mpsc::Sender<Result<ResponseChunk, Error>>>,
+    broadcast_reply: ReplyQueue,
     handler: H,
 }
 
@@ -112,6 +125,20 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
     H: CallRequestHandler,
 {
+}
+
+fn handle_reply<Ctx: ActorContext, F: FnOnce() -> Result<(), Error>>(
+    cmd_type: &str,
+    queue: &mut ReplyQueue,
+    ctx: &mut Ctx,
+    reply_msg: F,
+) {
+    if let Some(r) = queue.pop_front() {
+        let _ = r.send(reply_msg());
+    } else {
+        log::error!("unmatched {} reply", cmd_type);
+        ctx.stop()
+    }
 }
 
 impl<W: 'static, H: 'static> Connection<W, H>
@@ -123,9 +150,43 @@ where
         Connection {
             writer: io::SinkWrite::new(w.buffer(256), ctx),
             register_reply: Default::default(),
+            unregister_reply: Default::default(),
+            subscribe_reply: Default::default(),
+            unsubscribe_reply: Default::default(),
             call_reply: Default::default(),
+            broadcast_reply: Default::default(),
             handler,
         }
+    }
+
+    fn handle_unregister_reply(
+        &mut self,
+        code: UnregisterReplyCode,
+        ctx: &mut <Self as Actor>::Context,
+    ) {
+        handle_reply(
+            "unregister",
+            &mut self.unregister_reply,
+            ctx,
+            || match code {
+                UnregisterReplyCode::UnregisteredOk => Ok(()),
+                UnregisterReplyCode::NotRegistered => {
+                    Err(Error::GsbBadRequest("unregister".to_string()))
+                }
+            },
+        )
+    }
+
+    fn handle_broadcast_reply(
+        &mut self,
+        code: BroadcastReplyCode,
+        msg: String,
+        ctx: &mut <Self as Actor>::Context,
+    ) {
+        handle_reply("broadcast", &mut self.broadcast_reply, ctx, || match code {
+            BroadcastReplyCode::BroadcastOk => Ok(()),
+            BroadcastReplyCode::BroadcastBadRequest => Err(Error::GsbBadRequest(msg)),
+        })
     }
 
     fn handle_register_reply(
@@ -134,23 +195,50 @@ where
         msg: String,
         ctx: &mut <Self as Actor>::Context,
     ) {
-        log::trace!("got reply: {}", msg);
-        if let Some(r) = self.register_reply.pop_front() {
-            let _ = match code {
-                RegisterReplyCode::RegisteredOk => r.send(Ok(())),
-                RegisterReplyCode::RegisterBadRequest => {
-                    log::warn!("bad request: {}", msg);
-                    r.send(Err(Error::GsbBadRequest(msg)))
+        handle_reply("register", &mut self.register_reply, ctx, || match code {
+            RegisterReplyCode::RegisteredOk => Ok(()),
+            RegisterReplyCode::RegisterBadRequest => {
+                log::warn!("bad request: {}", msg);
+                Err(Error::GsbBadRequest(msg))
+            }
+            RegisterReplyCode::RegisterConflict => {
+                log::warn!("already registered: {}", msg);
+                Err(Error::GsbAlreadyRegistered(msg))
+            }
+        })
+    }
+
+    fn handle_subscribe_reply(
+        &mut self,
+        code: SubscribeReplyCode,
+        msg: String,
+        ctx: &mut <Self as Actor>::Context,
+    ) {
+        handle_reply("subscribe", &mut self.subscribe_reply, ctx, || match code {
+            SubscribeReplyCode::SubscribedOk => Ok(()),
+            SubscribeReplyCode::SubscribeBadRequest => {
+                log::warn!("bad request: {}", msg);
+                Err(Error::GsbBadRequest(msg))
+            }
+        })
+    }
+
+    fn handle_unsubscribe_reply(
+        &mut self,
+        code: UnsubscribeReplyCode,
+        ctx: &mut <Self as Actor>::Context,
+    ) {
+        handle_reply(
+            "unsubscribe",
+            &mut self.unsubscribe_reply,
+            ctx,
+            || match code {
+                UnsubscribeReplyCode::UnsubscribedOk => Ok(()),
+                UnsubscribeReplyCode::NotSubscribed => {
+                    Err(Error::GsbBadRequest("unsubscribed".to_string()))
                 }
-                RegisterReplyCode::RegisterConflict => {
-                    log::warn!("already registered: {}", msg);
-                    r.send(Err(Error::GsbAlreadyRegistered(msg)))
-                }
-            };
-        } else {
-            log::error!("unmatched register reply");
-            ctx.stop()
-        }
+            },
+        )
     }
 
     fn handle_call_request(
@@ -304,6 +392,38 @@ fn register_reply_code(code: i32) -> Option<RegisterReplyCode> {
     })
 }
 
+fn unregister_reply_code(code: i32) -> Option<UnregisterReplyCode> {
+    Some(match code {
+        0 => UnregisterReplyCode::UnregisteredOk,
+        404 => UnregisterReplyCode::NotRegistered,
+        _ => return None,
+    })
+}
+
+fn subscribe_reply_code(code: i32) -> Option<SubscribeReplyCode> {
+    Some(match code {
+        0 => SubscribeReplyCode::SubscribedOk,
+        400 => SubscribeReplyCode::SubscribeBadRequest,
+        _ => return None,
+    })
+}
+
+fn unsubscribe_reply_code(code: i32) -> Option<UnsubscribeReplyCode> {
+    Some(match code {
+        0 => UnsubscribeReplyCode::UnsubscribedOk,
+        404 => UnsubscribeReplyCode::NotSubscribed,
+        _ => return None,
+    })
+}
+
+fn broadcast_reply_code(code: i32) -> Option<BroadcastReplyCode> {
+    Some(match code {
+        0 => BroadcastReplyCode::BroadcastOk,
+        400 => BroadcastReplyCode::BroadcastBadRequest,
+        _ => return None,
+    })
+}
+
 impl<W: 'static, H: 'static> StreamHandler<Result<GsbMessage, ProtocolError>> for Connection<W, H>
 where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
@@ -319,6 +439,42 @@ where
                     ctx.stop();
                 }
             }
+
+            GsbMessage::UnregisterReply(r) => {
+                if let Some(code) = unregister_reply_code(r.code) {
+                    self.handle_unregister_reply(code, ctx)
+                } else {
+                    log::error!("invalid unregister reply code {}", r.code);
+                    ctx.stop();
+                }
+            }
+            GsbMessage::SubscribeReply(r) => {
+                if let Some(code) = subscribe_reply_code(r.code) {
+                    self.handle_subscribe_reply(code, r.message, ctx)
+                } else {
+                    log::error!("invalid reply code {}", r.code);
+                    ctx.stop();
+                }
+            }
+
+            GsbMessage::UnsubscribeReply(r) => {
+                if let Some(code) = unsubscribe_reply_code(r.code) {
+                    self.handle_unsubscribe_reply(code, ctx)
+                } else {
+                    log::error!("invalid unsubscribe reply code {}", r.code);
+                    ctx.stop();
+                }
+            }
+
+            GsbMessage::BroadcastReply(r) => {
+                if let Some(code) = broadcast_reply_code(r.code) {
+                    self.handle_broadcast_reply(code, r.message, ctx)
+                } else {
+                    log::error!("invalid broadcast reply code {}", r.code);
+                    ctx.stop();
+                }
+            }
+
             GsbMessage::CallRequest(r) => {
                 self.handle_call_request(r.request_id, r.caller, r.address, r.data, ctx)
             }
@@ -327,6 +483,11 @@ where
                     log::error!("error on call reply processing: {}", e);
                     ctx.stop();
                 }
+            }
+            GsbMessage::BroadcastRequest(r) => {
+                let address = r.topic;
+                let data = r.data;
+                self.handler.handle_event(address, data);
             }
             GsbMessage::Ping => {
                 if let Err(e) = self.writer.write(GsbMessage::Pong) {
@@ -412,6 +573,23 @@ where
     }
 }
 
+fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static>(
+    writer: &mut TransportWriter<W>,
+    queue: &mut VecDeque<oneshot::Sender<Result<(), Error>>>,
+    msg: GsbMessage,
+) -> ActorResponse<A, (), Error> {
+    let (tx, rx) = oneshot::channel();
+    queue.push_back(tx);
+    if let Err(e) = writer.write(msg) {
+        ActorResponse::reply(Err(Error::GsbFailure(e.to_string())))
+    } else {
+        ActorResponse::r#async(fut::wrap_future(async move {
+            rx.await??;
+            Ok(())
+        }))
+    }
+}
+
 struct Bind {
     addr: String,
 }
@@ -427,23 +605,109 @@ where
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: Bind, _ctx: &mut Self::Context) -> Self::Result {
-        let (tx, rx) = oneshot::channel();
-        self.register_reply.push_back(tx);
         let service_id = msg.addr;
-        match self
-            .writer
-            .write(GsbMessage::RegisterRequest(RegisterRequest { service_id }))
-        {
-            Ok(()) => (),
-            Err(e) => return ActorResponse::reply(Err(Error::GsbFailure(e.to_string()))),
-        };
+        send_cmd_async(
+            &mut self.writer,
+            &mut self.register_reply,
+            GsbMessage::RegisterRequest(RegisterRequest { service_id }),
+        )
+    }
+}
 
-        ActorResponse::r#async(
-            async move {
-                rx.await??;
-                Ok(())
-            }
-            .into_actor(self),
+struct Unbind {
+    addr: String,
+}
+
+impl Message for Unbind {
+    type Result = Result<(), Error>;
+}
+
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Unbind> for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError>,
+{
+    type Result = ActorResponse<Self, (), Error>;
+
+    fn handle(&mut self, msg: Unbind, _ctx: &mut Self::Context) -> Self::Result {
+        let service_id = msg.addr;
+        send_cmd_async(
+            &mut self.writer,
+            &mut self.unregister_reply,
+            GsbMessage::UnregisterRequest(UnregisterRequest { service_id }),
+        )
+    }
+}
+
+struct Subscribe {
+    addr: String,
+}
+
+impl Message for Subscribe {
+    type Result = Result<(), Error>;
+}
+
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Subscribe> for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError>,
+{
+    type Result = ActorResponse<Self, (), Error>;
+
+    fn handle(&mut self, msg: Subscribe, _ctx: &mut Self::Context) -> Self::Result {
+        let topic = msg.addr;
+        send_cmd_async(
+            &mut self.writer,
+            &mut self.subscribe_reply,
+            GsbMessage::SubscribeRequest(SubscribeRequest { topic }),
+        )
+    }
+}
+
+struct Unsubscribe {
+    addr: String,
+}
+
+impl Message for Unsubscribe {
+    type Result = Result<(), Error>;
+}
+
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Unsubscribe> for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError>,
+{
+    type Result = ActorResponse<Self, (), Error>;
+
+    fn handle(&mut self, msg: Unsubscribe, _ctx: &mut Self::Context) -> Self::Result {
+        let topic = msg.addr;
+        send_cmd_async(
+            &mut self.writer,
+            &mut self.unsubscribe_reply,
+            GsbMessage::UnsubscribeRequest(UnsubscribeRequest { topic }),
+        )
+    }
+}
+
+pub struct BcastCall {
+    pub addr: String,
+    pub body: Vec<u8>,
+}
+
+impl Message for BcastCall {
+    type Result = Result<(), Error>;
+}
+
+impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<BcastCall> for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError>,
+{
+    type Result = ActorResponse<Self, (), Error>;
+
+    fn handle(&mut self, msg: BcastCall, _ctx: &mut Self::Context) -> Self::Result {
+        let topic = msg.addr;
+        let data = msg.body;
+        send_cmd_async(
+            &mut self.writer,
+            &mut self.broadcast_reply,
+            GsbMessage::BroadcastRequest(BroadcastRequest { topic, data }),
         )
     }
 }
@@ -485,6 +749,45 @@ impl<
             log::trace!("send bind result: {:?}", v);
             v?
         })
+    }
+
+    pub fn unbind(
+        &self,
+        addr: impl Into<String>,
+    ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let addr = addr.into();
+        self.0.send(Unbind { addr }).then(|v| async {
+            log::trace!("send unbind result: {:?}", v);
+            v?
+        })
+    }
+
+    pub fn subscribe(
+        &self,
+        addr: impl Into<String>,
+    ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let fut = self.0.send(Subscribe { addr: addr.into() });
+        async move { fut.await? }
+    }
+
+    pub fn unsubscribe(
+        &self,
+        addr: impl Into<String>,
+    ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let fut = self.0.send(Unsubscribe { addr: addr.into() });
+        async move { fut.await? }
+    }
+
+    pub fn broadcast(
+        &self,
+        topic: impl Into<String>,
+        body: impl Into<Vec<u8>>,
+    ) -> impl Future<Output = Result<(), Error>> {
+        let fut = self.0.send(BcastCall {
+            addr: topic.into(),
+            body: body.into(),
+        });
+        async move { fut.await? }
     }
 
     pub fn call(
