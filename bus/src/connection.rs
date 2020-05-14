@@ -102,6 +102,29 @@ impl<
     }
 }
 
+impl<
+        R: futures::Stream<Item = Result<ResponseChunk, Error>> + Unpin,
+        F1: FnMut(String, String, String, Vec<u8>) -> R,
+        F2: FnMut(String, Vec<u8>),
+    > CallRequestHandler for (F1, F2)
+{
+    type Reply = R;
+
+    fn do_call(
+        &mut self,
+        request_id: String,
+        caller: String,
+        address: String,
+        data: Vec<u8>,
+    ) -> Self::Reply {
+        (self.0)(request_id, caller, address, data)
+    }
+
+    fn handle_event(&mut self, address: String, data: Vec<u8>) {
+        (self.1)(address, data)
+    }
+}
+
 type TransportWriter<W> = actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>;
 type ReplyQueue = VecDeque<oneshot::Sender<Result<(), Error>>>;
 
@@ -781,11 +804,11 @@ impl<
     pub fn broadcast(
         &self,
         topic: impl Into<String>,
-        body: impl Into<Vec<u8>>,
-    ) -> impl Future<Output = Result<(), Error>> {
+        body: Vec<u8>,
+    ) -> impl Future<Output = Result<(), Error>> + 'static {
         let fut = self.0.send(BcastCall {
             addr: topic.into(),
-            body: body.into(),
+            body,
         });
         async move { fut.await? }
     }

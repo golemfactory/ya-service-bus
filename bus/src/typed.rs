@@ -61,6 +61,11 @@ pub struct Endpoint {
 }
 
 impl Endpoint {
+    #[doc(hidden)]
+    pub fn addr(&self) -> &str {
+        self.addr.as_ref()
+    }
+
     pub fn call<T: RpcMessage + Unpin>(
         &self,
         msg: T,
