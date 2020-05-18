@@ -458,12 +458,12 @@ impl Router {
     pub fn forward_bytes(
         &mut self,
         addr: &str,
-        from: &str,
+        caller: &str,
         msg: Vec<u8>,
     ) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
         if let Some(slot) = self.handlers.get_mut(addr) {
             slot.send(RpcRawCall {
-                caller: from.into(),
+                caller: caller.into(),
                 addr: addr.into(),
                 body: msg,
             })
@@ -471,7 +471,7 @@ impl Router {
         } else {
             RemoteRouter::from_registry()
                 .send(RpcRawCall {
-                    caller: from.into(),
+                    caller: caller.into(),
                     addr: addr.into(),
                     body: msg,
                 })
@@ -486,12 +486,12 @@ impl Router {
     pub fn forward_bytes_local(
         &mut self,
         addr: &str,
-        from: &str,
+        caller: &str,
         msg: &[u8],
     ) -> impl Stream<Item = Result<ResponseChunk, Error>> {
         if let Some(slot) = self.handlers.get_mut(addr) {
             slot.send_streaming(RpcRawCall {
-                caller: from.into(),
+                caller: caller.into(),
                 addr: addr.into(),
                 body: msg.into(),
             })

@@ -6,13 +6,13 @@ use futures::Future;
 
 pub fn send(
     addr: &str,
-    from: &str,
+    caller: &str,
     bytes: &[u8],
 ) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
     router()
         .lock()
         .unwrap()
-        .forward_bytes(addr, from, bytes.into())
+        .forward_bytes(addr, caller, bytes.into())
 }
 
 pub trait RawHandler {

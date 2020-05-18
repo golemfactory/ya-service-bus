@@ -382,9 +382,10 @@ where
 
     fn broadcast(&mut self, addr: &A, msg: BroadcastRequest) -> anyhow::Result<()> {
         log::debug!(
-            "Received BroadcastRequest from {} topic = {}",
+            "Received BroadcastRequest from {} topic = {} caller = {}",
             addr,
-            &msg.topic
+            &msg.topic,
+            &msg.caller,
         );
         let reply = if is_valid_topic_id(&msg.topic) {
             BroadcastReply {

@@ -33,6 +33,7 @@ async fn run_client() {
     println!("Sending broadcast request...");
     let broadcast_data = "broadcast";
     let broadcast_request = BroadcastRequest {
+        caller: "some_id".into(),
         topic: topic.to_string(),
         data: broadcast_data.to_string().into_bytes(),
     };

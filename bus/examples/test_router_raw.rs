@@ -7,7 +7,7 @@ use structopt::StructOpt;
 use ya_service_bus::connection::CallRequestHandler;
 use ya_service_bus::{connection, ResponseChunk};
 
-const BAST_ADDR: &str = "bcastecho";
+const BAST_TOPIC: &str = "bcastecho";
 const SERVICE_ADDR: &str = "/local/raw/echo";
 
 async fn delay_for(secs: Option<u64>) {
@@ -74,19 +74,20 @@ impl CallRequestHandler for DebugHandler {
         stream::once(future::ok(ResponseChunk::Full(data)))
     }
 
-    fn handle_event(&mut self, address: String, data: Vec<u8>) {
+    fn handle_event(&mut self, caller: String, topic: String, data: Vec<u8>) {
         println!(
             r#"
                       _    |
-  _____   _____ _ __ | |_  |
- / _ \ \ / / _ \ '_ \| __| | address:    {}
+  _____   _____ _ __ | |_  | caller:     {}
+ / _ \ \ / / _ \ '_ \| __| | topic:      {}
 |  __/\ V /  __/ | | | |_  |
  \___| \_/ \___|_| |_|\__| |
 --
 {}
 --
         "#,
-            address,
+            caller,
+            topic,
             String::from_utf8_lossy(data.as_ref())
         );
     }
@@ -102,9 +103,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         let connection = connection::connect::<_, DebugHandler>(connection::tcp(bus_addr).await?);
         match args {
             Args::EventListener { time } => {
-                connection.subscribe(BAST_ADDR).await?;
+                connection.subscribe(BAST_TOPIC).await?;
                 delay_for(time).await;
-                connection.unsubscribe(BAST_ADDR).await?;
+                connection.unsubscribe(BAST_TOPIC).await?;
                 Ok(())
             }
             Args::Server {
@@ -112,11 +113,11 @@ fn main() -> Result<(), Box<dyn Error>> {
             } => {
                 connection.bind(SERVICE_ADDR).await.expect("bind echo");
                 if subscribe {
-                    connection.subscribe(BAST_ADDR).await?;
+                    connection.subscribe(BAST_TOPIC).await?;
                 }
                 delay_for(time).await;
                 if subscribe {
-                    connection.unsubscribe(BAST_ADDR).await?;
+                    connection.unsubscribe(BAST_TOPIC).await?;
                 }
                 connection.unbind(SERVICE_ADDR).await?;
 
@@ -130,7 +131,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Args::Broadcast { script } => {
                 let data = std::fs::read(script)?;
-                connection.broadcast(BAST_ADDR, data).await?;
+                connection.broadcast("maj_ajdi", BAST_TOPIC, data).await?;
                 Ok(())
             }
         }

@@ -40,8 +40,12 @@ pub trait CallRequestHandler {
         data: Vec<u8>,
     ) -> Self::Reply;
 
-    fn handle_event(&mut self, address: String, _data: Vec<u8>) {
-        log::warn!("unhandled gsb event: {}", address);
+    fn handle_event(&mut self, caller: String, topic: String, data: Vec<u8>) {
+        log::warn!("unhandled gsb event from: {}, to: {}", caller, topic,);
+        log::trace!(
+            "unhandled gsb event data: {:?}",
+            String::from_utf8_lossy(data.as_ref())
+        )
     }
 }
 
@@ -105,7 +109,7 @@ impl<
 impl<
         R: futures::Stream<Item = Result<ResponseChunk, Error>> + Unpin,
         F1: FnMut(String, String, String, Vec<u8>) -> R,
-        F2: FnMut(String, Vec<u8>),
+        F2: FnMut(String, String, Vec<u8>),
     > CallRequestHandler for (F1, F2)
 {
     type Reply = R;
@@ -120,8 +124,8 @@ impl<
         (self.0)(request_id, caller, address, data)
     }
 
-    fn handle_event(&mut self, address: String, data: Vec<u8>) {
-        (self.1)(address, data)
+    fn handle_event(&mut self, caller: String, topic: String, data: Vec<u8>) {
+        (self.1)(caller, topic, data)
     }
 }
 
@@ -143,10 +147,10 @@ where
     handler: H,
 }
 
-impl<W: 'static, H: 'static> Unpin for Connection<W, H>
+impl<W, H> Unpin for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
-    H: CallRequestHandler,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
 }
 
@@ -164,10 +168,10 @@ fn handle_reply<Ctx: ActorContext, F: FnOnce() -> Result<(), Error>>(
     }
 }
 
-impl<W: 'static, H: 'static> Connection<W, H>
+impl<W, H> Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
-    H: CallRequestHandler,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     fn new(w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
@@ -390,10 +394,10 @@ where
     }
 }
 
-impl<W: 'static, H: 'static> Actor for Connection<W, H>
+impl<W, H> Actor for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
-    H: CallRequestHandler,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Context = Context<Self>;
 
@@ -447,10 +451,10 @@ fn broadcast_reply_code(code: i32) -> Option<BroadcastReplyCode> {
     })
 }
 
-impl<W: 'static, H: 'static> StreamHandler<Result<GsbMessage, ProtocolError>> for Connection<W, H>
+impl<W, H> StreamHandler<Result<GsbMessage, ProtocolError>> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError> + Unpin,
-    H: CallRequestHandler,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     fn handle(&mut self, item: Result<GsbMessage, ProtocolError>, ctx: &mut Self::Context) {
         match item.unwrap() {
@@ -462,7 +466,6 @@ where
                     ctx.stop();
                 }
             }
-
             GsbMessage::UnregisterReply(r) => {
                 if let Some(code) = unregister_reply_code(r.code) {
                     self.handle_unregister_reply(code, ctx)
@@ -479,7 +482,6 @@ where
                     ctx.stop();
                 }
             }
-
             GsbMessage::UnsubscribeReply(r) => {
                 if let Some(code) = unsubscribe_reply_code(r.code) {
                     self.handle_unsubscribe_reply(code, ctx)
@@ -488,7 +490,6 @@ where
                     ctx.stop();
                 }
             }
-
             GsbMessage::BroadcastReply(r) => {
                 if let Some(code) = broadcast_reply_code(r.code) {
                     self.handle_broadcast_reply(code, r.message, ctx)
@@ -497,7 +498,6 @@ where
                     ctx.stop();
                 }
             }
-
             GsbMessage::CallRequest(r) => {
                 self.handle_call_request(r.request_id, r.caller, r.address, r.data, ctx)
             }
@@ -508,9 +508,7 @@ where
                 }
             }
             GsbMessage::BroadcastRequest(r) => {
-                let address = r.topic;
-                let data = r.data;
-                self.handler.handle_event(address, data);
+                self.handler.handle_event(r.caller, r.topic, r.data);
             }
             GsbMessage::Ping => {
                 if let Err(e) = self.writer.write(GsbMessage::Pong) {
@@ -526,10 +524,10 @@ where
     }
 }
 
-impl<W: 'static + Unpin, H: CallRequestHandler + 'static> io::WriteHandler<ProtocolError>
-    for Connection<W, H>
+impl<W, H> io::WriteHandler<ProtocolError> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     fn error(&mut self, err: ProtocolError, _ctx: &mut Self::Context) -> Running {
         log::error!("protocol error: {}", err);
@@ -537,9 +535,10 @@ where
     }
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<RpcRawCall> for Connection<W, H>
+impl<W, H> Handler<RpcRawCall> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, Vec<u8>, Error>;
 
@@ -571,10 +570,10 @@ where
     }
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<RpcRawStreamCall>
-    for Connection<W, H>
+impl<W, H> Handler<RpcRawStreamCall> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, (), Error>;
 
@@ -621,9 +620,10 @@ impl Message for Bind {
     type Result = Result<(), Error>;
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Bind> for Connection<W, H>
+impl<W, H> Handler<Bind> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, (), Error>;
 
@@ -645,9 +645,10 @@ impl Message for Unbind {
     type Result = Result<(), Error>;
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Unbind> for Connection<W, H>
+impl<W, H> Handler<Unbind> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, (), Error>;
 
@@ -662,21 +663,22 @@ where
 }
 
 struct Subscribe {
-    addr: String,
+    topic: String,
 }
 
 impl Message for Subscribe {
     type Result = Result<(), Error>;
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Subscribe> for Connection<W, H>
+impl<W, H> Handler<Subscribe> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: Subscribe, _ctx: &mut Self::Context) -> Self::Result {
-        let topic = msg.addr;
+        let topic = msg.topic;
         send_cmd_async(
             &mut self.writer,
             &mut self.subscribe_reply,
@@ -686,21 +688,22 @@ where
 }
 
 struct Unsubscribe {
-    addr: String,
+    topic: String,
 }
 
 impl Message for Unsubscribe {
     type Result = Result<(), Error>;
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<Unsubscribe> for Connection<W, H>
+impl<W, H> Handler<Unsubscribe> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: Unsubscribe, _ctx: &mut Self::Context) -> Self::Result {
-        let topic = msg.addr;
+        let topic = msg.topic;
         send_cmd_async(
             &mut self.writer,
             &mut self.unsubscribe_reply,
@@ -710,7 +713,8 @@ where
 }
 
 pub struct BcastCall {
-    pub addr: String,
+    pub caller: String,
+    pub topic: String,
     pub body: Vec<u8>,
 }
 
@@ -718,19 +722,25 @@ impl Message for BcastCall {
     type Result = Result<(), Error>;
 }
 
-impl<W: Unpin + 'static, H: CallRequestHandler + 'static> Handler<BcastCall> for Connection<W, H>
+impl<W, H> Handler<BcastCall> for Connection<W, H>
 where
-    W: Sink<GsbMessage, Error = ProtocolError>,
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
 {
     type Result = ActorResponse<Self, (), Error>;
 
     fn handle(&mut self, msg: BcastCall, _ctx: &mut Self::Context) -> Self::Result {
-        let topic = msg.addr;
+        let caller = msg.caller;
+        let topic = msg.topic;
         let data = msg.body;
         send_cmd_async(
             &mut self.writer,
             &mut self.broadcast_reply,
-            GsbMessage::BroadcastRequest(BroadcastRequest { topic, data }),
+            GsbMessage::BroadcastRequest(BroadcastRequest {
+                caller,
+                topic,
+                data,
+            }),
         )
     }
 }
@@ -787,27 +797,33 @@ impl<
 
     pub fn subscribe(
         &self,
-        addr: impl Into<String>,
+        topic: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
-        let fut = self.0.send(Subscribe { addr: addr.into() });
+        let fut = self.0.send(Subscribe {
+            topic: topic.into(),
+        });
         async move { fut.await? }
     }
 
     pub fn unsubscribe(
         &self,
-        addr: impl Into<String>,
+        topic: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
-        let fut = self.0.send(Unsubscribe { addr: addr.into() });
+        let fut = self.0.send(Unsubscribe {
+            topic: topic.into(),
+        });
         async move { fut.await? }
     }
 
     pub fn broadcast(
         &self,
+        caller: impl Into<String>,
         topic: impl Into<String>,
         body: Vec<u8>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
         let fut = self.0.send(BcastCall {
-            addr: topic.into(),
+            caller: caller.into(),
+            topic: topic.into(),
             body,
         });
         async move { fut.await? }
@@ -867,19 +883,18 @@ impl<
     }
 }
 
-pub fn connect<Transport, H: CallRequestHandler + 'static + Default + Unpin>(
-    transport: Transport,
-) -> ConnectionRef<Transport, H>
+pub fn connect<Transport, H>(transport: Transport) -> ConnectionRef<Transport, H>
 where
     Transport: Sink<GsbMessage, Error = ProtocolError>
         + Stream<Item = Result<GsbMessage, ProtocolError>>
         + Unpin
         + 'static,
+    H: CallRequestHandler + 'static + Default + Unpin,
 {
     connect_with_handler(transport, Default::default())
 }
 
-pub fn connect_with_handler<Transport, H: CallRequestHandler + 'static>(
+pub fn connect_with_handler<Transport, H>(
     transport: Transport,
     handler: H,
 ) -> ConnectionRef<Transport, H>
@@ -888,6 +903,7 @@ where
         + Stream<Item = Result<GsbMessage, ProtocolError>>
         + Unpin
         + 'static,
+    H: CallRequestHandler + 'static,
 {
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {

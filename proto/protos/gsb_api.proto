@@ -115,8 +115,9 @@ message UnsubscribeReply {
 }
 
 message BroadcastRequest {
-  string topic = 1;
+  string caller = 1;
   bytes data = 2;
+  string topic = 3;
 }
 
 message BroadcastReply {
