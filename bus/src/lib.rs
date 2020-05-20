@@ -87,12 +87,12 @@ pub struct RpcRawCall {
     pub body: Vec<u8>,
 }
 
-impl<T: Serialize> From<(RpcEnvelope<T>, String)> for RpcRawCall {
-    fn from((envelope, addr): (RpcEnvelope<T>, String)) -> Self {
+impl RpcRawCall {
+    fn from_envelope_addr<T: Serialize>(envelope: RpcEnvelope<T>, addr: String) -> Self {
         RpcRawCall {
-            body: crate::serialization::to_vec(&envelope.body).unwrap(),
             caller: envelope.caller,
             addr,
+            body: crate::serialization::to_vec(&envelope.body).unwrap(),
         }
     }
 }

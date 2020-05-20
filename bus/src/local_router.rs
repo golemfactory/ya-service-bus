@@ -387,7 +387,7 @@ impl Router {
             (if let Some(h) = slot.recipient() {
                 h.send(msg).map_err(Error::from).left_future()
             } else {
-                slot.send(RpcRawCall::from((msg, addr)))
+                slot.send(RpcRawCall::from_envelope_addr(msg, addr))
                     .then(|b| {
                         future::ready(match b {
                             Ok(b) => crate::serialization::from_read(std::io::Cursor::new(&b))
@@ -400,7 +400,7 @@ impl Router {
             .left_future()
         } else {
             RemoteRouter::from_registry()
-                .send(RpcRawCall::from((msg, addr)))
+                .send(RpcRawCall::from_envelope_addr(msg, addr))
                 .then(|v| {
                     future::ready(match v {
                         Ok(v) => v,
