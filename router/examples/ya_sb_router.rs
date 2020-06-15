@@ -1,9 +1,13 @@
 use std::env;
 use structopt::StructOpt;
+use ya_compile_time_utils::define_version_string;
 use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
+
+define_version_string!();
 
 #[derive(StructOpt)]
 #[structopt(name = "Router", about = "Service Bus Router")]
+#[structopt(version = &VERSION[..])]
 struct Options {
     #[structopt(short = "l", env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
     gsb_url: url::Url,
