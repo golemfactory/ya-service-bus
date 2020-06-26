@@ -40,6 +40,11 @@ pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + Unpin + 's
     router().lock().unwrap().bind(addr, endpoint)
 }
 
+#[inline]
+pub async fn unbind(addr: &str) -> Result<bool, Error> {
+    router().lock().unwrap().unbind(addr).await
+}
+
 pub fn bind_stream<T: RpcStreamMessage>(
     addr: &str,
     endpoint: impl RpcStreamHandler<T> + Unpin + 'static,

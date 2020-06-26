@@ -124,7 +124,6 @@ impl SystemService for RemoteRouter {}
 
 pub enum UpdateService {
     Add(String),
-    #[allow(dead_code)]
     Remove(String),
 }
 
@@ -149,6 +148,12 @@ impl Handler<UpdateService> for RemoteRouter {
                 self.local_bindings.insert(service_id);
             }
             UpdateService::Remove(service_id) => {
+                if let Some(c) = &mut self.connection {
+                    Arbiter::spawn(c.unbind(service_id.clone()).then(|v| async {
+                        v.unwrap_or_else(|e| log::error!("unbind error: {}", e))
+                    }))
+                }
+                log::trace!("Unbinding local service '{}'", service_id);
                 self.local_bindings.remove(&service_id);
             }
         }

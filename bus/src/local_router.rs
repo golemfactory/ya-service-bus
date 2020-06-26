@@ -332,8 +332,35 @@ impl Router {
         let addr = format!("{}/{}", addr, T::ID);
         log::debug!("binding {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
-        RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr));
         Handle { _inner: () }
+    }
+
+    pub fn unbind(&mut self, addr: &str) -> impl Future<Output = Result<bool, Error>> + Unpin {
+        let pattern = match addr.ends_with('/') {
+            true => addr.to_string(),
+            false => format!("{}/", addr),
+        };
+        let addrs = self
+            .handlers
+            .keys()
+            .filter(|a| a.starts_with(&pattern))
+            .cloned()
+            .collect::<Vec<String>>();
+
+        addrs.iter().for_each(|addr| {
+            log::debug!("unbinding {}", addr);
+            self.handlers.remove(&addr);
+        });
+
+        Box::pin(async move {
+            let router = RemoteRouter::from_registry();
+            let success = !addrs.is_empty();
+            for addr in addrs {
+                router.send(UpdateService::Remove(addr)).await?;
+            }
+            Ok(success)
+        })
     }
 
     pub fn bind_stream<T: RpcStreamMessage>(
