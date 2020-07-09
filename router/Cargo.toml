@@ -29,6 +29,7 @@ uuid = { version = "0.8.1", features = ["v4"] }
 env_logger = "0.7"
 tokio = { version = "0.2", features = ["signal"] }
 ya-service-api-web = "0.1"
+ya-compile-time-utils = "0.1"
 
 [package.metadata.deb]
 assets = [
