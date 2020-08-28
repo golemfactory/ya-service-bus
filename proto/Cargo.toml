@@ -12,12 +12,12 @@ with-codec = ['tokio-util', 'tokio']
 ya-sb-util = "0.1"
 
 bytes = "0.4"
-thiserror = "1.0.9"
 prost = "0.5.0"
+thiserror = "1.0.9"
+tokio = { version = "0.2", optional = true, features = ["sync"] }
 tokio-bytes = { version = "0.5", package = "bytes" }
 tokio-util = { version = "0.2", optional = true, features = ["codec"] }
-tokio = { version = "0.2", optional = true, features = ["sync"] }
-url="2.1.1"
+url = "2.1.1"
 
 [build-dependencies]
 prost-build = "0.5.0"
