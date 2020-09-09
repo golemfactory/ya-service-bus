@@ -38,12 +38,12 @@ pub struct MessageHeader {
 }
 
 impl MessageHeader {
-    pub fn encode(&self, buf: &mut tokio_bytes::BytesMut) {
+    pub fn encode(&self, buf: &mut bytes::BytesMut) {
         buf.extend_from_slice(&self.msg_type.to_be_bytes());
         buf.extend_from_slice(&self.msg_length.to_be_bytes());
     }
 
-    pub fn decode(mut src: tokio_bytes::BytesMut) -> Result<Self, ProtocolError> {
+    pub fn decode(mut src: bytes::BytesMut) -> Result<Self, ProtocolError> {
         if src.len() < size_of::<MessageHeader>() {
             return Err(ProtocolError::HeaderNotEnoughBytes);
         }

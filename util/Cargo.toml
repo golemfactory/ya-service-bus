@@ -3,9 +3,18 @@ name = "ya-sb-util"
 version = "0.1.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
+homepage = "https://github.com/golemfactory/yagna"
+repository = "https://github.com/golemfactory/yagna"
+license = "LGPL-3.0"
+description="Golem Service Bus: API and Router common code"
+
+[features]
+default=[]
+with-bytes=['bytes', 'tokio-bytes']
+with-futures=['pin-project', 'futures']
 
 [dependencies]
-bytes = "0.4"
-futures = "0.3"
-pin-project = "0.4"
-tokio-bytes = { version = "0.5", package = "bytes" }
+bytes = { version = "0.4", optional = true }
+futures= { version = "0.3", optional = true }
+pin-project={ version = "0.4", optional = true }
+tokio-bytes = { version = "0.5", package = "bytes", optional = true }

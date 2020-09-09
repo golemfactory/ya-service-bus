@@ -8,7 +8,6 @@ use crate::{MessageHeader, MessageType};
 use thiserror::Error;
 
 use tokio_util::codec::{Decoder, Encoder};
-use ya_sb_util::bytes::BytesCompat;
 
 const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
@@ -33,14 +32,13 @@ pub enum ProtocolError {
 trait Encodable {
     // This trait exists because prost::Message has template methods
 
-    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> Result<(), ProtocolError>;
+    fn encode_(&self, buf: &mut bytes::BytesMut) -> Result<(), ProtocolError>;
     fn encoded_len_(&self) -> usize;
 }
 
 impl<T: Message> Encodable for T {
-    fn encode_(&self, buf: &mut tokio_bytes::BytesMut) -> Result<(), ProtocolError> {
-        let mut c = buf.compat();
-        Ok(self.encode(&mut c)?)
+    fn encode_(&self, mut buf: &mut bytes::BytesMut) -> Result<(), ProtocolError> {
+        Ok(self.encode(&mut buf)?)
     }
 
     fn encoded_len_(&self) -> usize {
@@ -171,7 +169,7 @@ impl Into<GsbMessage> for Pong {
     }
 }
 
-fn decode_header(src: &mut tokio_bytes::BytesMut) -> Result<Option<MessageHeader>, ProtocolError> {
+fn decode_header(src: &mut bytes::BytesMut) -> Result<Option<MessageHeader>, ProtocolError> {
     if src.len() < MSG_HEADER_LENGTH {
         Ok(None)
     } else {
@@ -181,7 +179,7 @@ fn decode_header(src: &mut tokio_bytes::BytesMut) -> Result<Option<MessageHeader
 }
 
 fn decode_message(
-    src: &mut tokio_bytes::BytesMut,
+    src: &mut bytes::BytesMut,
     header: &MessageHeader,
 ) -> Result<Option<GsbMessage>, ProtocolError> {
     let msg_length = header
@@ -216,14 +214,14 @@ fn decode_message(
     }
 }
 
-fn encode_message(dst: &mut tokio_bytes::BytesMut, msg: GsbMessage) -> Result<(), ProtocolError> {
+fn encode_message(dst: &mut bytes::BytesMut, msg: GsbMessage) -> Result<(), ProtocolError> {
     let (msg_type, msg) = msg.unpack();
     encode_message_unpacked(dst, msg_type, msg.as_ref())?;
     Ok(())
 }
 
 fn encode_message_unpacked(
-    dst: &mut tokio_bytes::BytesMut,
+    dst: &mut bytes::BytesMut,
     msg_type: MessageType,
     msg: &dyn Encodable,
 ) -> Result<(), ProtocolError> {
@@ -253,10 +251,7 @@ impl Decoder for GsbMessageDecoder {
     type Item = GsbMessage;
     type Error = ProtocolError;
 
-    fn decode(
-        &mut self,
-        src: &mut tokio_bytes::BytesMut,
-    ) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         if self.msg_header == None {
             self.msg_header = decode_header(src)?;
         }
@@ -283,11 +278,7 @@ impl Encoder for GsbMessageEncoder {
     type Item = GsbMessage;
     type Error = ProtocolError;
 
-    fn encode(
-        &mut self,
-        item: Self::Item,
-        dst: &mut tokio_bytes::BytesMut,
-    ) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: Self::Item, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
         encode_message(dst, item)
     }
 }
@@ -302,11 +293,7 @@ impl Encoder for GsbMessageCodec {
     type Item = GsbMessage;
     type Error = ProtocolError;
 
-    fn encode(
-        &mut self,
-        item: Self::Item,
-        dst: &mut tokio_bytes::BytesMut,
-    ) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: Self::Item, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
         self.encoder.encode(item, dst)
     }
 }
@@ -315,10 +302,7 @@ impl Decoder for GsbMessageCodec {
     type Item = GsbMessage;
     type Error = ProtocolError;
 
-    fn decode(
-        &mut self,
-        src: &mut tokio_bytes::BytesMut,
-    ) -> Result<Option<Self::Item>, Self::Error> {
+    fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
         self.decoder.decode(src)
     }
 }

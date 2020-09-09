@@ -3,21 +3,22 @@ name = "ya-sb-proto"
 version = "0.1.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
+homepage = "https://github.com/golemfactory/yagna"
+repository = "https://github.com/golemfactory/yagna"
+license = "LGPL-3.0"
+description="Golem Service Bus Protcol messages"
 
 [features]
 default = ["with-codec"]
 with-codec = ['tokio-util', 'tokio']
 
 [dependencies]
-ya-sb-util = "0.1"
-
-bytes = "0.4"
-prost = "0.5.0"
+bytes = "0.5.6"
 thiserror = "1.0.9"
-tokio = { version = "0.2", optional = true, features = ["sync"] }
-tokio-bytes = { version = "0.5", package = "bytes" }
+prost = "0.6.1"
 tokio-util = { version = "0.2", optional = true, features = ["codec"] }
-url = "2.1.1"
+tokio = { version = "0.2", optional = true, features = ["sync"] }
+url="2.1.1"
 
 [build-dependencies]
 prost-build = "0.5.0"

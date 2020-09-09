@@ -1,6 +1,10 @@
+#[cfg(feature = "with-bytes")]
 pub mod bytes;
+
+#[cfg(feature = "with-futures")]
 pub mod futures;
 
+#[cfg(feature = "with-futures")]
 pub use crate::futures::IntoFlatten as _;
 
 use std::collections::{hash_map::Entry, HashMap};

@@ -3,6 +3,10 @@ name = "ya-service-bus"
 version = "0.2.2"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
+homepage = "https://github.com/golemfactory/yagna"
+repository = "https://github.com/golemfactory/yagna"
+license = "LGPL-3.0"
+description="Golem Service Bus"
 
 [features]
 default = ["json"]
@@ -11,8 +15,8 @@ json = ["serde_json"]
 msgpack = ["rmp-serde"]
 
 [dependencies]
-ya-sb-proto = "0.1"
-ya-sb-util = "0.1"
+ya-sb-proto = { version = "0.1", path="../proto" }
+ya-sb-util = { version = "0.1", path="../util", features=["with-futures"] }
 
 actix = "0.9"
 futures = "0.3"
