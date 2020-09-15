@@ -242,7 +242,10 @@ where
         let server_addr = match self.pending_calls.entry(msg.request_id.clone()) {
             Entry::Occupied(_) => Err("CallRequest with this ID already exists".to_string()),
             Entry::Vacant(call_entry) => match self.registered_endpoints.get(&msg.address) {
-                None => Err("No service registered under given address".to_string()),
+                None => Err(format!(
+                    "No service registered under given address '{}'.",
+                    &msg.address
+                )),
                 Some(addr) => {
                     call_entry.insert(PendingCall {
                         caller_addr: caller_addr.clone(),
