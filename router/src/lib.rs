@@ -524,7 +524,7 @@ where
                     router.lock().await.handle_message(addr.clone(), msg)
                 })
                 .await
-                .unwrap_or_else(|e| log::error!("Error handling messages: {:?}", e));
+                .unwrap_or_else(|e| handle_message_error(e));
 
             router.lock().await.disconnect(&addr);
         });
@@ -548,6 +548,19 @@ where
                 future::ready(())
             })
             .await;
+    }
+}
+
+fn handle_message_error(e: anyhow::Error) {
+    match e.root_cause().downcast_ref::<std::io::Error>() {
+        Some(err) => {
+            if err.kind() == std::io::ErrorKind::ConnectionReset {
+                log::trace!("Ignoring TCP connection reset from GSB client...");
+            } else {
+                log::error!("Error handling messages: {:?}", err)
+            }
+        }
+        None => log::error!("Error handling messages: {:?}", e),
     }
 }
 
