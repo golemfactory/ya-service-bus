@@ -778,9 +778,9 @@ impl<
     ) -> impl Future<Output = Result<(), Error>> + 'static {
         let addr = addr.into();
         log::trace!("Binding remote service '{}'", addr);
-        self.0.send(Bind { addr }).then(|v| async {
+        self.0.send(Bind { addr: addr.clone() }).then(|v| async {
             log::trace!("send bind result: {:?}", v);
-            v?
+            v.map_err(|e| Error::from_addr(addr, e))?
         })
     }
 
@@ -789,9 +789,9 @@ impl<
         addr: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
         let addr = addr.into();
-        self.0.send(Unbind { addr }).then(|v| async {
+        self.0.send(Unbind { addr: addr.clone() }).then(|v| async {
             log::trace!("send unbind result: {:?}", v);
-            v?
+            v.map_err(|e| Error::from_addr(addr, e))?
         })
     }
 
@@ -799,20 +799,28 @@ impl<
         &self,
         topic: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let topic = topic.into();
         let fut = self.0.send(Subscribe {
-            topic: topic.into(),
+            topic: topic.clone(),
         });
-        async move { fut.await? }
+        async move {
+            fut.await
+                .map_err(|e| Error::from_addr(format!("subscribing {}", topic).into(), e))?
+        }
     }
 
     pub fn unsubscribe(
         &self,
         topic: impl Into<String>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let topic = topic.into();
         let fut = self.0.send(Unsubscribe {
-            topic: topic.into(),
+            topic: topic.clone(),
         });
-        async move { fut.await? }
+        async move {
+            fut.await
+                .map_err(|e| Error::from_addr(format!("unsubscribing {}", topic).into(), e))?
+        }
     }
 
     pub fn broadcast(
@@ -821,12 +829,16 @@ impl<
         topic: impl Into<String>,
         body: Vec<u8>,
     ) -> impl Future<Output = Result<(), Error>> + 'static {
+        let topic = topic.into();
         let fut = self.0.send(BcastCall {
             caller: caller.into(),
-            topic: topic.into(),
+            topic: topic.clone(),
             body,
         });
-        async move { fut.await? }
+        async move {
+            fut.await
+                .map_err(|e| Error::from_addr(format!("broadcasting {}", topic).into(), e))?
+        }
     }
 
     pub fn call(
@@ -835,13 +847,14 @@ impl<
         addr: impl Into<String>,
         body: impl Into<Vec<u8>>,
     ) -> impl Future<Output = Result<Vec<u8>, Error>> {
+        let addr = addr.into();
         self.0
             .send(RpcRawCall {
                 caller: caller.into(),
-                addr: addr.into(),
+                addr: addr.clone(),
                 body: body.into(),
             })
-            .then(|v| async { v? })
+            .then(|v| async { v.map_err(|e| Error::from_addr(addr, e))? })
     }
 
     pub fn call_streaming(
@@ -850,11 +863,12 @@ impl<
         addr: impl Into<String>,
         body: impl Into<Vec<u8>>,
     ) -> impl Stream<Item = Result<ResponseChunk, Error>> {
+        let addr = addr.into();
         let (tx, rx) = futures::channel::mpsc::channel(16);
 
         let args = RpcRawStreamCall {
             caller: caller.into(),
-            addr: addr.into(),
+            addr: addr.clone(),
             body: body.into(),
             reply: tx.clone(),
         };
@@ -869,7 +883,7 @@ impl<
                         .unwrap_or_else(|e| log::error!("fail: {}", e));
                 }
                 Err(e) => {
-                    tx.send(Err(e.into()))
+                    tx.send(Err(Error::from_addr(addr, e)))
                         .await
                         .unwrap_or_else(|e| log::error!("fail: {}", e));
                 }
