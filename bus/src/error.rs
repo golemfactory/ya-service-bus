@@ -8,8 +8,10 @@ use std::net::SocketAddr;
 pub enum Error {
     #[error("bus connection to {0} fail: {1}")]
     BusConnectionFail(SocketAddr, io::Error),
-    #[error("Mailbox has closed")]
+    #[error("The called GSB service is unavailable")]
     Closed,
+    #[error("GSB receiver is cancelled")]
+    Cancelled,
     #[error("has closed")]
     NoEndpoint,
     #[error("bad content {0}")]
@@ -37,7 +39,7 @@ impl From<MailboxError> for Error {
 
 impl From<oneshot::Canceled> for Error {
     fn from(_: oneshot::Canceled) -> Self {
-        Error::Closed
+        Error::Cancelled
     }
 }
 
