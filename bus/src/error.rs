@@ -26,6 +26,8 @@ pub enum Error {
     GsbAlreadyRegistered(String),
     #[error("{0}")]
     GsbFailure(String),
+    #[error("Remote service at `{0}` error: {1}")]
+    RemoteError(String, String),
 }
 
 impl From<MailboxError> for Error {
