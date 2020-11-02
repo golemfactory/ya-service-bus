@@ -346,7 +346,7 @@ where
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::trace!(
-            "handling replay for request_id={}, code={}, reply_type={}",
+            "handling reply for request_id={}, code={}, reply_type={}",
             request_id,
             code,
             reply_type
@@ -549,7 +549,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
-        log::trace!("handling caller: {}, addr:{}", caller, address);
+        log::trace!("handling caller (rpc): {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,
@@ -584,7 +584,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
-        log::trace!("handling caller: {}, addr:{}", caller, address);
+        log::trace!("handling caller (stream): {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,

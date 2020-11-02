@@ -174,25 +174,32 @@ impl Handler<RpcRawCall> for RemoteRouter {
 }
 
 impl Handler<RpcRawStreamCall> for RemoteRouter {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = Result<(), Error>;
 
-    fn handle(&mut self, msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
-        ActorResponse::r#async(
-            self.connection()
-                .and_then(|connection| async move {
-                    let reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
-                    futures::pin_mut!(reply);
+    fn handle(&mut self, msg: RpcRawStreamCall, ctx: &mut Self::Context) -> Self::Result {
+        let conn = self.connection();
+        let fut = async move {
+            let connection = match conn.await {
+                Ok(c) => c,
+                Err(e) => return log::error!("Remote router connection error: {}", e),
+            };
 
-                    let result = SinkExt::send_all(
-                        &mut reply,
-                        &mut connection
-                            .call_streaming(msg.caller, msg.addr, msg.body)
-                            .map(|v| Ok(v)),
-                    )
-                    .await;
-                    result
-                })
-                .into_actor(self),
-        )
+            let reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
+            futures::pin_mut!(reply);
+
+            let result = SinkExt::send_all(
+                &mut reply,
+                &mut connection
+                    .call_streaming(msg.caller, msg.addr, msg.body)
+                    .map(|v| Ok(v)),
+            )
+            .await;
+
+            if let Err(e) = result {
+                log::error!("Remote router RpcRawStreamCall handler error: {}", e);
+            }
+        };
+        ctx.spawn(fut.into_actor(self));
+        Ok(())
     }
 }
