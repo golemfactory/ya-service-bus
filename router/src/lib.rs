@@ -415,13 +415,13 @@ where
     }
 
     fn ping(&mut self, addr: &A) -> anyhow::Result<()> {
-        log::debug!("Sending ping to {}", addr);
+        log::trace!("Sending ping to {}", addr);
         let ping = Ping {};
         self.send_message(addr, ping)
     }
 
     fn pong(&self, addr: &A) -> anyhow::Result<()> {
-        log::debug!("Received pong from {}", addr);
+        log::trace!("Received pong from {}", addr);
         Ok(())
     }
 

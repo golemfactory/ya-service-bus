@@ -195,11 +195,11 @@ where
     {
         let db = self.db.clone();
         let _ = bind_with_caller(self.addr, move |addr, msg| {
-            log::debug!("Received call to {}", Msg::ID);
+            log::trace!("Received call to {}", Msg::ID);
             let fut = f(db.clone(), addr, msg);
             fut.map(|res| {
                 match &res {
-                    Ok(_) => log::debug!("Call to {} successful", Msg::ID),
+                    Ok(_) => log::trace!("Call to {} successful", Msg::ID),
                     Err(e) => log::debug!("Call to {} failed: {}", Msg::ID, e),
                 }
                 res
@@ -217,11 +217,11 @@ where
         let db = self.db.clone();
         let aux = self.aux.clone();
         let _ = bind_with_caller(self.addr, move |addr, msg| {
-            log::debug!("Received call to {}", Msg::ID);
+            log::trace!("Received call to {}", Msg::ID);
             let fut = f(db.clone(), aux.clone(), addr, msg);
             fut.map(|res| {
                 match &res {
-                    Ok(_) => log::debug!("Call to {} successful", Msg::ID),
+                    Ok(_) => log::trace!("Call to {} successful", Msg::ID),
                     Err(e) => log::debug!("Call to {} failed: {}", Msg::ID, e),
                 }
                 res

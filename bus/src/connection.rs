@@ -276,7 +276,7 @@ where
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) {
-        log::debug!(
+        log::trace!(
             "handling call from = {}, to = {}, request_id={}, ",
             caller,
             address,
@@ -345,7 +345,7 @@ where
         data: Vec<u8>,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        log::debug!(
+        log::trace!(
             "handling replay for request_id={}, code={}, reply_type={}",
             request_id,
             code,
@@ -549,7 +549,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
-        log::debug!("handling caller: {}, addr:{}", caller, address);
+        log::trace!("handling caller: {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,
@@ -584,7 +584,7 @@ where
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
-        log::debug!("handling caller: {}, addr:{}", caller, address);
+        log::trace!("handling caller: {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,
