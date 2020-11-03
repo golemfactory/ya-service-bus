@@ -5,7 +5,6 @@ use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
 #[derive(StructOpt)]
 #[structopt(about = "Service Bus Router")]
 #[structopt(global_setting = clap::AppSettings::ColoredHelp)]
-#[structopt(version = ya_compile_time_utils::crate_version_commit!())]
 struct Options {
     #[structopt(short = "l", env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
     gsb_url: url::Url,

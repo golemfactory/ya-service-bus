@@ -20,15 +20,12 @@ lazy_static = "1.4"
 log = "0.4.8"
 prost = "0.5.0"
 structopt = "0.3"
-tokio = { version = "0.2", features = ["tcp", "sync", "macros", "rt-core", "stream"] }
+tokio = { version = "0.2", features = ["tcp", "sync", "macros", "rt-core", "stream", "time"] }
 tokio-util = "0.2.0"
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
 
 [dev-dependencies]
-ya-compile-time-utils = "0.1"
-ya-service-api-web = "0.1"
-
 env_logger = "0.7"
 tokio = { version = "0.2", features = ["signal"] }
 
