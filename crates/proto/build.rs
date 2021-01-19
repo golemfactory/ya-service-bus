@@ -8,5 +8,6 @@ fn main() {
             env::var("OUT_DIR").unwrap()
         );
     }
+    println!("cargo:rerun-if-changed=protos/gsb_api.proto");
     prost_build::compile_protos(&["protos/gsb_api.proto"], &["protos/"]).unwrap();
 }

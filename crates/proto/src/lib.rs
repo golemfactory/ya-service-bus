@@ -1,9 +1,6 @@
-use std::{convert::TryFrom, mem::size_of, net::SocketAddr};
-use url::{ParseError, Url};
-
-use crate::codec::ProtocolError;
-
 pub use gsb_api::*;
+use std::{convert::TryFrom, net::SocketAddr};
+use url::{ParseError, Url};
 
 mod gsb_api {
     include!(concat!(env!("OUT_DIR"), "/gsb_api.rs"));
@@ -11,54 +8,6 @@ mod gsb_api {
 
 #[cfg(feature = "with-codec")]
 pub mod codec;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, ::prost::Enumeration)]
-#[repr(i32)]
-pub enum MessageType {
-    RegisterRequest = 0,
-    RegisterReply = 1,
-    UnregisterRequest = 2,
-    UnregisterReply = 3,
-    CallRequest = 4,
-    CallReply = 5,
-    SubscribeRequest = 6,
-    SubscribeReply = 7,
-    UnsubscribeRequest = 8,
-    UnsubscribeReply = 9,
-    BroadcastRequest = 10,
-    BroadcastReply = 11,
-    Ping = 12,
-    Pong = 13,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
-pub struct MessageHeader {
-    pub msg_type: i32,
-    pub msg_length: u32,
-}
-
-impl MessageHeader {
-    pub fn encode(&self, buf: &mut bytes::BytesMut) {
-        buf.extend_from_slice(&self.msg_type.to_be_bytes());
-        buf.extend_from_slice(&self.msg_length.to_be_bytes());
-    }
-
-    pub fn decode(mut src: bytes::BytesMut) -> Result<Self, ProtocolError> {
-        if src.len() < size_of::<MessageHeader>() {
-            return Err(ProtocolError::HeaderNotEnoughBytes);
-        }
-
-        let mut msg_type: [u8; 4] = [0; 4];
-        let mut msg_length: [u8; 4] = [0; 4];
-        msg_type.copy_from_slice(src.split_to(size_of::<i32>()).as_ref());
-        msg_length.copy_from_slice(src.split_to(size_of::<u32>()).as_ref());
-
-        Ok(MessageHeader {
-            msg_type: i32::from_be_bytes(msg_type),
-            msg_length: u32::from_be_bytes(msg_length),
-        })
-    }
-}
 
 #[derive(thiserror::Error, Debug)]
 #[error("invalid value: {0}")]

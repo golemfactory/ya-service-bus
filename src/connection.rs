@@ -510,8 +510,8 @@ where
             GsbMessage::BroadcastRequest(r) => {
                 self.handler.handle_event(r.caller, r.topic, r.data);
             }
-            GsbMessage::Ping => {
-                if let Err(e) = self.writer.write(GsbMessage::Pong) {
+            GsbMessage::Ping(_) => {
+                if let Err(e) = self.writer.write(GsbMessage::pong()) {
                     log::error!("error sending pong: {}", e);
                     ctx.stop();
                 }

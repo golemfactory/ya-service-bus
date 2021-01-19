@@ -1,20 +1,16 @@
-use std::convert::TryInto;
-use std::mem::size_of;
-
 use prost::Message;
+use std::convert::TryInto;
 
 use crate::gsb_api::*;
-use crate::{MessageHeader, MessageType};
 use thiserror::Error;
 
+use bytes::{Buf, BufMut};
 use tokio_util::codec::{Decoder, Encoder};
-
-const MSG_HEADER_LENGTH: usize = size_of::<MessageHeader>();
 
 #[derive(Debug, Error)]
 pub enum ProtocolError {
-    #[error("Unrecognized message type: {0}")]
-    UnrecognizedMessageType(i32),
+    #[error("Unrecognized message type")]
+    UnrecognizedMessageType,
     #[error("Cannot decode message header: not enough bytes")]
     HeaderNotEnoughBytes,
     #[error("{0}")]
@@ -46,199 +42,82 @@ impl<T: Message> Encodable for T {
     }
 }
 
-#[derive(Debug)]
-pub enum GsbMessage {
-    RegisterRequest(RegisterRequest),
-    RegisterReply(RegisterReply),
-    UnregisterRequest(UnregisterRequest),
-    UnregisterReply(UnregisterReply),
-    CallRequest(CallRequest),
-    CallReply(CallReply),
-    SubscribeRequest(SubscribeRequest),
-    SubscribeReply(SubscribeReply),
-    UnsubscribeRequest(UnsubscribeRequest),
-    UnsubscribeReply(UnsubscribeReply),
-    BroadcastRequest(BroadcastRequest),
-    BroadcastReply(BroadcastReply),
-    Ping,
-    Pong,
-}
+pub type GsbMessage = packet::Packet;
 
 impl GsbMessage {
-    fn unpack(self) -> (MessageType, Box<dyn Encodable>) {
-        match self {
-            GsbMessage::RegisterRequest(msg) => (MessageType::RegisterRequest, Box::new(msg)),
-            GsbMessage::RegisterReply(msg) => (MessageType::RegisterReply, Box::new(msg)),
-            GsbMessage::UnregisterRequest(msg) => (MessageType::UnregisterRequest, Box::new(msg)),
-            GsbMessage::UnregisterReply(msg) => (MessageType::UnregisterReply, Box::new(msg)),
-            GsbMessage::CallRequest(msg) => (MessageType::CallRequest, Box::new(msg)),
-            GsbMessage::CallReply(msg) => (MessageType::CallReply, Box::new(msg)),
-            GsbMessage::SubscribeRequest(msg) => (MessageType::SubscribeRequest, Box::new(msg)),
-            GsbMessage::SubscribeReply(msg) => (MessageType::SubscribeReply, Box::new(msg)),
-            GsbMessage::UnsubscribeRequest(msg) => (MessageType::UnsubscribeRequest, Box::new(msg)),
-            GsbMessage::UnsubscribeReply(msg) => (MessageType::UnsubscribeReply, Box::new(msg)),
-            GsbMessage::BroadcastRequest(msg) => (MessageType::BroadcastRequest, Box::new(msg)),
-            GsbMessage::BroadcastReply(msg) => (MessageType::BroadcastReply, Box::new(msg)),
-            GsbMessage::Ping => (MessageType::Ping, Box::new(Ping {})),
-            GsbMessage::Pong => (MessageType::Pong, Box::new(Pong {})),
+    pub fn pong() -> GsbMessage {
+        packet::Packet::Pong(Pong {})
+    }
+}
+
+macro_rules! into_packet {
+    ($($t:ident),*) => {
+        $(
+        impl Into<packet::Packet> for $t {
+            fn into(self) -> packet::Packet {
+                packet::Packet::$t(self)
+            }
         }
-    }
+        )*
+    };
 }
 
-impl Into<GsbMessage> for RegisterRequest {
-    fn into(self) -> GsbMessage {
-        GsbMessage::RegisterRequest(self)
-    }
+into_packet! {
+    RegisterRequest,
+    RegisterReply,
+    UnregisterRequest,
+    UnregisterReply,
+    CallRequest,
+    CallReply,
+    SubscribeRequest,
+    SubscribeReply,
+    UnsubscribeRequest,
+    UnsubscribeReply,
+    BroadcastRequest,
+    BroadcastReply,
+    Ping,
+    Pong
 }
 
-impl Into<GsbMessage> for RegisterReply {
-    fn into(self) -> GsbMessage {
-        GsbMessage::RegisterReply(self)
-    }
-}
-
-impl Into<GsbMessage> for UnregisterRequest {
-    fn into(self) -> GsbMessage {
-        GsbMessage::UnregisterRequest(self)
-    }
-}
-
-impl Into<GsbMessage> for UnregisterReply {
-    fn into(self) -> GsbMessage {
-        GsbMessage::UnregisterReply(self)
-    }
-}
-
-impl Into<GsbMessage> for CallRequest {
-    fn into(self) -> GsbMessage {
-        GsbMessage::CallRequest(self)
-    }
-}
-
-impl Into<GsbMessage> for CallReply {
-    fn into(self) -> GsbMessage {
-        GsbMessage::CallReply(self)
-    }
-}
-
-impl Into<GsbMessage> for SubscribeRequest {
-    fn into(self) -> GsbMessage {
-        GsbMessage::SubscribeRequest(self)
-    }
-}
-
-impl Into<GsbMessage> for SubscribeReply {
-    fn into(self) -> GsbMessage {
-        GsbMessage::SubscribeReply(self)
-    }
-}
-
-impl Into<GsbMessage> for UnsubscribeRequest {
-    fn into(self) -> GsbMessage {
-        GsbMessage::UnsubscribeRequest(self)
-    }
-}
-
-impl Into<GsbMessage> for UnsubscribeReply {
-    fn into(self) -> GsbMessage {
-        GsbMessage::UnsubscribeReply(self)
-    }
-}
-
-impl Into<GsbMessage> for BroadcastRequest {
-    fn into(self) -> GsbMessage {
-        GsbMessage::BroadcastRequest(self)
-    }
-}
-
-impl Into<GsbMessage> for BroadcastReply {
-    fn into(self) -> GsbMessage {
-        GsbMessage::BroadcastReply(self)
-    }
-}
-
-impl Into<GsbMessage> for Ping {
-    fn into(self) -> GsbMessage {
-        GsbMessage::Ping
-    }
-}
-
-impl Into<GsbMessage> for Pong {
-    fn into(self) -> GsbMessage {
-        GsbMessage::Pong
-    }
-}
-
-fn decode_header(src: &mut bytes::BytesMut) -> Result<Option<MessageHeader>, ProtocolError> {
-    if src.len() < MSG_HEADER_LENGTH {
+fn decode_header(src: &mut bytes::BytesMut) -> Result<Option<u32>, ProtocolError> {
+    if src.len() < 4 {
         Ok(None)
     } else {
-        let buf = src.split_to(MSG_HEADER_LENGTH);
-        Ok(Some(MessageHeader::decode(buf)?))
+        let mut buf = src.split_to(4);
+        Ok(Some(buf.get_u32()))
     }
 }
 
 fn decode_message(
     src: &mut bytes::BytesMut,
-    header: &MessageHeader,
+    msg_length: u32,
 ) -> Result<Option<GsbMessage>, ProtocolError> {
-    let msg_length = header
-        .msg_length
+    let msg_length = msg_length
         .try_into()
         .map_err(|_| ProtocolError::MsgTooBig)?;
     if src.len() < msg_length {
         Ok(None)
     } else {
         let buf = src.split_to(msg_length);
-        let msg_type = MessageType::from_i32(header.msg_type);
-        let msg: GsbMessage = match msg_type {
-            Some(MessageType::RegisterRequest) => RegisterRequest::decode(buf.as_ref())?.into(),
-            Some(MessageType::RegisterReply) => RegisterReply::decode(buf.as_ref())?.into(),
-            Some(MessageType::UnregisterRequest) => UnregisterRequest::decode(buf.as_ref())?.into(),
-            Some(MessageType::UnregisterReply) => UnregisterReply::decode(buf.as_ref())?.into(),
-            Some(MessageType::CallRequest) => CallRequest::decode(buf.as_ref())?.into(),
-            Some(MessageType::CallReply) => CallReply::decode(buf.as_ref())?.into(),
-            Some(MessageType::SubscribeRequest) => SubscribeRequest::decode(buf.as_ref())?.into(),
-            Some(MessageType::SubscribeReply) => SubscribeReply::decode(buf.as_ref())?.into(),
-            Some(MessageType::UnsubscribeRequest) => {
-                UnsubscribeRequest::decode(buf.as_ref())?.into()
-            }
-            Some(MessageType::UnsubscribeReply) => UnsubscribeReply::decode(buf.as_ref())?.into(),
-            Some(MessageType::BroadcastRequest) => BroadcastRequest::decode(buf.as_ref())?.into(),
-            Some(MessageType::BroadcastReply) => BroadcastReply::decode(buf.as_ref())?.into(),
-            Some(MessageType::Ping) => Ping::decode(buf.as_ref())?.into(),
-            Some(MessageType::Pong) => Pong::decode(buf.as_ref())?.into(),
-            None => return Err(ProtocolError::UnrecognizedMessageType(header.msg_type)),
-        };
-        Ok(Some(msg))
+        let packet = Packet::decode(buf.as_ref())?;
+        match packet.packet {
+            Some(msg) => Ok(Some(msg)),
+            None => Err(ProtocolError::UnrecognizedMessageType),
+        }
     }
 }
 
 fn encode_message(dst: &mut bytes::BytesMut, msg: GsbMessage) -> Result<(), ProtocolError> {
-    let (msg_type, msg) = msg.unpack();
-    encode_message_unpacked(dst, msg_type, msg.as_ref())?;
-    Ok(())
-}
-
-fn encode_message_unpacked(
-    dst: &mut bytes::BytesMut,
-    msg_type: MessageType,
-    msg: &dyn Encodable,
-) -> Result<(), ProtocolError> {
-    let msg_type = msg_type as i32;
-    let msg_length = msg.encoded_len_() as u32;
-    let header = MessageHeader {
-        msg_type,
-        msg_length,
-    };
-    header.encode(dst);
-    msg.encode_(dst)?;
+    let packet = Packet { packet: Some(msg) };
+    let len = packet.encoded_len();
+    dst.put_u32(len as u32);
+    packet.encode(dst)?;
     Ok(())
 }
 
 #[derive(Default)]
 pub struct GsbMessageDecoder {
-    msg_header: Option<MessageHeader>,
+    msg_header: Option<u32>,
 }
 
 impl GsbMessageDecoder {
@@ -255,11 +134,11 @@ impl Decoder for GsbMessageDecoder {
         if self.msg_header == None {
             self.msg_header = decode_header(src)?;
         }
-        match &self.msg_header {
+        match self.msg_header {
             None => Ok(None),
-            Some(header) => match decode_message(src, &header)? {
+            Some(msg_length) => match decode_message(src, msg_length)? {
                 None => {
-                    src.reserve(header.msg_length as usize);
+                    src.reserve(msg_length as usize);
                     Ok(None)
                 }
                 Some(msg) => {

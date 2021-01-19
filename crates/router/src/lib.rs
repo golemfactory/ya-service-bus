@@ -464,7 +464,7 @@ where
             GsbMessage::SubscribeRequest(msg) => self.subscribe(&addr, msg),
             GsbMessage::UnsubscribeRequest(msg) => self.unsubscribe(&addr, msg),
             GsbMessage::BroadcastRequest(msg) => self.broadcast(&addr, msg),
-            GsbMessage::Pong => self.pong(&addr),
+            GsbMessage::Pong(_) => self.pong(&addr),
             _ => anyhow::bail!("Unexpected message received: {:?}", msg),
         }
     }
