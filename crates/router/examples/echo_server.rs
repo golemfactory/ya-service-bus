@@ -7,6 +7,23 @@ use ya_sb_router::tcp_connect;
 async fn run_server() {
     let (mut writer, mut reader) = tcp_connect(&gsb_addr(None)).await;
 
+    println!("Sending hello");
+    let hello = Hello {
+        name: "echo-server".to_string(),
+        version: "0.0".to_string(),
+        instance_id: vec![1, 2, 3, 4],
+    };
+    writer
+        .send(GsbMessage::Hello(hello))
+        .await
+        .expect("Send failed");
+
+    if let GsbMessage::Hello(h) = reader.next().await.unwrap().expect("hello not received") {
+        println!("got hello: {:?}", h);
+    } else {
+        panic!("Unexpected message received")
+    }
+
     println!("Sending register request...");
     let register_request = RegisterRequest {
         service_id: "echo".to_string(),

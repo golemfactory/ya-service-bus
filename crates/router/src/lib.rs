@@ -41,18 +41,12 @@ fn is_valid_topic_id(topic_id: &TopicId) -> bool {
         .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
 }
 
-struct PendingCall<A>
-where
-    A: Hash + Eq,
-{
+struct PendingCall<A> {
     caller_addr: A,
     service_id: ServiceId,
 }
 
-struct RawRouter<A, M, E>
-where
-    A: Hash + Eq,
-{
+struct RawRouter<A: Hash + Eq, M, E> {
     dispatcher: dispatcher::MessageDispatcher<A, M, E>,
     registered_endpoints: PrefixLookupBag<A>,
     reversed_endpoints: HashMap<A, HashSet<ServiceId>>,
@@ -61,6 +55,7 @@ where
     endpoint_calls: HashMap<ServiceId, HashSet<RequestId>>,
     topic_subscriptions: HashMap<TopicId, HashSet<A>>,
     reversed_subscriptions: HashMap<A, HashSet<TopicId>>,
+    connections: HashMap<Box<[u8]>, A>,
     last_seen: HashMap<A, NaiveDateTime>,
 }
 
@@ -81,12 +76,21 @@ where
             topic_subscriptions: HashMap::new(),
             reversed_subscriptions: HashMap::new(),
             last_seen: HashMap::new(),
+            connections: Default::default(),
         }
     }
 
-    pub fn connect<B: Sink<M, Error = E> + Send + 'static>(&mut self, addr: A, sink: B) {
+    pub fn connect<B: Sink<M, Error = E> + Send + 'static>(
+        &mut self,
+        addr: A,
+        instance_id: &[u8],
+        sink: B,
+    ) {
         log::debug!("Accepted connection from {}", addr);
         self.dispatcher.register(addr.clone(), sink).unwrap();
+        if let Some(prev_addr) = self.connections.insert(instance_id.into(), addr.clone()) {
+            self.disconnect(&prev_addr);
+        }
         self.last_seen.insert(addr, Utc::now().naive_utc());
     }
 
@@ -171,6 +175,11 @@ where
     {
         self.send_message(addr, msg)
             .unwrap_or_else(|err| log::error!("Send message failed: {:?}", err));
+    }
+
+    fn hello(&mut self, addr: &A, _msg: Hello) -> anyhow::Result<()> {
+        log::warn!("unexpected hello from: {}", addr);
+        Ok(())
     }
 
     fn register_endpoint(&mut self, addr: &A, msg: RegisterRequest) -> anyhow::Result<()> {
@@ -457,6 +466,7 @@ where
     pub fn handle_message(&mut self, addr: A, msg: GsbMessage) -> anyhow::Result<()> {
         self.update_last_seen(&addr)?;
         match msg {
+            GsbMessage::Hello(hello) => self.hello(&addr, hello),
             GsbMessage::RegisterRequest(msg) => self.register_endpoint(&addr, msg),
             GsbMessage::UnregisterRequest(msg) => self.unregister_endpoint(&addr, msg),
             GsbMessage::CallRequest(msg) => self.call(&addr, msg),
@@ -476,6 +486,9 @@ where
 {
     router: Arc<Mutex<RawRouter<A, M, E>>>,
     ping_abort_handle: AbortHandle,
+    instance_id: uuid::Uuid,
+    name: String,
+    version: String,
 }
 
 impl<A, M, E> Router<A, M, E>
@@ -485,6 +498,7 @@ where
     E: Send + Sync + Debug + 'static,
 {
     pub fn new() -> Self {
+        let instance_id = uuid::Uuid::new_v4();
         let router = Arc::new(Mutex::new(RawRouter::new()));
         let router1 = router.clone();
         let (ping_abort_handle, abort_registration) = AbortHandle::new_pair();
@@ -505,18 +519,52 @@ where
         Router {
             router,
             ping_abort_handle,
+            instance_id,
+            name: env!("CARGO_PKG_NAME").to_string(),
+            version: env!("CARGO_PKG_VERSION").to_string(),
         }
     }
 
-    pub fn handle_connection<R, W>(&self, addr: A, reader: R, writer: W)
+    pub fn handle_connection<R, W>(&self, addr: A, mut reader: R, mut writer: W)
     where
-        R: TryStream<Ok = GsbMessage> + Send + 'static,
+        R: TryStream<Ok = GsbMessage> + Send + Unpin + 'static,
         R::Error: Into<anyhow::Error>,
-        W: Sink<M, Error = E> + Send + 'static,
+        W: Sink<M, Error = E> + Send + Unpin + 'static,
     {
         let router = self.router.clone();
+        let hello: Hello = Hello {
+            instance_id: self.instance_id.as_bytes().to_vec(),
+            name: self.name.clone(),
+            version: self.version.clone(),
+            ..Default::default()
+        };
+
         tokio::spawn(async move {
-            router.lock().await.connect(addr.clone(), writer);
+            if let Err(e) = writer.send(From::from(GsbMessage::Hello(hello))).await {
+                log::warn!("failed to send hello {:?}", e);
+                return;
+            }
+
+            let hello = match reader.try_next().await {
+                Ok(None) => {
+                    log::warn!("Port scan from: {}", addr);
+                    return;
+                }
+                Err(e) => {
+                    handle_message_error(e.into());
+                    return;
+                }
+                Ok(Some(GsbMessage::Hello(h))) => h,
+                Ok(Some(other)) => {
+                    log::error!("Expected hello from: {}, got: {:?}", addr, other);
+                    return;
+                }
+            };
+
+            router
+                .lock()
+                .await
+                .connect(addr.clone(), &hello.instance_id, writer);
 
             reader
                 .err_into()
@@ -534,9 +582,9 @@ where
     where
         S: TryStream<Ok = (A, R, W)>,
         S::Error: Debug,
-        R: TryStream<Ok = GsbMessage> + Send + 'static,
+        R: TryStream<Ok = GsbMessage> + Send + Unpin + 'static,
         R::Error: Into<anyhow::Error>,
-        W: Sink<M, Error = E> + Send + 'static,
+        W: Sink<M, Error = E> + Send + Unpin + 'static,
     {
         conn_stream
             .into_stream()

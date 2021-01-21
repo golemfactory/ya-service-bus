@@ -31,6 +31,7 @@ service Service {
 
 message Packet {
   oneof packet {
+    Hello hello = 1;
     RegisterRequest register_request = 2;
     RegisterReply register_reply = 3;
     UnregisterRequest unregister_request = 4;
@@ -148,3 +149,9 @@ message BroadcastReply {
 message Ping {}
 
 message Pong {}
+
+message Hello {
+  string name = 1;
+  string version = 2;
+  bytes instance_id = 3;
+}
