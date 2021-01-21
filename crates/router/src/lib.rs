@@ -162,8 +162,8 @@ where
         if let Some(instance_id) = instance_id {
             if let Some(new_addr) = self.connections.remove(instance_id) {
                 if new_addr != *addr {
+                    log::debug!("Replaced instance from {} to {}", addr, new_addr);
                     self.connections.insert(instance_id.into(), new_addr);
-                    log::debug!("Replaced instance for: {}", addr);
                 }
                 else {
                     log::debug!("Removed instance for: {}", addr);

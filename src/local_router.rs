@@ -1,7 +1,6 @@
 use actix::{prelude::*, Actor, SystemService};
 use futures::{prelude::*, FutureExt, StreamExt};
 use std::any::Any;
-use std::io::Cursor;
 use std::pin::Pin;
 use std::sync::{Arc, Mutex};
 
@@ -43,7 +42,7 @@ trait RawEndpoint: Any {
 impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
     fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
         let body: T =
-            match crate::serialization::from_read(msg.body.as_slice()).map_err(Error::from) {
+            match crate::serialization::from_slice(msg.body.as_slice()).map_err(Error::from) {
                 Ok(v) => v,
                 Err(e) => return future::err(e).boxed_local(),
             };
@@ -59,7 +58,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
         msg: RpcRawCall,
     ) -> Pin<Box<dyn Stream<Item = Result<ResponseChunk, Error>>>> {
         let body: T =
-            match crate::serialization::from_read(msg.body.as_slice()).map_err(Error::from) {
+            match crate::serialization::from_slice(msg.body.as_slice()).map_err(Error::from) {
                 Ok(v) => v,
                 Err(e) => return Box::pin(stream::once(async { Err::<ResponseChunk, Error>(e) })),
             };
@@ -89,7 +88,7 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
         &self,
         msg: RpcRawCall,
     ) -> Pin<Box<dyn Stream<Item = Result<ResponseChunk, Error>>>> {
-        let body: T = crate::serialization::from_read(msg.body.as_slice()).unwrap();
+        let body: T = crate::serialization::from_slice(msg.body.as_slice()).unwrap();
         let (tx, rx) = futures::channel::mpsc::channel(16);
         let (txe, rxe) = futures::channel::oneshot::channel();
 
@@ -373,7 +372,7 @@ impl Slot {
                             Ok(ResponseChunk::Full(chunk)) => chunk,
                             Err(e) => return Err(e),
                         };
-                        Ok(crate::serialization::from_read(Cursor::new(chunk))?)
+                        Ok(crate::serialization::from_slice(&chunk)?)
                     })()
                 })
                 .left_stream()
@@ -394,7 +393,7 @@ impl Slot {
                                 Ok(ResponseChunk::Full(chunk)) => chunk,
                                 Err(e) => return Err(e),
                             };
-                            Ok(crate::serialization::from_read(Cursor::new(chunk))?)
+                            Ok(crate::serialization::from_slice(&chunk)?)
                         })()
                     })
                     .left_stream()
@@ -529,8 +528,7 @@ impl Router {
                 slot.send(RpcRawCall::from_envelope_addr(msg, addr))
                     .then(|b| {
                         future::ready(match b {
-                            Ok(b) => crate::serialization::from_read(std::io::Cursor::new(&b))
-                                .map_err(From::from),
+                            Ok(b) => crate::serialization::from_slice(&b).map_err(From::from),
                             Err(e) => Err(e),
                         })
                     })
@@ -548,8 +546,7 @@ impl Router {
                 })
                 .then(|b| {
                     future::ready(match b {
-                        Ok(b) => crate::serialization::from_read(std::io::Cursor::new(&b))
-                            .map_err(From::from),
+                        Ok(b) => crate::serialization::from_slice(&b).map_err(From::from),
                         Err(e) => Err(e),
                     })
                 })
@@ -586,9 +583,7 @@ impl Router {
             tx.filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
                 .map(|b| {
                     let body = b?.into_bytes();
-                    Ok(crate::serialization::from_read(std::io::Cursor::new(
-                        &body,
-                    ))?)
+                    Ok(crate::serialization::from_slice(&body)?)
                 })
                 .right_stream()
         }
