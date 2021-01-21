@@ -89,12 +89,12 @@ where
         log::debug!("Accepted connection from {}", addr);
         self.dispatcher.register(addr.clone(), sink).unwrap();
         if let Some(prev_addr) = self.connections.insert(instance_id.into(), addr.clone()) {
-            self.disconnect(&prev_addr);
+            self.disconnect(&prev_addr, None);
         }
         self.last_seen.insert(addr, Utc::now().naive_utc());
     }
 
-    pub fn disconnect(&mut self, addr: &A) {
+    pub fn disconnect(&mut self, addr: &A, instance_id : Option<&[u8]>) {
         log::debug!("Closing connection with {}", addr);
         self.last_seen.remove(addr);
 
@@ -159,6 +159,17 @@ where
         }
 
         self.dispatcher.unregister(addr);
+        if let Some(instance_id) = instance_id {
+            if let Some(new_addr) = self.connections.remove(instance_id) {
+                if new_addr != *addr {
+                    self.connections.insert(instance_id.into(), new_addr);
+                    log::debug!("Replaced instance for: {}", addr);
+                }
+                else {
+                    log::debug!("Removed instance for: {}", addr);
+                }
+            }
+        }
         log::debug!("Connection with {} closed.", addr);
     }
 
@@ -455,7 +466,7 @@ where
         let now = Utc::now().naive_utc();
         let timeout = Duration::seconds(*GSB_PING_TIMEOUT as i64);
         for addr in self.clients_not_seen_since(now - timeout * 2) {
-            self.disconnect(&addr);
+            self.disconnect(&addr, None);
         }
         for addr in self.clients_not_seen_since(now - timeout) {
             self.ping(&addr)
@@ -574,7 +585,7 @@ where
                 .await
                 .unwrap_or_else(|e| handle_message_error(e));
 
-            router.lock().await.disconnect(&addr);
+            router.lock().await.disconnect(&addr, Some(&hello.instance_id));
         });
     }
 
