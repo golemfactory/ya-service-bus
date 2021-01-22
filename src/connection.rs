@@ -373,7 +373,7 @@ where
                     Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
                 }
             };
-            let _ = ctx.spawn(
+            let _ = ctx.wait(
                 async move {
                     let s = r.send(item);
                     s.await
@@ -401,7 +401,8 @@ where
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
+        ctx.set_mailbox_capacity(256);
         log::info!("started connection to gsb");
     }
 
@@ -457,6 +458,12 @@ where
     H: CallRequestHandler + 'static,
 {
     fn handle(&mut self, item: Result<GsbMessage, ProtocolError>, ctx: &mut Self::Context) {
+        if let Err(e) = item.as_ref() {
+            log::error!("protocol error {}", e);
+            ctx.stop();
+            return;
+        }
+
         match item.unwrap() {
             GsbMessage::RegisterReply(r) => {
                 if let Some(code) = register_reply_code(r.code) {
@@ -511,8 +518,8 @@ where
                 self.handler.handle_event(r.caller, r.topic, r.data);
             }
             GsbMessage::Ping(_) => {
-                if let Err(e) = self.writer.write(GsbMessage::pong()) {
-                    log::error!("error sending pong: {}", e);
+                if self.writer.write(GsbMessage::pong()).is_none() {
+                    log::error!("error sending pong");
                     ctx.stop();
                 }
             }
@@ -602,11 +609,11 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
 ) -> ActorResponse<A, (), Error> {
     let (tx, rx) = oneshot::channel();
     queue.push_back(tx);
-    if let Err(e) = writer.write(msg) {
-        ActorResponse::reply(Err(Error::GsbFailure(e.to_string())))
+    if writer.write(msg).is_none() {
+        ActorResponse::reply(Err(Error::GsbFailure("Unable to send message".into())))
     } else {
         ActorResponse::r#async(fut::wrap_future(async move {
-            rx.await??;
+            rx.await.map_err(|_| Error::Cancelled)??;
             Ok(())
         }))
     }

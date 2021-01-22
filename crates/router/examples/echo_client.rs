@@ -21,7 +21,7 @@ async fn run_client() {
         .send(GsbMessage::Hello(hello))
         .await
         .expect("Send failed");
-    let msg = reader.next().await.unwrap().expect("Reply not received");
+    reader.next().await.unwrap().expect("Reply not received");
 
     println!("Sending call request...");
     let request_id = Uuid::new_v4().to_hyphenated().to_string();

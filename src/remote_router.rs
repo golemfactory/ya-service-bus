@@ -4,6 +4,7 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::{
     connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
+    error::ConnectionTimeout,
     Error, RpcRawCall, RpcRawStreamCall,
 };
 
@@ -13,7 +14,7 @@ type RemoteConncetion = ConnectionRef<TcpTransport, LocalRouterHandler>;
 
 pub struct RemoteRouter {
     local_bindings: HashSet<String>,
-    pending_calls: Vec<oneshot::Sender<RemoteConncetion>>,
+    pending_calls: Vec<oneshot::Sender<Result<RemoteConncetion, ConnectionTimeout>>>,
     connection: Option<RemoteConncetion>,
 }
 
@@ -22,9 +23,9 @@ impl Actor for RemoteRouter {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.try_connect(ctx);
-        let _ = ctx.run_later(CONNECT_TIMEOUT, |act, _ctx| {
+        let _ = ctx.run_later(CONNECT_TIMEOUT, |act, ctx| {
             if act.connection.is_none() {
-                act.pending_calls.clear();
+                act.clean_pending_calls(Err(ConnectionTimeout(ya_sb_proto::gsb_addr(None))), ctx);
             }
         });
     }
@@ -37,7 +38,7 @@ impl RemoteRouter {
         let addr = ya_sb_proto::gsb_addr(None);
         log::info!("trying to connect to: {}", addr);
         let connect_fut = connection::tcp(addr)
-            .map_err(move |e| Error::BusConnectionFail(addr, e))
+            .map_err(move |e| Error::ConnectionFail(addr, e))
             .into_actor(self)
             .then(|tcp_transport, act, ctx| {
                 let tcp_transport = match tcp_transport {
@@ -46,7 +47,7 @@ impl RemoteRouter {
                 };
                 let connection = connection::connect(tcp_transport);
                 act.connection = Some(connection.clone());
-                act.clean_pending_calls(connection.clone(), ctx);
+                act.clean_pending_calls(Ok(connection.clone()), ctx);
                 fut::Either::Right(
                     future::try_join_all(
                         act.local_bindings
@@ -70,7 +71,7 @@ impl RemoteRouter {
 
     fn clean_pending_calls(
         &mut self,
-        connection: ConnectionRef<TcpTransport, LocalRouterHandler>,
+        connection: Result<ConnectionRef<TcpTransport, LocalRouterHandler>, ConnectionTimeout>,
         ctx: &mut <Self as Actor>::Context,
     ) {
         log::debug!(
@@ -94,7 +95,11 @@ impl RemoteRouter {
         log::debug!("wait for connection");
         let (tx, rx) = oneshot::channel();
         self.pending_calls.push(tx);
-        rx.map_err(From::from).right_future()
+        rx.map(|r| match r {
+            Err(_) => Err(Error::Cancelled),
+            Ok(c) => c.map_err(From::from),
+        })
+        .right_future()
     }
 }
 

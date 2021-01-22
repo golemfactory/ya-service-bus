@@ -94,7 +94,7 @@ where
         self.last_seen.insert(addr, Utc::now().naive_utc());
     }
 
-    pub fn disconnect(&mut self, addr: &A, instance_id : Option<&[u8]>) {
+    pub fn disconnect(&mut self, addr: &A, instance_id: Option<&[u8]>) {
         log::debug!("Closing connection with {}", addr);
         self.last_seen.remove(addr);
 
@@ -164,8 +164,7 @@ where
                 if new_addr != *addr {
                     self.connections.insert(instance_id.into(), new_addr);
                     log::debug!("Replaced instance for: {}", addr);
-                }
-                else {
+                } else {
                     log::debug!("Removed instance for: {}", addr);
                 }
             }
@@ -585,7 +584,10 @@ where
                 .await
                 .unwrap_or_else(|e| handle_message_error(e));
 
-            router.lock().await.disconnect(&addr, Some(&hello.instance_id));
+            router
+                .lock()
+                .await
+                .disconnect(&addr, Some(&hello.instance_id));
         });
     }
 
