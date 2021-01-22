@@ -8,7 +8,7 @@ pub mod connection;
 pub mod error;
 mod local_router;
 mod remote_router;
-mod serialization;
+pub mod serialization;
 pub mod timeout;
 pub mod typed;
 pub mod untyped;

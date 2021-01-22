@@ -1,10 +1,11 @@
 use actix::prelude::*;
 use futures::prelude::*;
 
+use futures::channel::oneshot;
 use std::error::Error;
 use std::{env, path::PathBuf, time::Duration};
 use structopt::StructOpt;
-use ya_service_bus::connection::CallRequestHandler;
+use ya_service_bus::connection::{CallRequestHandler, ClientInfo};
 use ya_service_bus::{connection, ResponseChunk};
 
 const BAST_TOPIC: &str = "bcastecho";
@@ -42,7 +43,7 @@ enum Args {
 }
 
 #[derive(Default)]
-struct DebugHandler;
+struct DebugHandler(Option<oneshot::Sender<()>>);
 
 impl CallRequestHandler for DebugHandler {
     type Reply = stream::Once<future::Ready<Result<ResponseChunk, ya_service_bus::Error>>>;
@@ -91,6 +92,12 @@ impl CallRequestHandler for DebugHandler {
             String::from_utf8_lossy(data.as_ref())
         );
     }
+
+    fn on_disconnect(&mut self) {
+        if let Some(tx) = self.0.take() {
+            let _ = tx.send(());
+        }
+    }
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
@@ -100,7 +107,15 @@ fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::from_args();
     let mut sys = System::new("");
     sys.block_on(async move {
-        let connection = connection::connect::<_, DebugHandler>(connection::tcp(bus_addr).await?);
+        let mut client_info = ClientInfo::default();
+        let (tx, rx) = oneshot::channel();
+        client_info.name = "test_router_raw".to_string();
+
+        let connection = connection::connect_with_handler(
+            client_info,
+            connection::tcp(bus_addr).await?,
+            DebugHandler(Some(tx)),
+        );
         match args {
             Args::EventListener { time } => {
                 connection.subscribe(BAST_TOPIC).await?;
@@ -115,7 +130,11 @@ fn main() -> Result<(), Box<dyn Error>> {
                 if subscribe {
                     connection.subscribe(BAST_TOPIC).await?;
                 }
-                delay_for(time).await;
+
+                let w = delay_for(time).fuse();
+                futures::pin_mut!(w, rx);
+                future::select(w, rx).await;
+
                 if subscribe {
                     connection.unsubscribe(BAST_TOPIC).await?;
                 }

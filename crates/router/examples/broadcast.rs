@@ -1,11 +1,26 @@
 use futures::prelude::*;
 
+use uuid::Uuid;
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
 use ya_sb_router::tcp_connect;
 
 async fn run_client() {
     let (mut writer, mut reader) = tcp_connect(&gsb_addr(None)).await;
+
+    let instance_id = Uuid::new_v4().as_bytes().to_vec();
+    println!("Sending hello...");
+    let hello = Hello {
+        name: "broadcast-client".to_string(),
+        version: "0.0".to_string(),
+        instance_id,
+        ..Default::default()
+    };
+    writer
+        .send(GsbMessage::Hello(hello))
+        .await
+        .expect("Send failed");
+    let _msg = reader.next().await.unwrap().expect("Reply not received");
 
     println!("Sending subscribe request...");
     let topic = "test";
