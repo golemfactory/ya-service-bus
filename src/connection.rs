@@ -33,9 +33,9 @@ fn gen_id() -> u64 {
 #[derive(Default, Clone)]
 #[non_exhaustive]
 pub struct ClientInfo {
-    pub name : String,
-    pub version : Option<Version>,
-    pub instance_id : Vec<u8>
+    pub name: String,
+    pub version: Option<Version>,
+    pub instance_id: Vec<u8>,
 }
 
 pub trait CallRequestHandler {
@@ -57,9 +57,7 @@ pub trait CallRequestHandler {
         )
     }
 
-    fn on_disconnect(&mut self) {
-
-    }
+    fn on_disconnect(&mut self) {}
 }
 
 impl ResponseChunk {
@@ -158,8 +156,8 @@ where
     call_reply: HashMap<String, mpsc::Sender<Result<ResponseChunk, Error>>>,
     broadcast_reply: ReplyQueue,
     handler: H,
-    client_info : ClientInfo,
-    server_info : Option<ya_sb_proto::Hello>,
+    client_info: ClientInfo,
+    server_info: Option<ya_sb_proto::Hello>,
 }
 
 impl<W, H> Unpin for Connection<W, H>
@@ -188,7 +186,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    fn new(client_info : ClientInfo, w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
+    fn new(client_info: ClientInfo, w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
             writer: io::SinkWrite::new(w.buffer(256), ctx),
             register_reply: Default::default(),
@@ -199,7 +197,7 @@ where
             broadcast_reply: Default::default(),
             handler,
             client_info,
-            server_info: Default::default()
+            server_info: Default::default(),
         }
     }
 
@@ -390,7 +388,7 @@ where
                     Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
                 }
             };
-            let _ = ctx.spawn(
+            let _ = ctx.wait(
                 async move {
                     let s = r.send(item);
                     s.await
@@ -418,14 +416,19 @@ where
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
+        ctx.set_mailbox_capacity(256);
         log::info!("started connection to gsb");
-        let hello : ya_sb_proto::Hello = ya_sb_proto::Hello {
+        let hello: ya_sb_proto::Hello = ya_sb_proto::Hello {
             name: self.client_info.name.clone(),
-            version: self.client_info.version.as_ref().map(|v| v.to_string()).unwrap_or_default(),
+            version: self
+                .client_info
+                .version
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_default(),
             instance_id: self.client_info.instance_id.clone(),
-            ..
-            Default::default()
+            ..Default::default()
         };
 
         let _ = self.writer.write(GsbMessage::Hello(hello));
@@ -484,6 +487,12 @@ where
     H: CallRequestHandler + 'static,
 {
     fn handle(&mut self, item: Result<GsbMessage, ProtocolError>, ctx: &mut Self::Context) {
+        if let Err(e) = item.as_ref() {
+            log::error!("protocol error {}", e);
+            ctx.stop();
+            return;
+        }
+
         match item.unwrap() {
             GsbMessage::RegisterReply(r) => {
                 if let Some(code) = register_reply_code(r.code) {
@@ -548,8 +557,7 @@ where
                 if self.server_info.is_some() {
                     log::error!("invalid packet: {:?}", h);
                     ctx.stop();
-                }
-                else {
+                } else {
                     self.server_info = Some(h);
                 }
             }
@@ -644,7 +652,7 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
         ActorResponse::reply(Err(Error::GsbFailure("no connection".to_string())))
     } else {
         ActorResponse::r#async(fut::wrap_future(async move {
-            rx.await??;
+            rx.await.map_err(|_| Error::Cancelled)??;
             Ok(())
         }))
     }
@@ -935,7 +943,10 @@ impl<
     }
 }
 
-pub fn connect<Transport, H>(client_info : ClientInfo, transport: Transport) -> ConnectionRef<Transport, H>
+pub fn connect<Transport, H>(
+    client_info: ClientInfo,
+    transport: Transport,
+) -> ConnectionRef<Transport, H>
 where
     Transport: Sink<GsbMessage, Error = ProtocolError>
         + Stream<Item = Result<GsbMessage, ProtocolError>>
@@ -947,7 +958,7 @@ where
 }
 
 pub fn connect_with_handler<Transport, H>(
-    client_info : ClientInfo,
+    client_info: ClientInfo,
     transport: Transport,
     handler: H,
 ) -> ConnectionRef<Transport, H>

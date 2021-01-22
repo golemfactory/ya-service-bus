@@ -1,9 +1,9 @@
 use futures::prelude::*;
 
+use uuid::Uuid;
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
 use ya_sb_router::tcp_connect;
-use uuid::Uuid;
 
 async fn run_client() {
     let (mut writer, mut reader) = tcp_connect(&gsb_addr(None)).await;

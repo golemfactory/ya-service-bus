@@ -1,12 +1,12 @@
 use actix::prelude::*;
 use futures::prelude::*;
 
+use futures::channel::oneshot;
 use std::error::Error;
 use std::{env, path::PathBuf, time::Duration};
 use structopt::StructOpt;
 use ya_service_bus::connection::{CallRequestHandler, ClientInfo};
 use ya_service_bus::{connection, ResponseChunk};
-use futures::channel::oneshot;
 
 const BAST_TOPIC: &str = "bcastecho";
 const SERVICE_ADDR: &str = "/local/raw/echo";
@@ -108,10 +108,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let mut sys = System::new("");
     sys.block_on(async move {
         let mut client_info = ClientInfo::default();
-        let (tx,rx) = oneshot::channel();
+        let (tx, rx) = oneshot::channel();
         client_info.name = "test_router_raw".to_string();
 
-        let connection = connection::connect_with_handler(client_info, connection::tcp(bus_addr).await?, DebugHandler(Some(tx)));
+        let connection = connection::connect_with_handler(
+            client_info,
+            connection::tcp(bus_addr).await?,
+            DebugHandler(Some(tx)),
+        );
         match args {
             Args::EventListener { time } => {
                 connection.subscribe(BAST_TOPIC).await?;

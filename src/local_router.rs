@@ -642,7 +642,7 @@ impl Router {
             async move {
                 match RemoteRouter::from_registry().send(call).await {
                     Ok(_) => rx.boxed_local(),
-                    Err(e) => futures::stream::once(future::err(e.into())).boxed_local()
+                    Err(e) => futures::stream::once(future::err(e.into())).boxed_local(),
                 }
             }
             .flatten_stream()

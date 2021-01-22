@@ -12,10 +12,10 @@ use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio_util::codec::*;
 
+use std::ops::Not;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
-use std::ops::Not;
 
 mod dispatcher;
 
@@ -97,7 +97,7 @@ where
         self.last_seen.insert(addr, Utc::now().naive_utc());
     }
 
-    pub fn disconnect(&mut self, addr: &A, instance_id : Option<&[u8]>) {
+    pub fn disconnect(&mut self, addr: &A, instance_id: Option<&[u8]>) {
         log::debug!("Closing connection with {}", addr);
         self.last_seen.remove(addr);
 
@@ -589,7 +589,10 @@ where
                 .await
                 .unwrap_or_else(|e| handle_message_error(e));
 
-            router.lock().await.disconnect(&addr, Some(&hello.instance_id));
+            router
+                .lock()
+                .await
+                .disconnect(&addr, Some(&hello.instance_id));
         });
     }
 
