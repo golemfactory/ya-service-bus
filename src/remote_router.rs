@@ -6,12 +6,15 @@ use crate::{
     connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
     Error, RpcRawCall, RpcRawStreamCall,
 };
+use crate::connection::ClientInfo;
+use semver::Version;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
 type RemoteConncetion = ConnectionRef<TcpTransport, LocalRouterHandler>;
 
 pub struct RemoteRouter {
+    client_info : ClientInfo,
     local_bindings: HashSet<String>,
     pending_calls: Vec<oneshot::Sender<RemoteConncetion>>,
     connection: Option<RemoteConncetion>,
@@ -36,6 +39,7 @@ impl RemoteRouter {
         // FIXME: but we need to pass gsb_url from yagnad CLI
         let addr = ya_sb_proto::gsb_addr(None);
         log::info!("trying to connect to: {}", addr);
+        let client_info = self.client_info.clone();
         let connect_fut = connection::tcp(addr)
             .map_err(move |e| Error::BusConnectionFail(addr, e))
             .into_actor(self)
@@ -44,7 +48,7 @@ impl RemoteRouter {
                     Ok(v) => v,
                     Err(e) => return fut::Either::Left(fut::err(e)),
                 };
-                let connection = connection::connect(tcp_transport);
+                let connection = connection::connect(client_info, tcp_transport);
                 act.connection = Some(connection.clone());
                 act.clean_pending_calls(connection.clone(), ctx);
                 fut::Either::Right(
@@ -100,10 +104,17 @@ impl RemoteRouter {
 
 impl Default for RemoteRouter {
     fn default() -> Self {
+        let client_info = ClientInfo {
+            name: "sb-client".to_string(),
+            version: Some(Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
+            instance_id: uuid::Uuid::new_v4().as_bytes().to_vec()
+        };
+
         Self {
             connection: Default::default(),
             local_bindings: Default::default(),
             pending_calls: Default::default(),
+            client_info
         }
     }
 }

@@ -20,6 +20,7 @@ use ya_sb_proto::{
 use crate::local_router::router;
 use crate::Error;
 use crate::{ResponseChunk, RpcRawCall, RpcRawStreamCall};
+use semver::Version;
 
 fn gen_id() -> u64 {
     use rand::Rng;
@@ -27,6 +28,14 @@ fn gen_id() -> u64 {
     let mut rng = rand::thread_rng();
 
     rng.gen::<u64>() & 0x1f_ff_ff__ff_ff_ff_ffu64
+}
+
+#[derive(Default, Clone)]
+#[non_exhaustive]
+pub struct ClientInfo {
+    pub name : String,
+    pub version : Option<Version>,
+    pub instance_id : Vec<u8>
 }
 
 pub trait CallRequestHandler {
@@ -46,6 +55,10 @@ pub trait CallRequestHandler {
             "unhandled gsb event data: {:?}",
             String::from_utf8_lossy(data.as_ref())
         )
+    }
+
+    fn on_disconnect(&mut self) {
+
     }
 }
 
@@ -145,6 +158,8 @@ where
     call_reply: HashMap<String, mpsc::Sender<Result<ResponseChunk, Error>>>,
     broadcast_reply: ReplyQueue,
     handler: H,
+    client_info : ClientInfo,
+    server_info : Option<ya_sb_proto::Hello>,
 }
 
 impl<W, H> Unpin for Connection<W, H>
@@ -173,7 +188,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    fn new(w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
+    fn new(client_info : ClientInfo, w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
             writer: io::SinkWrite::new(w.buffer(256), ctx),
             register_reply: Default::default(),
@@ -183,6 +198,8 @@ where
             call_reply: Default::default(),
             broadcast_reply: Default::default(),
             handler,
+            client_info,
+            server_info: Default::default()
         }
     }
 
@@ -403,10 +420,20 @@ where
 
     fn started(&mut self, _ctx: &mut Self::Context) {
         log::info!("started connection to gsb");
+        let hello : ya_sb_proto::Hello = ya_sb_proto::Hello {
+            name: self.client_info.name.clone(),
+            version: self.client_info.version.as_ref().map(|v| v.to_string()).unwrap_or_default(),
+            instance_id: self.client_info.instance_id.clone(),
+            ..
+            Default::default()
+        };
+
+        let _ = self.writer.write(GsbMessage::Hello(hello));
     }
 
     fn stopped(&mut self, _ctx: &mut Self::Context) {
         log::info!("stopped connection to gsb");
+        self.handler.on_disconnect();
     }
 }
 
@@ -511,9 +538,19 @@ where
                 self.handler.handle_event(r.caller, r.topic, r.data);
             }
             GsbMessage::Ping(_) => {
-                if let Err(e) = self.writer.write(GsbMessage::pong()) {
-                    log::error!("error sending pong: {}", e);
+                if let Some(_) = self.writer.write(GsbMessage::pong()) {
+                    log::error!("error sending pong");
                     ctx.stop();
+                }
+            }
+            GsbMessage::Hello(h) => {
+                log::debug!("connected with server: {}/{}", h.name, h.version);
+                if self.server_info.is_some() {
+                    log::error!("invalid packet: {:?}", h);
+                    ctx.stop();
+                }
+                else {
+                    self.server_info = Some(h);
                 }
             }
             m => {
@@ -602,8 +639,9 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
 ) -> ActorResponse<A, (), Error> {
     let (tx, rx) = oneshot::channel();
     queue.push_back(tx);
-    if let Err(e) = writer.write(msg) {
-        ActorResponse::reply(Err(Error::GsbFailure(e.to_string())))
+
+    if let Some(_) = writer.write(msg) {
+        ActorResponse::reply(Err(Error::GsbFailure("no connection".to_string())))
     } else {
         ActorResponse::r#async(fut::wrap_future(async move {
             rx.await??;
@@ -897,7 +935,7 @@ impl<
     }
 }
 
-pub fn connect<Transport, H>(transport: Transport) -> ConnectionRef<Transport, H>
+pub fn connect<Transport, H>(client_info : ClientInfo, transport: Transport) -> ConnectionRef<Transport, H>
 where
     Transport: Sink<GsbMessage, Error = ProtocolError>
         + Stream<Item = Result<GsbMessage, ProtocolError>>
@@ -905,10 +943,11 @@ where
         + 'static,
     H: CallRequestHandler + 'static + Default + Unpin,
 {
-    connect_with_handler(transport, Default::default())
+    connect_with_handler(client_info, transport, Default::default())
 }
 
 pub fn connect_with_handler<Transport, H>(
+    client_info : ClientInfo,
     transport: Transport,
     handler: H,
 ) -> ConnectionRef<Transport, H>
@@ -922,7 +961,7 @@ where
     let (split_sink, split_stream) = transport.split();
     ConnectionRef(Connection::create(move |ctx| {
         let _h = Connection::add_stream(split_stream, ctx);
-        Connection::new(split_sink, handler, ctx)
+        Connection::new(client_info, split_sink, handler, ctx)
     }))
 }
 

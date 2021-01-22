@@ -15,6 +15,7 @@ use tokio_util::codec::*;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
+use std::ops::Not;
 
 mod dispatcher;
 
@@ -88,8 +89,10 @@ where
     ) {
         log::debug!("Accepted connection from {}", addr);
         self.dispatcher.register(addr.clone(), sink).unwrap();
-        if let Some(prev_addr) = self.connections.insert(instance_id.into(), addr.clone()) {
-            self.disconnect(&prev_addr, None);
+        if !instance_id.is_empty() {
+            if let Some(prev_addr) = self.connections.insert(instance_id.into(), addr.clone()) {
+                self.disconnect(&prev_addr, None);
+            }
         }
         self.last_seen.insert(addr, Utc::now().naive_utc());
     }
@@ -160,13 +163,14 @@ where
 
         self.dispatcher.unregister(addr);
         if let Some(instance_id) = instance_id {
-            if let Some(new_addr) = self.connections.remove(instance_id) {
-                if new_addr != *addr {
-                    log::debug!("Replaced instance from {} to {}", addr, new_addr);
-                    self.connections.insert(instance_id.into(), new_addr);
-                }
-                else {
-                    log::debug!("Removed instance for: {}", addr);
+            if instance_id.is_empty().not() {
+                if let Some(new_addr) = self.connections.remove(instance_id) {
+                    if new_addr != *addr {
+                        log::debug!("Replaced instance from {} to {}", addr, new_addr);
+                        self.connections.insert(instance_id.into(), new_addr);
+                    } else {
+                        log::debug!("Removed instance for: {}", addr);
+                    }
                 }
             }
         }
