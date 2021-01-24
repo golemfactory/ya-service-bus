@@ -8,7 +8,6 @@ use crate::{
     error::ConnectionTimeout,
     Error, RpcRawCall, RpcRawStreamCall,
 };
-use semver::Version;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
@@ -109,17 +108,11 @@ impl RemoteRouter {
 
 impl Default for RemoteRouter {
     fn default() -> Self {
-        let client_info = ClientInfo {
-            name: "sb-client".to_string(),
-            version: Some(Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
-            instance_id: uuid::Uuid::new_v4().as_bytes().to_vec(),
-        };
-
         Self {
             connection: Default::default(),
             local_bindings: Default::default(),
             pending_calls: Default::default(),
-            client_info,
+            client_info: ClientInfo::new("sb-client"),
         }
     }
 }

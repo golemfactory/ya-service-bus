@@ -4,6 +4,7 @@ use futures::{
     prelude::*,
     stream::SplitSink,
 };
+use semver::Version;
 use std::{
     collections::{HashMap, VecDeque},
     convert::TryInto,
@@ -20,7 +21,6 @@ use ya_sb_proto::{
 use crate::local_router::router;
 use crate::Error;
 use crate::{ResponseChunk, RpcRawCall, RpcRawStreamCall};
-use semver::Version;
 
 fn gen_id() -> u64 {
     use rand::Rng;
@@ -36,6 +36,16 @@ pub struct ClientInfo {
     pub name: String,
     pub version: Option<Version>,
     pub instance_id: Vec<u8>,
+}
+
+impl ClientInfo {
+    pub fn new(name: impl ToString) -> Self {
+        ClientInfo {
+            name: name.to_string(),
+            version: Some(Version::parse(env!("CARGO_PKG_VERSION")).unwrap()),
+            instance_id: uuid::Uuid::new_v4().as_bytes().to_vec(),
+        }
+    }
 }
 
 pub trait CallRequestHandler {
