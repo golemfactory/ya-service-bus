@@ -8,6 +8,19 @@ repository = "https://github.com/golemfactory/yagna"
 license = "GPL-3.0"
 edition = "2018"
 
+[features]
+default=[]
+bin=['env_logger', 'tokio/signal']
+
+[lib]
+name = "ya_sb_router"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ya-sb-router"
+path = "src/bin.rs"
+required-features=['bin']
+
 [dependencies]
 ya-sb-proto = { version = "0.1", path = "../proto" }
 ya-sb-util = { version = "0.1", path = "../util" }
@@ -15,6 +28,7 @@ ya-sb-util = { version = "0.1", path = "../util" }
 anyhow = "1.0.28"
 bytes = "0.4.12"
 chrono = "0.4"
+env_logger = { version = "0.7", optional = true }
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4.8"
@@ -24,13 +38,3 @@ tokio = { version = "0.2", features = ["tcp", "sync", "macros", "rt-core", "stre
 tokio-util = "0.2.0"
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
-
-
-[dev-dependencies]
-env_logger = "0.7"
-tokio = { version = "0.2", features = ["signal"] }
-
-[package.metadata.deb]
-assets = [
-    ["target/release/examples/ya_sb_router", "usr/bin/", "755"],
-]
