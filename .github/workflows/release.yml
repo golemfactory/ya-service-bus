@@ -132,7 +132,6 @@ jobs:
   build-deb:
     needs:
       - create-release
-      - build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1
@@ -181,12 +180,12 @@ jobs:
           target: x86_64-unknown-linux-musl
           override: true
 
-      - name: Build Release Deb
+      - uses: golemfactory/build-deb-action@v2
         id: deb
-        run: |
-          cargo install cargo-deb
-          OUTPUT_NAME=$(cd crates/router && cargo deb --target x86_64-unknown-linux-musl | tail -n 1)
-          echo "::set-output name=deb::${OUTPUT_NAME}"
+        with:
+          debVersion: ${{ steps.version.outputs.version }}
+          pkgName: ya-sb-router
+          subdir: crates/router
 
       - name: Upload Release Deb
         id: upload-release-asset-core
