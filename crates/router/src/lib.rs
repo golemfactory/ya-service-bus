@@ -306,7 +306,7 @@ where
     }
 
     fn reply(&mut self, server_addr: &A, msg: CallReply) -> anyhow::Result<()> {
-        log::debug!(
+        log::trace!(
             "Received CallReply from {} request_id = {}",
             server_addr,
             &msg.request_id
