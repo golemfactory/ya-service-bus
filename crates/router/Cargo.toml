@@ -1,6 +1,6 @@
 [package]
 name = "ya-sb-router"
-version = "0.1.0"
+version = "0.3.1"
 description = "Service Bus Router"
 authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/yagna/service-bus/router"
