@@ -21,6 +21,7 @@ use ya_sb_proto::{
 use crate::local_router::router;
 use crate::Error;
 use crate::{ResponseChunk, RpcRawCall, RpcRawStreamCall};
+use std::task::Poll;
 
 fn gen_id() -> u64 {
     use rand::Rng;
@@ -995,4 +996,93 @@ pub async fn tcp(addr: std::net::SocketAddr) -> Result<TcpTransport, std::io::Er
         s,
         ya_sb_proto::codec::GsbMessageCodec::default(),
     ))
+}
+
+pub type UnixTransport =
+    tokio_util::codec::Framed<tokio::net::UnixStream, ya_sb_proto::codec::GsbMessageCodec>;
+
+pub async fn unix<P>(path: P) -> Result<UnixTransport, std::io::Error>
+where
+    P: AsRef<std::path::Path>,
+{
+    let s = tokio::net::UnixStream::connect(path).await?;
+    Ok(tokio_util::codec::Framed::new(
+        s,
+        ya_sb_proto::codec::GsbMessageCodec::default(),
+    ))
+}
+
+/// This trait exists to annotate the return type of Transport::inner()
+trait ITransport:
+    Sink<GsbMessage, Error = ProtocolError>
+    + Stream<Item = Result<GsbMessage, ProtocolError>>
+    + Unpin
+    + 'static
+{
+}
+
+impl ITransport for TcpTransport {}
+impl ITransport for UnixTransport {}
+
+pub enum Transport {
+    Tcp(TcpTransport),
+    Unix(UnixTransport),
+}
+
+impl Transport {
+    fn inner(self: Pin<&mut Self>) -> Pin<&mut (dyn ITransport)> {
+        match self.get_mut() {
+            Transport::Tcp(tcp_transport) => Pin::new(tcp_transport),
+            Transport::Unix(unix_transport) => Pin::new(unix_transport),
+        }
+    }
+}
+
+impl Sink<GsbMessage> for Transport {
+    type Error = ProtocolError;
+
+    fn poll_ready(
+        self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner().poll_ready(cx)
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: GsbMessage) -> Result<(), Self::Error> {
+        self.inner().start_send(item)
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner().poll_flush(cx)
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Result<(), Self::Error>> {
+        self.inner().poll_close(cx)
+    }
+}
+
+impl Stream for Transport {
+    type Item = Result<GsbMessage, ProtocolError>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> Poll<Option<Self::Item>> {
+        self.inner().poll_next(cx)
+    }
+}
+
+impl Unpin for Transport {}
+
+pub async fn transport(addr: ya_sb_proto::GsbAddr) -> Result<Transport, std::io::Error> {
+    match addr {
+        ya_sb_proto::GsbAddr::Tcp(addr) => Ok(Transport::Tcp(tcp(addr).await?)),
+        ya_sb_proto::GsbAddr::Unix(path) => Ok(Transport::Unix(unix(path).await?)),
+    }
 }

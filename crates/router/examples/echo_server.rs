@@ -2,10 +2,10 @@ use futures::prelude::*;
 
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
-use ya_sb_router::tcp_connect;
+use ya_sb_router::connect;
 
 async fn run_server() {
-    let (mut writer, mut reader) = tcp_connect(&gsb_addr(None)).await;
+    let (mut writer, mut reader) = connect(Default::default()).await;
 
     println!("Sending hello");
     let hello = Hello {

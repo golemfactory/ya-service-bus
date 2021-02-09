@@ -4,10 +4,10 @@ use uuid::Uuid;
 
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
-use ya_sb_router::tcp_connect;
+use ya_sb_router::connect;
 
 async fn run_client() {
-    let (mut writer, mut reader) = tcp_connect(&gsb_addr(None)).await;
+    let (mut writer, mut reader) = connect(Default::default()).await;
 
     let instance_id = Uuid::new_v4().as_bytes().to_vec();
     println!("Sending hello...");

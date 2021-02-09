@@ -4,14 +4,14 @@ use std::{collections::HashSet, time::Duration};
 
 use crate::connection::ClientInfo;
 use crate::{
-    connection::{self, ConnectionRef, LocalRouterHandler, TcpTransport},
+    connection::{self, ConnectionRef, LocalRouterHandler, Transport},
     error::ConnectionTimeout,
     Error, RpcRawCall, RpcRawStreamCall,
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
-type RemoteConncetion = ConnectionRef<TcpTransport, LocalRouterHandler>;
+type RemoteConncetion = ConnectionRef<Transport, LocalRouterHandler>;
 
 pub struct RemoteRouter {
     client_info: ClientInfo,
@@ -27,7 +27,10 @@ impl Actor for RemoteRouter {
         self.try_connect(ctx);
         let _ = ctx.run_later(CONNECT_TIMEOUT, |act, ctx| {
             if act.connection.is_none() {
-                act.clean_pending_calls(Err(ConnectionTimeout(ya_sb_proto::gsb_addr(None))), ctx);
+                act.clean_pending_calls(
+                    Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
+                    ctx,
+                );
             }
         });
     }
@@ -37,10 +40,10 @@ impl RemoteRouter {
     fn try_connect(&mut self, ctx: &mut <Self as Actor>::Context) {
         // FIXME: this is `SystemService` and as such cannot get input being initialized
         // FIXME: but we need to pass gsb_url from yagnad CLI
-        let addr = ya_sb_proto::gsb_addr(None);
+        let addr = ya_sb_proto::GsbAddr::default();
         log::info!("trying to connect to: {}", addr);
         let client_info = self.client_info.clone();
-        let connect_fut = connection::tcp(addr)
+        let connect_fut = connection::transport(addr.clone())
             .map_err(move |e| Error::ConnectionFail(addr, e))
             .into_actor(self)
             .then(|tcp_transport, act, ctx| {
@@ -74,7 +77,7 @@ impl RemoteRouter {
 
     fn clean_pending_calls(
         &mut self,
-        connection: Result<ConnectionRef<TcpTransport, LocalRouterHandler>, ConnectionTimeout>,
+        connection: Result<ConnectionRef<Transport, LocalRouterHandler>, ConnectionTimeout>,
         ctx: &mut <Self as Actor>::Context,
     ) {
         log::debug!(
