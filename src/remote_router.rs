@@ -11,13 +11,13 @@ use crate::{
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 
-type RemoteConncetion = ConnectionRef<Transport, LocalRouterHandler>;
+type RemoteConnection = ConnectionRef<Transport, LocalRouterHandler>;
 
 pub struct RemoteRouter {
     client_info: ClientInfo,
     local_bindings: HashSet<String>,
-    pending_calls: Vec<oneshot::Sender<Result<RemoteConncetion, ConnectionTimeout>>>,
-    connection: Option<RemoteConncetion>,
+    pending_calls: Vec<oneshot::Sender<Result<RemoteConnection, ConnectionTimeout>>>,
+    connection: Option<RemoteConnection>,
 }
 
 impl Actor for RemoteRouter {
@@ -46,12 +46,12 @@ impl RemoteRouter {
         let connect_fut = connection::transport(addr.clone())
             .map_err(move |e| Error::ConnectionFail(addr, e))
             .into_actor(self)
-            .then(|tcp_transport, act, ctx| {
-                let tcp_transport = match tcp_transport {
+            .then(|transport, act, ctx| {
+                let transport = match transport {
                     Ok(v) => v,
                     Err(e) => return fut::Either::Left(fut::err(e)),
                 };
-                let connection = connection::connect(client_info, tcp_transport);
+                let connection = connection::connect(client_info, transport);
                 act.connection = Some(connection.clone());
                 act.clean_pending_calls(Ok(connection.clone()), ctx);
                 fut::Either::Right(
@@ -94,7 +94,7 @@ impl RemoteRouter {
         }
     }
 
-    fn connection(&mut self) -> impl Future<Output = Result<RemoteConncetion, Error>> + 'static {
+    fn connection(&mut self) -> impl Future<Output = Result<RemoteConnection, Error>> + 'static {
         if let Some(c) = &self.connection {
             return future::ok((*c).clone()).left_future();
         }

@@ -1,7 +1,6 @@
 pub use gsb_api::*;
 use std::fmt::{Debug, Display, Formatter};
 use std::path::PathBuf;
-use std::str::FromStr;
 use std::{convert::TryFrom, net::SocketAddr};
 use url::{ParseError, Url};
 
@@ -100,8 +99,14 @@ fn parse_tcp_url(url: Url) -> SocketAddr {
     )
 }
 
+#[cfg(unix)]
 fn parse_unix_url(url: Url) -> PathBuf {
-    PathBuf::from_str(url.path()).expect("invalid socket path in GSB URL")
+    url.to_file_path().expect("invalid socket path in GSB URL")
+}
+
+#[cfg(not(unix))]
+fn parse_unix_url(_url: Url) -> PathBuf {
+    panic!("Unix sockets not supported on this OS")
 }
 
 #[cfg(test)]
@@ -192,14 +197,22 @@ mod tests {
         assert_eq!(addr.port(), 7464)
     }
 
+    #[cfg(unix)]
     #[test]
     pub fn check_unix_gsb_url() {
-        let addr = GsbAddr::from_url(Some("unix:/tmp/socket".parse().unwrap()));
+        let addr = GsbAddr::from_url(Some("unix:/tmp/śmigły żółw/socket".parse().unwrap()));
         let path = match addr {
             GsbAddr::Unix(path) => path,
             _ => panic!("Not a UNIX addr"),
         };
-        assert_eq!(path, PathBuf::from("/tmp/socket"))
+        assert_eq!(path, PathBuf::from("/tmp/śmigły żółw/socket"))
+    }
+
+    #[cfg(not(unix))]
+    #[test]
+    #[should_panic(expected = "Unix sockets not supported on this OS")]
+    pub fn check_unix_gsb_url() {
+        GsbAddr::from_url(Some("unix:/tmp/socket".parse().unwrap()));
     }
 
     #[test]
