@@ -41,6 +41,9 @@ impl TryFrom<i32> for CallReplyType {
 }
 
 pub const GSB_URL_ENV_VAR: &str = "GSB_URL";
+#[cfg(unix)]
+pub const DEFAULT_GSB_URL: &str = "unix:/tmp/yagna.sock";
+#[cfg(not(unix))]
 pub const DEFAULT_GSB_URL: &str = "tcp://127.0.0.1:7464";
 
 #[derive(Clone, Debug)]
@@ -115,6 +118,20 @@ mod tests {
 
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    #[serial_test::serial]
+    pub fn check_default_gsb_url() {
+        std::env::remove_var(GSB_URL_ENV_VAR);
+        let addr = GsbAddr::from_url(None);
+        let path = match addr {
+            GsbAddr::Unix(path) => path,
+            _ => panic!("Not a UNIX addr"),
+        };
+        assert_eq!(path, PathBuf::from("/tmp/yagna.sock"))
+    }
+
+    #[cfg(not(unix))]
     #[test]
     #[serial_test::serial]
     pub fn check_default_gsb_url() {
@@ -156,19 +173,6 @@ mod tests {
 
     #[test]
     #[serial_test::serial]
-    pub fn check_ip_only_gsb_url() {
-        std::env::set_var(GSB_URL_ENV_VAR, "10.9.8.7");
-        let addr = GsbAddr::from_url(None);
-        let addr = match addr {
-            GsbAddr::Tcp(addr) => addr,
-            _ => panic!("Not a TCP addr"),
-        };
-        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::new(10, 9, 8, 7)));
-        assert_eq!(addr.port(), 7464)
-    }
-
-    #[test]
-    #[serial_test::serial]
     #[should_panic(expected = "unimplemented protocol for GSB URL: http")]
     pub fn panic_env_var_http() {
         std::env::set_var(GSB_URL_ENV_VAR, "http://10.9.8.7:2345");
@@ -184,17 +188,6 @@ mod tests {
         };
         assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::new(10, 9, 8, 7)));
         assert_eq!(addr.port(), 2345)
-    }
-
-    #[test]
-    pub fn check_ip_gsb_url() {
-        let addr = GsbAddr::from_url(Some("tcp://10.9.8.7".parse().unwrap()));
-        let addr = match addr {
-            GsbAddr::Tcp(addr) => addr,
-            _ => panic!("Not a TCP addr"),
-        };
-        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::new(10, 9, 8, 7)));
-        assert_eq!(addr.port(), 7464)
     }
 
     #[cfg(unix)]
