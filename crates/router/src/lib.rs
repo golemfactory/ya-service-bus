@@ -639,10 +639,6 @@ where
     }
 }
 
-pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::Error> {
-    bind_tcp_router(gsb_addr(gsb_url)).await
-}
-
 pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
     let mut listener = TcpListener::bind(&addr)
         .map_err(|e| {
@@ -663,6 +659,159 @@ pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
         router.handle_connection_stream(conn_stream).await;
     });
     Ok(())
+}
+
+#[cfg(unix)]
+mod unix {
+
+    use super::*;
+    use std::path::{Path, PathBuf};
+    use tokio::net::{UnixListener, UnixStream};
+    use uuid::Uuid;
+
+    /// Wrapper struct for UnixListener that takes care of removing the UNIX socket file
+    struct WrappedUnixListener {
+        listener: UnixListener,
+        path: PathBuf,
+    }
+
+    impl WrappedUnixListener {
+        pub fn bind<P: AsRef<Path>>(path: P) -> std::io::Result<Self> {
+            let path = path.as_ref().to_owned();
+            let path_str = path.to_string_lossy();
+
+            if path.exists() {
+                log::warn!(
+                    "GSB socket already exists and will be removed. path={}",
+                    path_str
+                );
+                std::fs::remove_file(&path).map_err(|e| {
+                    log::error!("Failed to remove GSB socket file: {} path={}", e, path_str);
+                    e
+                })?;
+            }
+
+            let listener = UnixListener::bind(&path).map_err(|e| {
+                log::error!("Failed to bind UNIX listener {}: path={}", e, path_str);
+                e
+            })?;
+
+            // There's no cross-platform way to set file permissions
+            #[cfg(unix)]
+            {
+                use std::fs::Permissions;
+                use std::os::unix::fs::PermissionsExt;
+
+                let permissions = Permissions::from_mode(0o700);
+                std::fs::set_permissions(&path, permissions)?;
+            }
+
+            Ok(WrappedUnixListener { listener, path })
+        }
+
+        pub fn incoming(&mut self) -> tokio::net::unix::Incoming<'_> {
+            self.listener.incoming()
+        }
+    }
+
+    impl Drop for WrappedUnixListener {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_file(&self.path).map_err(|e| {
+                log::error!(
+                    "Failed to remove GSB socket file: {} path={}",
+                    e,
+                    self.path.to_string_lossy()
+                )
+            });
+        }
+    }
+
+    pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::Error> {
+        match GsbAddr::from_url(gsb_url) {
+            GsbAddr::Tcp(addr) => bind_tcp_router(addr).await,
+            GsbAddr::Unix(path) => bind_unix_router(path).await,
+        }
+    }
+
+    pub async fn bind_unix_router<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
+        let mut listener = WrappedUnixListener::bind(&path)?;
+
+        let router = Router::new();
+        log::info!("Router listening on: {:?}", path.as_ref().to_string_lossy());
+
+        tokio::spawn(async move {
+            let conn_stream = listener.incoming().map_ok(|sock| {
+                let addr = sock
+                    .peer_addr()
+                    .ok()
+                    .and_then(|addr| {
+                        addr.as_pathname()
+                            .map(|path| path.to_string_lossy().to_string())
+                    })
+                    .unwrap_or(format!("unbound-socket-{}", Uuid::new_v4())); // The addresses are only needed to distinguish clients from one another so UUID will do
+                let (writer, reader) = Framed::new(sock, GsbMessageCodec::default()).split();
+                (addr, reader, writer)
+            });
+            router.handle_connection_stream(conn_stream).await;
+        });
+        Ok(())
+    }
+
+    pub async fn connect(
+        gsb_addr: GsbAddr,
+    ) -> (
+        Box<dyn Sink<GsbMessage, Error = ProtocolError> + Unpin>,
+        Box<dyn Stream<Item = Result<GsbMessage, ProtocolError>> + Unpin>,
+    ) {
+        match gsb_addr {
+            GsbAddr::Tcp(addr) => {
+                let (sink, stream) = tcp_connect(&addr).await;
+                (Box::new(sink), Box::new(stream))
+            }
+            GsbAddr::Unix(path) => {
+                let (sink, stream) = unix_connect(path).await;
+                (Box::new(sink), Box::new(stream))
+            }
+        }
+    }
+
+    pub async fn unix_connect<P: AsRef<Path>>(
+        path: P,
+    ) -> (
+        impl Sink<GsbMessage, Error = ProtocolError>,
+        impl Stream<Item = Result<GsbMessage, ProtocolError>>,
+    ) {
+        let sock = UnixStream::connect(path).await.expect("Connect failed");
+        let framed = tokio_util::codec::Framed::new(sock, GsbMessageCodec::default());
+        framed.split()
+    }
+}
+
+#[cfg(unix)]
+pub use unix::*;
+
+#[cfg(not(unix))]
+pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::Error> {
+    match GsbAddr::from_url(gsb_url) {
+        GsbAddr::Tcp(addr) => bind_tcp_router(addr).await,
+        GsbAddr::Unix(_) => panic!("Unix sockets not supported on this OS"),
+    }
+}
+
+#[cfg(not(unix))]
+pub async fn connect(
+    gsb_addr: GsbAddr,
+) -> (
+    Box<dyn Sink<GsbMessage, Error = ProtocolError> + Unpin>,
+    Box<dyn Stream<Item = Result<GsbMessage, ProtocolError>> + Unpin>,
+) {
+    match gsb_addr {
+        GsbAddr::Tcp(addr) => {
+            let (sink, stream) = tcp_connect(&addr).await;
+            (Box::new(sink), Box::new(stream))
+        }
+        GsbAddr::Unix(_) => panic!("Unix sockets not supported on this OS"),
+    }
 }
 
 pub async fn tcp_connect(

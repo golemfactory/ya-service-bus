@@ -1,16 +1,15 @@
 use super::serialization::{DecodeError, EncodeError};
 use actix::MailboxError;
 use std::io;
-use std::net::SocketAddr;
 
 #[derive(Clone, Debug, thiserror::Error)]
 #[error("Timeout connecting GSB at `{0}`")]
-pub struct ConnectionTimeout(pub SocketAddr);
+pub struct ConnectionTimeout(pub ya_sb_proto::GsbAddr);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("Connecting GSB at `{0}` failure: {1}")]
-    ConnectionFail(SocketAddr, io::Error),
+    ConnectionFail(ya_sb_proto::GsbAddr, io::Error),
     #[error(transparent)]
     ConnectionTimeout(#[from] ConnectionTimeout),
     #[error("Called service `{0}` is unavailable")]
