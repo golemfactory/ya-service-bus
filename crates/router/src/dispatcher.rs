@@ -41,7 +41,13 @@ where
                         log::error!("Send failed: {:?}", e)
                     }
                     if let Err(e) = sink.close().await {
-                        log::error!("Connection close failed: {:?}", e)
+                        // Silence the Io::NotConnected error, they show after connection closed
+                        // on macOS only.
+                        if format!("{:?}", e).contains("NotConnected") {
+                            log::debug!("Socket already closed: {:?}", e)
+                        } else {
+                            log::error!("Connection close failed: {:?}", e)
+                        }
                     }
                 });
                 entry.insert(tx);
