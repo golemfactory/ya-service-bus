@@ -81,3 +81,9 @@ jobs:
         with:
           command: build
           args: --workspace
+
+      - name: cargo build router
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --manifest-path crates/router/Cargo.toml --bin ya-sb-router --features bin
