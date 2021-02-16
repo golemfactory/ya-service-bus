@@ -34,7 +34,7 @@ lazy_static = "1.4"
 log = "0.4.8"
 prost = "0.6.1"
 structopt = "0.3"
-tokio = { version = "0.2", features = ["tcp", "sync", "macros", "rt-core", "stream", "time"] }
+tokio = { version = "0.2", features = ["tcp", "net", "sync", "macros", "rt-core", "stream", "time"] }
 tokio-util = "0.2.0"
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
