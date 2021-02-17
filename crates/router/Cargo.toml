@@ -1,6 +1,6 @@
 [package]
 name = "ya-sb-router"
-version = "0.3.1"
+version = "0.4.0"
 description = "Service Bus Router"
 authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/yagna/service-bus/router"
@@ -22,7 +22,7 @@ path = "src/bin.rs"
 required-features=['bin']
 
 [dependencies]
-ya-sb-proto = { version = "0.1", path = "../proto" }
+ya-sb-proto = { version = "^0.2", path = "../proto" }
 ya-sb-util = { version = "0.1", path = "../util" }
 
 anyhow = "1.0.28"
