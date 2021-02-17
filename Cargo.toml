@@ -16,7 +16,7 @@ json = ["serde_json"]
 
 [dependencies]
 ya-sb-proto = { version = "0.2", path = "crates/proto" }
-ya-sb-util = { version = "0.2", features=["with-futures"], path = "crates/util" }
+ya-sb-util = { version = "0.1", features=["with-futures"], path = "crates/util" }
 
 actix = { version = "0.9", default-features = false }
 flexbuffers = { version = "0.2", optional = true }
@@ -47,4 +47,3 @@ members = [ "crates/*" ]
 lto = true
 opt-level = 3
 codegen-units = 1
-
