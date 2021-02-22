@@ -22,7 +22,7 @@ path = "src/bin.rs"
 required-features=['bin']
 
 [dependencies]
-ya-sb-proto = { version = "^0.2", path = "../proto" }
+ya-sb-proto = { version = "^0.3", path = "../proto" }
 ya-sb-util = { version = "0.1", path = "../util" }
 
 anyhow = "1.0.28"

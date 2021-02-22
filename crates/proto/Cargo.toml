@@ -1,12 +1,12 @@
 [package]
 name = "ya-sb-proto"
-version = "0.2.0"
+version = "0.3.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 homepage = "https://github.com/golemfactory/yagna"
 repository = "https://github.com/golemfactory/yagna"
 license = "LGPL-3.0"
-description="Golem Service Bus Protcol messages"
+description="Golem Service Bus Protocol messages"
 
 [features]
 default = ["with-codec"]
