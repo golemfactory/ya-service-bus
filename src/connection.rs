@@ -307,7 +307,6 @@ where
             address,
             request_id
         );
-        let eos_address = address.clone();
         let eos_request_id = request_id.clone();
         let do_call = self
             .handler
@@ -348,13 +347,13 @@ where
                 let _ = act.writer.write(GsbMessage::CallReply(reply));
                 fut::ready(got_eos)
             })
-            .then(move |got_eos, act, _ctx| {
+            .then(|got_eos, act, _ctx| {
                 if !got_eos {
                     let _ = act.writer.write(GsbMessage::CallReply(CallReply {
                         request_id: eos_request_id,
-                        code: CallReplyCode::ServiceFailure as i32,
-                        reply_type: Default::default(),
-                        data: format!("No response from {}", eos_address).into_bytes(),
+                        code: 0,
+                        reply_type: 0,
+                        data: Default::default(),
                     }));
                 }
                 fut::ready(())
