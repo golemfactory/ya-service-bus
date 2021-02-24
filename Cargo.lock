@@ -1544,7 +1544,7 @@ dependencies = [
 
 [[package]]
 name = "ya-sb-router"
-version = "0.4.0"
+version = "0.4.1"
 dependencies = [
  "anyhow",
  "bytes 0.4.12",
