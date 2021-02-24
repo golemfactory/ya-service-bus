@@ -399,7 +399,7 @@ where
                     Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
                 }
             };
-            let _ = ctx.wait(
+            let _ = ctx.spawn(
                 async move {
                     let s = r.send(item);
                     s.await
@@ -427,8 +427,7 @@ where
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.set_mailbox_capacity(256);
+    fn started(&mut self, _ctx: &mut Self::Context) {
         log::info!("started connection to gsb");
         let hello: ya_sb_proto::Hello = ya_sb_proto::Hello {
             name: self.client_info.name.clone(),
