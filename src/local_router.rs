@@ -365,17 +365,18 @@ impl Slot {
                         .unwrap_or_else(|e| Ok(log::error!("streaming raw forward error: {}", e)))
                         .unwrap_or_else(|e| log::error!("streaming raw forward error: {}", e));
                 });
-                rx.map(|chunk_result| {
-                    (move || -> Result<Result<T::Item, T::Error>, Error> {
-                        let chunk = match chunk_result {
-                            Ok(ResponseChunk::Part(chunk)) => chunk,
-                            Ok(ResponseChunk::Full(chunk)) => chunk,
-                            Err(e) => return Err(e),
-                        };
-                        Ok(crate::serialization::from_slice(&chunk)?)
-                    })()
-                })
-                .left_stream()
+                rx.filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
+                    .map(|chunk_result| {
+                        (move || -> Result<Result<T::Item, T::Error>, Error> {
+                            let chunk = match chunk_result {
+                                Ok(ResponseChunk::Part(chunk)) => chunk,
+                                Ok(ResponseChunk::Full(chunk)) => chunk,
+                                Err(e) => return Err(e),
+                            };
+                            Ok(crate::serialization::from_slice(&chunk)?)
+                        })()
+                    })
+                    .left_stream()
             })()
             .boxed_local()
             .right_stream()
@@ -386,6 +387,7 @@ impl Slot {
                     Err(e) => return stream::once(future::err(Error::from(e))).right_stream(),
                 };
                 self.send_streaming(RpcRawCall { caller, addr, body })
+                    .filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
                     .map(|chunk_result| {
                         (move || -> Result<Result<T::Item, T::Error>, Error> {
                             let chunk = match chunk_result {
@@ -528,7 +530,15 @@ impl Router {
                 slot.send(RpcRawCall::from_envelope_addr(msg, addr))
                     .then(|b| {
                         future::ready(match b {
-                            Ok(b) => crate::serialization::from_slice(&b).map_err(From::from),
+                            Ok(b) => {
+                                if b.is_empty() {
+                                    Err(Error::GsbFailure(
+                                        "empty response from remote service".to_string(),
+                                    ))
+                                } else {
+                                    crate::serialization::from_slice(&b).map_err(From::from)
+                                }
+                            }
                             Err(e) => Err(e),
                         })
                     })
@@ -546,7 +556,15 @@ impl Router {
                 })
                 .then(|b| {
                     future::ready(match b {
-                        Ok(b) => crate::serialization::from_slice(&b).map_err(From::from),
+                        Ok(b) => {
+                            if b.is_empty() {
+                                Err(Error::GsbFailure(
+                                    "empty response from remote service".to_string(),
+                                ))
+                            } else {
+                                crate::serialization::from_slice(&b).map_err(From::from)
+                            }
+                        }
                         Err(e) => Err(e),
                     })
                 })

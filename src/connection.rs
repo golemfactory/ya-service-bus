@@ -307,7 +307,6 @@ where
             address,
             request_id
         );
-        let eos_address = address.clone();
         let eos_request_id = request_id.clone();
         let do_call = self
             .handler
@@ -348,13 +347,13 @@ where
                 let _ = act.writer.write(GsbMessage::CallReply(reply));
                 fut::ready(got_eos)
             })
-            .then(move |got_eos, act, _ctx| {
+            .then(|got_eos, act, _ctx| {
                 if !got_eos {
                     let _ = act.writer.write(GsbMessage::CallReply(CallReply {
                         request_id: eos_request_id,
-                        code: CallReplyCode::ServiceFailure as i32,
-                        reply_type: Default::default(),
-                        data: format!("No response from {}", eos_address).into_bytes(),
+                        code: 0,
+                        reply_type: 0,
+                        data: Default::default(),
                     }));
                 }
                 fut::ready(())
@@ -399,7 +398,7 @@ where
                     Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
                 }
             };
-            let _ = ctx.wait(
+            let _ = ctx.spawn(
                 async move {
                     let s = r.send(item);
                     s.await
@@ -427,8 +426,7 @@ where
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
-        ctx.set_mailbox_capacity(256);
+    fn started(&mut self, _ctx: &mut Self::Context) {
         log::info!("started connection to gsb");
         let hello: ya_sb_proto::Hello = ya_sb_proto::Hello {
             name: self.client_info.name.clone(),
