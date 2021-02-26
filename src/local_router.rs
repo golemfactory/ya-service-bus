@@ -1,18 +1,21 @@
 use actix::{prelude::*, Actor, SystemService};
-use futures::{prelude::*, FutureExt, StreamExt};
+use futures::channel::mpsc;
+use futures::{prelude::*, FutureExt, Stream, StreamExt};
 use std::any::Any;
-use std::pin::Pin;
+use std::sync::atomic::AtomicU32;
+use std::sync::atomic::Ordering::Relaxed;
 use std::sync::{Arc, Mutex};
 
 use ya_sb_util::futures::IntoFlatten;
 use ya_sb_util::PrefixLookupBag;
 
+use crate::sequence::{SequencedStream, MAX_SEQUENCE_BUFFER_SIZE};
 use crate::{
     remote_router::{RemoteRouter, UpdateService},
     Error, Handle, ResponseChunk, RpcEnvelope, RpcHandler, RpcMessage, RpcRawCall,
     RpcRawStreamCall, RpcStreamCall, RpcStreamHandler, RpcStreamMessage,
 };
-use futures::channel::mpsc;
+use std::pin::Pin;
 
 mod into_actix;
 
@@ -67,7 +70,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
                 .map_err(|e| Error::from_addr("unknown stream recipient".into(), e))
                 .and_then(|r| future::ready(crate::serialization::to_vec(&r).map_err(Error::from)))
-                .map_ok(|v| ResponseChunk::Full(v))
+                .map_ok(|v| ResponseChunk::Full(v, 0))
                 .into_stream(),
         )
     }
@@ -112,12 +115,13 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
             };
         });
 
+        let seq = AtomicU32::new(0);
         let recv_stream = rx
-            .then(|r| {
+            .then(move |r| {
                 future::ready(
                     crate::serialization::to_vec(&r)
                         .map_err(Error::from)
-                        .and_then(|r| Ok(ResponseChunk::Part(r))),
+                        .and_then(|r| Ok(ResponseChunk::Part(r, seq.fetch_add(1, Relaxed)))),
                 )
             })
             .chain(rxe.into_stream().filter_map(|v| future::ready(v.ok())));
@@ -149,7 +153,7 @@ impl RawEndpoint for Recipient<RpcRawCall> {
             Recipient::<RpcRawCall>::send(self, msg)
                 .map_err(|e| Error::from_addr(addr, e))
                 .flatten_fut()
-                .and_then(|v| future::ok(ResponseChunk::Full(v)))
+                .and_then(|v| future::ok(ResponseChunk::Full(v, 0)))
                 .into_stream(),
         )
     }
@@ -177,8 +181,8 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
         async move {
             futures::pin_mut!(rx);
             match StreamExt::next(&mut rx).await {
-                Some(Ok(ResponseChunk::Full(v))) => Ok(v),
-                Some(Ok(ResponseChunk::Part(_))) => {
+                Some(Ok(ResponseChunk::Full(v, _))) => Ok(v),
+                Some(Ok(ResponseChunk::Part(_, _))) => {
                     Err(Error::GsbBadRequest("partial response".into()))
                 }
                 Some(Err(e)) => Err(e),
@@ -365,12 +369,13 @@ impl Slot {
                         .unwrap_or_else(|e| Ok(log::error!("streaming raw forward error: {}", e)))
                         .unwrap_or_else(|e| log::error!("streaming raw forward error: {}", e));
                 });
-                rx.filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
+                SequencedStream::new(rx, MAX_SEQUENCE_BUFFER_SIZE)
+                    .filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
                     .map(|chunk_result| {
                         (move || -> Result<Result<T::Item, T::Error>, Error> {
                             let chunk = match chunk_result {
-                                Ok(ResponseChunk::Part(chunk)) => chunk,
-                                Ok(ResponseChunk::Full(chunk)) => chunk,
+                                Ok(ResponseChunk::Part(chunk, _)) => chunk,
+                                Ok(ResponseChunk::Full(chunk, _)) => chunk,
                                 Err(e) => return Err(e),
                             };
                             Ok(crate::serialization::from_slice(&chunk)?)
@@ -386,13 +391,14 @@ impl Slot {
                     Ok(body) => body,
                     Err(e) => return stream::once(future::err(Error::from(e))).right_stream(),
                 };
-                self.send_streaming(RpcRawCall { caller, addr, body })
+                let rx = self.send_streaming(RpcRawCall { caller, addr, body });
+                SequencedStream::new(rx, MAX_SEQUENCE_BUFFER_SIZE)
                     .filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
                     .map(|chunk_result| {
                         (move || -> Result<Result<T::Item, T::Error>, Error> {
                             let chunk = match chunk_result {
-                                Ok(ResponseChunk::Part(chunk)) => chunk,
-                                Ok(ResponseChunk::Full(chunk)) => chunk,
+                                Ok(ResponseChunk::Part(chunk, _)) => chunk,
+                                Ok(ResponseChunk::Full(chunk, _)) => chunk,
                                 Err(e) => return Err(e),
                             };
                             Ok(crate::serialization::from_slice(&chunk)?)
@@ -598,7 +604,8 @@ impl Router {
                 log::trace!("call result={:?}", v);
             });
 
-            tx.filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
+            SequencedStream::new(tx, MAX_SEQUENCE_BUFFER_SIZE)
+                .filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
                 .map(|b| {
                     let body = b?.into_bytes();
                     Ok(crate::serialization::from_slice(&body)?)

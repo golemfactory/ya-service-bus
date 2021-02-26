@@ -1,6 +1,6 @@
 [package]
 name = "ya-service-bus"
-version = "0.4.2"
+version = "0.5.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 homepage = "https://github.com/golemfactory/yagna"
@@ -15,7 +15,7 @@ flex = ["flexbuffers"]
 json = ["serde_json"]
 
 [dependencies]
-ya-sb-proto = { version = "^0.3", path = "crates/proto" }
+ya-sb-proto = { version = "^0.4", path = "crates/proto" }
 ya-sb-util = { version = "0.1", features=["with-futures"], path = "crates/util" }
 
 actix = { version = "0.9", default-features = false }

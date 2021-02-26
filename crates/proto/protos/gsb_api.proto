@@ -116,6 +116,7 @@ message CallReply {
   CallReplyCode code = 2;
   CallReplyType reply_type = 3;
   bytes data = 4;
+  uint32 sequence = 5;
 }
 
 message SubscribeRequest {

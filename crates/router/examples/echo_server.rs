@@ -81,6 +81,7 @@ async fn run_server() {
                         code: CallReplyCode::CallReplyOk as i32,
                         reply_type: CallReplyType::Full as i32,
                         data: msg.data,
+                        sequence: 0,
                     }
                     .into()))
                 }

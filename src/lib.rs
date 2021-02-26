@@ -8,12 +8,15 @@ pub mod connection;
 pub mod error;
 mod local_router;
 mod remote_router;
+pub mod sequence;
 pub mod serialization;
 pub mod timeout;
 pub mod typed;
 pub mod untyped;
 
 pub use error::Error;
+use sequence::Sequenced;
+use std::convert::TryInto;
 
 pub trait RpcMessage: Serialize + DeserializeOwned + 'static + Sync + Send {
     const ID: &'static str;
@@ -42,31 +45,48 @@ pub struct RpcStreamCall<T: RpcStreamMessage> {
 
 // Represents raw response chunk
 pub enum ResponseChunk {
-    Part(Vec<u8>),
-    Full(Vec<u8>),
+    Part(Vec<u8>, u32),
+    Full(Vec<u8>, u32),
+}
+
+impl Sequenced<u32> for ResponseChunk {
+    fn seq(&self) -> u32 {
+        match self {
+            ResponseChunk::Part(_, seq) => *seq,
+            ResponseChunk::Full(_, seq) => *seq,
+        }
+    }
 }
 
 impl ResponseChunk {
     pub fn into_bytes(self) -> Vec<u8> {
         match self {
-            ResponseChunk::Part(data) => data,
-            ResponseChunk::Full(data) => data,
+            ResponseChunk::Part(data, _) => data,
+            ResponseChunk::Full(data, _) => data,
         }
     }
 
     #[inline]
     pub fn is_full(&self) -> bool {
         match self {
-            ResponseChunk::Full(_) => true,
+            ResponseChunk::Full(_, _) => true,
             _ => false,
         }
     }
 
     pub fn is_eos(&self) -> bool {
         match self {
-            ResponseChunk::Full(data) => data.is_empty(),
+            ResponseChunk::Full(data, _) => data.is_empty(),
             _ => false,
         }
+    }
+}
+
+impl TryInto<String> for ResponseChunk {
+    type Error = std::string::FromUtf8Error;
+
+    fn try_into(self) -> Result<String, Self::Error> {
+        String::from_utf8(self.into_bytes())
     }
 }
 
