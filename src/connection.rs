@@ -19,6 +19,7 @@ use ya_sb_proto::{
 };
 
 use crate::local_router::router;
+use crate::sequence::Sequenced;
 use crate::Error;
 use crate::{ResponseChunk, RpcRawCall, RpcRawStreamCall};
 
@@ -74,16 +75,16 @@ impl ResponseChunk {
     #[inline]
     fn reply_type(&self) -> CallReplyType {
         match self {
-            ResponseChunk::Full(_) => CallReplyType::Full,
-            ResponseChunk::Part(_) => CallReplyType::Partial,
+            ResponseChunk::Full(_, _) => CallReplyType::Full,
+            ResponseChunk::Part(_, _) => CallReplyType::Partial,
         }
     }
 
     #[inline]
     fn into_vec(self) -> Vec<u8> {
         match self {
-            ResponseChunk::Full(v) => v,
-            ResponseChunk::Part(v) => v,
+            ResponseChunk::Full(v, _) => v,
+            ResponseChunk::Part(v, _) => v,
         }
     }
 }
@@ -317,6 +318,7 @@ where
                 let (got_eos, reply) = match r {
                     Ok(data) => {
                         let code = CallReplyCode::CallReplyOk as i32;
+                        let sequence = data.seq();
                         let reply_type = data.reply_type() as i32;
                         (
                             reply_type == 0,
@@ -325,6 +327,7 @@ where
                                 code,
                                 reply_type,
                                 data: data.into_vec(),
+                                sequence,
                             },
                         )
                     }
@@ -339,6 +342,7 @@ where
                                 code,
                                 reply_type,
                                 data,
+                                sequence: 0,
                             },
                         )
                     }
@@ -347,13 +351,14 @@ where
                 let _ = act.writer.write(GsbMessage::CallReply(reply));
                 fut::ready(got_eos)
             })
-            .then(|got_eos, act, _ctx| {
+            .then(move |got_eos, act, _ctx| {
                 if !got_eos {
                     let _ = act.writer.write(GsbMessage::CallReply(CallReply {
                         request_id: eos_request_id,
                         code: 0,
                         reply_type: 0,
                         data: Default::default(),
+                        sequence: 0,
                     }));
                 }
                 fut::ready(())
@@ -368,6 +373,7 @@ where
         code: i32,
         reply_type: i32,
         data: Vec<u8>,
+        seq: u32,
         ctx: &mut <Self as Actor>::Context,
     ) -> Result<(), Box<dyn std::error::Error>> {
         log::trace!(
@@ -378,11 +384,10 @@ where
         );
 
         let chunk = if reply_type == CallReplyType::Partial as i32 {
-            ResponseChunk::Part(data)
+            ResponseChunk::Part(data, seq)
         } else {
-            ResponseChunk::Full(data)
+            ResponseChunk::Full(data, seq)
         };
-
         let is_full = chunk.is_full();
 
         if let Some(r) = self.call_reply.get_mut(&request_id) {
@@ -391,12 +396,8 @@ where
             let code: CallReplyCode = code.try_into()?;
             let item = match code {
                 CallReplyCode::CallReplyOk => Ok(chunk),
-                CallReplyCode::CallReplyBadRequest => {
-                    Err(Error::GsbBadRequest(String::from_utf8(chunk.into_bytes())?))
-                }
-                CallReplyCode::ServiceFailure => {
-                    Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
-                }
+                CallReplyCode::CallReplyBadRequest => Err(Error::GsbBadRequest(chunk.try_into()?)),
+                CallReplyCode::ServiceFailure => Err(Error::GsbFailure(chunk.try_into()?)),
             };
             let _ = ctx.spawn(
                 async move {
@@ -547,7 +548,9 @@ where
                 self.handle_call_request(r.request_id, r.caller, r.address, r.data, ctx)
             }
             GsbMessage::CallReply(r) => {
-                if let Err(e) = self.handle_reply(r.request_id, r.code, r.reply_type, r.data, ctx) {
+                if let Err(e) =
+                    self.handle_reply(r.request_id, r.code, r.reply_type, r.data, r.sequence, ctx)
+                {
                     log::error!("error on call reply processing: {}", e);
                     ctx.stop();
                 }
@@ -612,9 +615,9 @@ where
         }));
         let fetch_response = async move {
             match futures::StreamExt::next(&mut rx).await {
-                Some(Ok(ResponseChunk::Full(data))) => Ok(data),
+                Some(Ok(ResponseChunk::Full(data, _))) => Ok(data),
                 Some(Err(e)) => Err(e),
-                Some(Ok(ResponseChunk::Part(_))) => {
+                Some(Ok(ResponseChunk::Part(_, _))) => {
                     Err(Error::GsbFailure("streaming response".to_string()))
                 }
                 None => Err(Error::GsbFailure("unexpected EOS".to_string())),

@@ -138,6 +138,7 @@ where
                     pending_call.service_id
                 )
                 .into_bytes(),
+                sequence: 0,
             };
             self.send_message_safe(&pending_call.caller_addr, msg);
         }
@@ -299,6 +300,7 @@ where
                     code: CallReplyCode::CallReplyBadRequest as i32,
                     reply_type: CallReplyType::Full as i32,
                     data: err.into_bytes(),
+                    sequence: 0,
                 };
                 self.send_message(caller_addr, msg)
             }

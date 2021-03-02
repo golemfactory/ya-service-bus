@@ -72,7 +72,7 @@ impl CallRequestHandler for DebugHandler {
             String::from_utf8_lossy(data.as_ref())
         );
 
-        stream::once(future::ok(ResponseChunk::Full(data)))
+        stream::once(future::ok(ResponseChunk::Full(data, 0)))
     }
 
     fn handle_event(&mut self, caller: String, topic: String, data: Vec<u8>) {
