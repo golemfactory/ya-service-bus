@@ -72,8 +72,10 @@ where
     fn enqueue(&mut self, item: Q) -> Option<Q> {
         if self.buffer.len() == self.buffer.capacity() {
             log::warn!("Stream sequence buffer is full, draining and entering pass-through mode");
+            let first = self.buffer.remove(0);
+            let _ = self.enqueue(item);
             self.state = BufferState::Drain;
-            return Some(item);
+            return Some(first);
         }
 
         let is_overflow = item.seq() < self.next_seq;
