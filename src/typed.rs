@@ -42,7 +42,8 @@ pub fn bind<T: RpcMessage>(addr: &str, endpoint: impl RpcHandler<T> + Unpin + 's
 
 #[inline]
 pub async fn unbind(addr: &str) -> Result<bool, Error> {
-    router().lock().unwrap().unbind(addr).await
+    let future = { router().lock().unwrap().unbind(addr) };
+    future.await
 }
 
 pub fn bind_stream<T: RpcStreamMessage>(
