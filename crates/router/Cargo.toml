@@ -3,8 +3,8 @@ name = "ya-sb-router"
 version = "0.4.1"
 description = "Service Bus Router"
 authors = ["Golem Factory <contact@golem.network>"]
-homepage = "https://github.com/golemfactory/yagna/service-bus/router"
-repository = "https://github.com/golemfactory/yagna"
+homepage = "https://github.com/golemfactory/ya-service-bus/crates/router"
+repository = "https://github.com/golemfactory/ya-service-bus"
 license = "GPL-3.0"
 edition = "2018"
 
