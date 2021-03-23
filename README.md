@@ -1,4 +1,4 @@
-# Yagna service bus (a.k.a. GSB)
+# Golem Service Bus (a.k.a. GSB)
 
 GSB is a message bus allowing Yagna services to communicate with one another.
 It consist of two software components: router (`ya-sb-router`) and client crate
@@ -13,9 +13,9 @@ communication: service calls (one-to-one, bidirectional) and broadcasts
 
 #### Message format
 GSB messages are encoded with protobuf. Message types could be found in
-`proto/protos/gsb_api.proto` file. Each message is prepended with a 64-bit header.
+[`gsb_api.proto`](crates/proto/protos/gsb_api.proto) file. Each message is prepended with a 64-bit header.
 First 4 bytes of the header are interpreted as big-endian singed integer
-encoding message type (for mapping see [MessageType](https://github.com/golemfactory/yagna/blob/865053ae7bf7d832c35ead022a2bc7084d15368e/service-bus/proto/src/lib.rs#L17-L32) enum).
+encoding message type (for mapping see [Packet](https://github.com/golemfactory/ya-service-bus/blob/3b8ff9cd49fb040cdfeee127f42b28e962a0a9f4/crates/proto/protos/gsb_api.proto#L32-L51) enum).
 Next 4 bytes of the header are interpreted as big-endian unsigned integer
 representing message length.
 
