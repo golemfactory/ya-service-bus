@@ -150,11 +150,14 @@ impl Handler<UpdateService> for RemoteRouter {
         match msg {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
-                    Arbiter::spawn(
-                        c.bind(service_id.clone()).then(|v| async {
-                            v.unwrap_or_else(|e| log::error!("bind error: {}", e))
-                        }),
-                    )
+                    Arbiter::spawn(c.bind(service_id.clone()).then(|v| async {
+                        v.unwrap_or_else(|err| match err {
+                            Error::GsbAlreadyRegistered(m) => {
+                                log::warn!("already registered: {}", m)
+                            }
+                            e => log::error!("bind error: {}", e),
+                        })
+                    }))
                 }
                 log::trace!("Binding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);
