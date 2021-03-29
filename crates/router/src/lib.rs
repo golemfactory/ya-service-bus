@@ -21,7 +21,7 @@ mod dispatcher;
 
 lazy_static! {
     pub static ref GSB_PING_TIMEOUT: u64 = env::var("GSB_PING_TIMEOUT")
-        .unwrap_or("60".into())
+        .unwrap_or("5".into())
         .parse()
         .unwrap();
 }
