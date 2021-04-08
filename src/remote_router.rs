@@ -11,7 +11,6 @@ use crate::{
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
-const CONNECTION_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 type RemoteConnection = ConnectionRef<Transport, LocalRouterHandler>;
 
@@ -39,7 +38,7 @@ impl RemoteRouter {
 
         log::info!("trying to connect to: {}", addr);
 
-        let timeout_hdl = ctx.run_later(CONNECT_TIMEOUT, |act, ctx| {
+        let timeout_h = ctx.run_later(CONNECT_TIMEOUT, |act, ctx| {
             if act.connection.is_none() {
                 act.clean_pending_calls(
                     Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
@@ -55,7 +54,8 @@ impl RemoteRouter {
                     Ok(v) => v,
                     Err(e) => return fut::Either::Left(fut::err(e)),
                 };
-                let connection = connection::connect(client_info, transport);
+                let connection =
+                    connection::connect_with_handler(client_info, transport, act.handler(ctx));
                 act.connection = Some(connection.clone());
                 act.clean_pending_calls(Ok(connection.clone()), ctx);
                 fut::Either::Right(
@@ -70,15 +70,10 @@ impl RemoteRouter {
                 )
             })
             .then(move |result: Result<(), Error>, _, ctx| {
-                ctx.cancel_future(timeout_hdl);
-                match result {
-                    Ok(_) => {
-                        let _ = ctx.run_interval(CONNECTION_CHECK_INTERVAL, Self::check_connection);
-                    }
-                    Err(e) => {
-                        log::warn!("routing error: {}", e);
-                        ctx.stop();
-                    }
+                ctx.cancel_future(timeout_h);
+                if let Err(e) = result {
+                    log::warn!("routing error: {}", e);
+                    ctx.stop();
                 }
                 fut::ready(())
             });
@@ -119,10 +114,22 @@ impl RemoteRouter {
         .right_future()
     }
 
-    fn check_connection(&mut self, ctx: &mut <Self as Actor>::Context) {
-        self.connection.as_ref().map(|c| {
-            c.connected().not().then(|| ctx.stop());
-        });
+    fn handler(&mut self, ctx: &mut <Self as Actor>::Context) -> LocalRouterHandler {
+        let (tx, rx) = oneshot::channel();
+
+        rx.into_actor(self)
+            .map(|_, this, ctx| {
+                this.connection.as_ref().map(|c| {
+                    c.connected().not().then(|| log::warn!("connection lost"));
+                });
+                // restarts the actor
+                ctx.stop();
+            })
+            .spawn(ctx);
+
+        LocalRouterHandler::new(|| {
+            let _ = tx.send(());
+        })
     }
 }
 
