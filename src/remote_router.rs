@@ -1,5 +1,6 @@
 use actix::{prelude::*, WrapFuture};
 use futures::{channel::oneshot, prelude::*, SinkExt};
+use std::ops::Not;
 use std::{collections::HashSet, time::Duration};
 
 use crate::connection::ClientInfo;
@@ -10,6 +11,7 @@ use crate::{
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const CONNECTION_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 type RemoteConnection = ConnectionRef<Transport, LocalRouterHandler>;
 
@@ -25,14 +27,6 @@ impl Actor for RemoteRouter {
 
     fn started(&mut self, ctx: &mut Self::Context) {
         self.try_connect(ctx);
-        let _ = ctx.run_later(CONNECT_TIMEOUT, |act, ctx| {
-            if act.connection.is_none() {
-                act.clean_pending_calls(
-                    Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
-                    ctx,
-                );
-            }
-        });
     }
 }
 
@@ -41,8 +35,18 @@ impl RemoteRouter {
         // FIXME: this is `SystemService` and as such cannot get input being initialized
         // FIXME: but we need to pass gsb_url from yagnad CLI
         let addr = ya_sb_proto::GsbAddr::default();
-        log::info!("trying to connect to: {}", addr);
         let client_info = self.client_info.clone();
+
+        log::info!("trying to connect to: {}", addr);
+
+        let timeout_hdl = ctx.run_later(CONNECT_TIMEOUT, |act, ctx| {
+            if act.connection.is_none() {
+                act.clean_pending_calls(
+                    Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
+                    ctx,
+                );
+            }
+        });
         let connect_fut = connection::transport(addr.clone())
             .map_err(move |e| Error::ConnectionFail(addr, e))
             .into_actor(self)
@@ -65,9 +69,16 @@ impl RemoteRouter {
                     .into_actor(act),
                 )
             })
-            .then(|v: Result<(), Error>, _, _| {
-                if let Err(e) = v {
-                    log::warn!("routing error: {}", e);
+            .then(move |result: Result<(), Error>, _, ctx| {
+                ctx.cancel_future(timeout_hdl);
+                match result {
+                    Ok(_) => {
+                        let _ = ctx.run_interval(CONNECTION_CHECK_INTERVAL, Self::check_connection);
+                    }
+                    Err(e) => {
+                        log::warn!("routing error: {}", e);
+                        ctx.stop();
+                    }
                 }
                 fut::ready(())
             });
@@ -107,6 +118,12 @@ impl RemoteRouter {
         })
         .right_future()
     }
+
+    fn check_connection(&mut self, ctx: &mut <Self as Actor>::Context) {
+        self.connection.as_ref().map(|c| {
+            c.connected().not().then(|| ctx.stop());
+        });
+    }
 }
 
 impl Default for RemoteRouter {
@@ -123,11 +140,7 @@ impl Default for RemoteRouter {
 impl Supervised for RemoteRouter {
     fn restarting(&mut self, _ctx: &mut Self::Context) {
         if let Some(c) = self.connection.take() {
-            if c.connected() {
-                self.connection = Some(c)
-            } else {
-                log::error!("lost connection");
-            }
+            c.connected().not().then(|| log::error!("lost connection"));
         }
     }
 }
