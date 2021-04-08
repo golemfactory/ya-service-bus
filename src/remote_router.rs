@@ -146,9 +146,7 @@ impl Default for RemoteRouter {
 
 impl Supervised for RemoteRouter {
     fn restarting(&mut self, _ctx: &mut Self::Context) {
-        if let Some(c) = self.connection.take() {
-            c.connected().not().then(|| log::error!("lost connection"));
-        }
+        let _ = self.connection.take();
     }
 }
 
