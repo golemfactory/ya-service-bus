@@ -89,7 +89,17 @@ impl ResponseChunk {
 }
 
 #[derive(Default)]
-pub struct LocalRouterHandler;
+pub struct LocalRouterHandler {
+    disconnect_h: Option<Box<dyn FnOnce()>>,
+}
+
+impl LocalRouterHandler {
+    pub fn new<F: FnOnce() + 'static>(disconnect_fn: F) -> Self {
+        Self {
+            disconnect_h: Some(Box::new(disconnect_fn)),
+        }
+    }
+}
 
 impl CallRequestHandler for LocalRouterHandler {
     type Reply = Pin<Box<dyn futures::Stream<Item = Result<ResponseChunk, Error>>>>;
@@ -106,6 +116,10 @@ impl CallRequestHandler for LocalRouterHandler {
             .unwrap()
             .forward_bytes_local(&address, &caller, data.as_ref())
             .boxed_local()
+    }
+
+    fn on_disconnect(&mut self) {
+        self.disconnect_h.take().map(|f| f());
     }
 }
 
