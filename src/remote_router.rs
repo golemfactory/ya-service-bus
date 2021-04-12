@@ -44,6 +44,8 @@ impl RemoteRouter {
                     Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
                     ctx,
                 );
+                log::warn!("connection timed out after {:?}", CONNECT_TIMEOUT);
+                ctx.stop();
             }
         });
         let connect_fut = connection::transport(addr.clone())
