@@ -20,10 +20,20 @@ use ya_sb_util::PrefixLookupBag;
 mod dispatcher;
 
 lazy_static! {
-    pub static ref GSB_PING_TIMEOUT: u64 = env::var("GSB_PING_TIMEOUT")
-        .unwrap_or("5".into())
+    static ref RAW_GSB_PING_TIMEOUT: u64 = env::var("GSB_PING_TIMEOUT")
+        .unwrap_or(20.to_string())
         .parse()
         .unwrap();
+    // After GSB_PING_TIMEOUT without reply the connection will disconnect
+    pub static ref GSB_PING_TIMEOUT: Duration = Duration::seconds(*RAW_GSB_PING_TIMEOUT as i64);
+
+    // NOTE: Check and try intervals should be lower than ping timeout to avoid race conditions
+    // Try to send a ping to each connection at this interval
+    pub static ref GSB_PING_TRY_INTERVAL: Duration = *GSB_PING_TIMEOUT / 4;
+    // Run the ping job at this interval
+    pub static ref GSB_PING_CHECK_INTERVAL: std::time::Duration = std::time::Duration::from_secs(
+        *RAW_GSB_PING_TIMEOUT
+    ) / 8;
 }
 
 type ServiceId = String;
@@ -468,11 +478,10 @@ where
     pub fn check_for_stale_connections(&mut self) {
         log::trace!("Checking for stale connections");
         let now = Utc::now().naive_utc();
-        let timeout = Duration::seconds(*GSB_PING_TIMEOUT as i64);
-        for addr in self.clients_not_seen_since(now - timeout * 2) {
+        for addr in self.clients_not_seen_since(now - *GSB_PING_TIMEOUT) {
             self.disconnect(&addr, None);
         }
-        for addr in self.clients_not_seen_since(now - timeout) {
+        for addr in self.clients_not_seen_since(now - *GSB_PING_TRY_INTERVAL) {
             self.ping(&addr)
                 .unwrap_or_else(|e| log::error!("Error sending ping message {:?}", e))
         }
@@ -522,9 +531,7 @@ where
         tokio::spawn(Abortable::new(
             async move {
                 loop {
-                    // Check interval should be lower than ping timeout to avoid race conditions
-                    let check_interval = std::time::Duration::from_secs(*GSB_PING_TIMEOUT) / 2;
-                    tokio::time::delay_for(check_interval).await;
+                    tokio::time::delay_for(*GSB_PING_CHECK_INTERVAL).await;
                     router1.lock().await.check_for_stale_connections();
                 }
             },
