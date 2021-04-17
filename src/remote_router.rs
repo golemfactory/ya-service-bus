@@ -11,6 +11,7 @@ use crate::{
 };
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
+const RECONNECT_DELAY: Duration = Duration::from_millis(1000);
 
 type RemoteConnection = ConnectionRef<Transport, LocalRouterHandler>;
 
@@ -125,7 +126,7 @@ impl RemoteRouter {
                     c.connected().not().then(|| log::warn!("connection lost"));
                 });
                 // restarts the actor
-                ctx.stop();
+                ctx.run_later(RECONNECT_DELAY, |_, ctx| ctx.stop());
             })
             .spawn(ctx);
 
