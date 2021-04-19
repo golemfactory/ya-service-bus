@@ -76,7 +76,7 @@ impl RemoteRouter {
                 ctx.cancel_future(timeout_h);
                 if let Err(e) = result {
                     log::warn!("routing error: {}", e);
-                    ctx.stop();
+                    ctx.run_later(RECONNECT_DELAY, |_, ctx| ctx.stop());
                 }
                 fut::ready(())
             });
