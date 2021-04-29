@@ -18,7 +18,7 @@ json = ["serde_json"]
 ya-sb-proto = { version = "^0.3", path = "crates/proto" }
 ya-sb-util = { version = "0.1", features=["with-futures"], path = "crates/util" }
 
-actix = { version = "0.9", default-features = false }
+actix = { version = "0.10", default-features = false }
 flexbuffers = { version = "0.2", optional = true }
 futures = "0.3"
 lazy_static = "1.4"

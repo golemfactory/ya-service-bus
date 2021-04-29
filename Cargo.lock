@@ -2,9 +2,9 @@
 # It is not intended for manual editing.
 [[package]]
 name = "actix"
-version = "0.9.0"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4af87564ff659dee8f9981540cac9418c45e910c8072fdedd643a262a38fcaf"
+checksum = "1be241f88f3b1e7e9a3fbe3b5a8a0f6915b5a1d7ee0d9a248d3376d01068cc60"
 dependencies = [
  "actix-rt",
  "actix_derive",
@@ -12,14 +12,15 @@ dependencies = [
  "bytes 0.5.6",
  "crossbeam-channel",
  "derive_more",
- "futures",
- "lazy_static",
+ "futures-channel",
+ "futures-util",
  "log",
- "parking_lot 0.10.2",
+ "once_cell",
+ "parking_lot 0.11.1",
  "pin-project",
  "smallvec",
  "tokio",
- "tokio-util",
+ "tokio-util 0.3.1",
 ]
 
 [[package]]
@@ -1367,6 +1368,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "tokio-util"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "be8242891f2b6cbef26a2d7e8605133c2c554cd35b3e4948ea892d6d68436499"
+dependencies = [
+ "bytes 0.5.6",
+ "futures-core",
+ "futures-io",
+ "futures-sink",
+ "log",
+ "pin-project-lite 0.1.11",
+ "tokio",
+]
+
+[[package]]
 name = "toml"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1538,7 +1554,7 @@ dependencies = [
  "serial_test",
  "thiserror",
  "tokio",
- "tokio-util",
+ "tokio-util 0.2.0",
  "url",
 ]
 
@@ -1556,7 +1572,7 @@ dependencies = [
  "prost",
  "structopt",
  "tokio",
- "tokio-util",
+ "tokio-util 0.2.0",
  "url",
  "uuid",
  "ya-sb-proto",
@@ -1592,7 +1608,7 @@ dependencies = [
  "structopt",
  "thiserror",
  "tokio",
- "tokio-util",
+ "tokio-util 0.2.0",
  "url",
  "uuid",
  "ya-sb-proto",
