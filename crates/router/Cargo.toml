@@ -24,6 +24,10 @@ required-features=['bin']
 [dependencies]
 ya-sb-proto = { version = "^0.3", path = "../proto" }
 ya-sb-util = { version = "0.1", path = "../util" }
+actix-rt="1.1"
+actix = { version = "0.10", default-features = false }
+actix-server = "1.0"
+actix-service="1.0"
 
 anyhow = "1.0.28"
 bytes = "0.4.12"
@@ -38,6 +42,9 @@ tokio = { version = "0.2", features = ["tcp", "net", "sync", "macros", "rt-core"
 tokio-util = "0.2.0"
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
+parking_lot = "0.11.1"
+bitflags="1.2.1"
+pin-project = "1.0.7"
 
 [package.metadata.deb]
 features = ["bin"]

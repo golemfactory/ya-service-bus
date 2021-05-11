@@ -12,7 +12,7 @@ struct Options {
     log_level: String,
 }
 
-#[tokio::main]
+#[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
     let options = Options::from_args();
     env::set_var(
