@@ -1,7 +1,10 @@
 pub use gsb_api::*;
 use std::fmt::{Debug, Display, Formatter};
 use std::path::PathBuf;
-use std::{convert::TryFrom, net::SocketAddr};
+use std::{
+    convert::TryFrom,
+    net::{SocketAddr, ToSocketAddrs},
+};
 use url::{ParseError, Url};
 
 mod gsb_api {
@@ -45,6 +48,7 @@ pub const GSB_URL_ENV_VAR: &str = "GSB_URL";
 pub const DEFAULT_GSB_URL: &str = "unix:/tmp/yagna.sock";
 #[cfg(not(unix))]
 pub const DEFAULT_GSB_URL: &str = "tcp://127.0.0.1:7464";
+pub const DEFAULT_GSB_PORT: u16 = 7464;
 
 #[derive(Clone, Debug)]
 pub enum GsbAddr {
@@ -89,17 +93,14 @@ impl Display for GsbAddr {
 }
 
 fn parse_tcp_url(url: Url) -> SocketAddr {
-    let ip_addr = url
-        .host_str()
-        .expect("need IP address for GSB URL")
-        .parse()
-        .expect("only IP address supported for GSB URL");
+    let host = url.host_str().expect("need host for GSB URL");
+    let port = url.port().unwrap_or(DEFAULT_GSB_PORT);
 
-    SocketAddr::new(
-        ip_addr,
-        url.port()
-            .unwrap_or_else(|| Url::parse(DEFAULT_GSB_URL).unwrap().port().unwrap()),
-    )
+    format!("{}:{}", host, port)
+        .to_socket_addrs()
+        .expect("invalid GSB URL")
+        .next()
+        .expect("invalid GSB URL")
 }
 
 #[cfg(unix)]
@@ -209,19 +210,30 @@ mod tests {
     }
 
     #[test]
+    pub fn check_localhost_gsb_url() {
+        let addr = GsbAddr::from_url(Some("tcp://localhost:2345".parse().unwrap()));
+        let addr = match addr {
+            GsbAddr::Tcp(addr) => addr,
+            _ => panic!("Not a TCP addr"),
+        };
+        assert!(addr.ip().is_loopback());
+        assert_eq!(addr.port(), 2345)
+    }
+
+    #[test]
     #[should_panic(expected = "unimplemented protocol for GSB URL: http")]
     pub fn panic_http_gsb_url() {
         GsbAddr::from_url(Some("http://10.9.8.7".parse().unwrap()));
     }
 
     #[test]
-    #[should_panic(expected = "only IP address supported for GSB URL: AddrParseError(())")]
-    pub fn panic_domain_gsb_url() {
+    #[should_panic] // No message check because it's platform-dependent
+    pub fn panic_unknown_hostname() {
         GsbAddr::from_url(Some("tcp://zima".parse().unwrap()));
     }
 
     #[test]
-    #[should_panic(expected = "need IP address for GSB URL")]
+    #[should_panic(expected = "need host for GSB URL")]
     pub fn panic_no_host_gsb_url() {
         GsbAddr::from_url(Some("tcp:".parse().unwrap()));
     }
