@@ -127,57 +127,62 @@ where
         ctxt: &mut A::Context,
         cx: &mut Context<'_>,
     ) -> Poll<Self::Output> {
+        let mut trigger_empty = false;
+
         let this = self.get_mut();
-        let inner = &mut this.inner.borrow_mut();
+        {
+            let inner = &mut this.inner.borrow_mut();
 
-        // ensure sink is ready to receive next item
-        match Pin::new(&mut inner.sink).poll_ready(cx) {
-            Poll::Ready(Ok(())) => {
-                if let Some(item) = inner.buffer.pop_front() {
-                    // send front of buffer to sink
-                    let _ = Pin::new(&mut inner.sink).start_send(item);
-                    if inner.buffer.is_empty() {
-                        act.buffer_empty(ctxt);
-                    }
-                }
-            }
-            Poll::Ready(Err(_err)) => {}
-            Poll::Pending => {}
-        }
-
-        if !inner.closing_flag.contains(Flags::CLOSING) {
-            match Pin::new(&mut inner.sink).poll_flush(cx) {
-                Poll::Ready(Err(e)) => {
-                    if act.error(e, ctxt) == Running::Stop {
-                        act.finished(ctxt);
-                        return Poll::Ready(());
-                    }
-                }
-                Poll::Ready(Ok(())) => {}
-                Poll::Pending => {}
-            }
-        } else {
-            assert!(!inner.closing_flag.contains(Flags::CLOSED));
-            match Pin::new(&mut inner.sink).poll_close(cx) {
-                Poll::Ready(Err(e)) => {
-                    if act.error(e, ctxt) == Running::Stop {
-                        act.finished(ctxt);
-                        return Poll::Ready(());
-                    }
-                }
+            // ensure sink is ready to receive next item
+            match Pin::new(&mut inner.sink).poll_ready(cx) {
                 Poll::Ready(Ok(())) => {
-                    // ensure all items in buffer have been sent before closing
-                    if inner.buffer.is_empty() {
-                        inner.closing_flag |= Flags::CLOSED;
-                        act.finished(ctxt);
-                        return Poll::Ready(());
+                    if let Some(item) = inner.buffer.pop_front() {
+                        // send front of buffer to sink
+                        let _ = Pin::new(&mut inner.sink).start_send(item);
+                        trigger_empty = inner.buffer.is_empty();
                     }
                 }
+                Poll::Ready(Err(_err)) => {}
                 Poll::Pending => {}
             }
-        }
 
-        inner.task.replace(cx.waker().clone());
+            if !inner.closing_flag.contains(Flags::CLOSING) {
+                match Pin::new(&mut inner.sink).poll_flush(cx) {
+                    Poll::Ready(Err(e)) => {
+                        if act.error(e, ctxt) == Running::Stop {
+                            act.finished(ctxt);
+                            return Poll::Ready(());
+                        }
+                    }
+                    Poll::Ready(Ok(())) => {}
+                    Poll::Pending => {}
+                }
+            } else {
+                assert!(!inner.closing_flag.contains(Flags::CLOSED));
+                match Pin::new(&mut inner.sink).poll_close(cx) {
+                    Poll::Ready(Err(e)) => {
+                        if act.error(e, ctxt) == Running::Stop {
+                            act.finished(ctxt);
+                            return Poll::Ready(());
+                        }
+                    }
+                    Poll::Ready(Ok(())) => {
+                        // ensure all items in buffer have been sent before closing
+                        if inner.buffer.is_empty() {
+                            inner.closing_flag |= Flags::CLOSED;
+                            act.finished(ctxt);
+                            return Poll::Ready(());
+                        }
+                    }
+                    Poll::Pending => {}
+                }
+            }
+
+            inner.task.replace(cx.waker().clone());
+        }
+        if trigger_empty {
+            act.buffer_empty(ctxt);
+        }
 
         Poll::Pending
     }

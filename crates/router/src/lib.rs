@@ -9,7 +9,7 @@ use std::fmt::{Debug, Display};
 use std::hash::Hash;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use tokio::net::{TcpStream};
+use tokio::net::TcpStream;
 
 use std::ops::Not;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
@@ -657,16 +657,16 @@ where
 }
 
 pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
-   router::bind_tcp_router(addr).await
+    router::bind_tcp_router(addr).await
 }
 
 #[cfg(unix)]
 mod unix {
 
     use super::*;
-    use std::path::{Path};
-    use tokio::net::{UnixStream};
-    
+    use std::path::Path;
+    use tokio::net::UnixStream;
+
     pub async fn connect(
         gsb_addr: GsbAddr,
     ) -> (
@@ -712,7 +712,6 @@ pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::E
         GsbAddr::Unix(path) => router::bind_unix_router(path).await,
     }
 }
-
 
 #[cfg(not(unix))]
 pub async fn connect(
