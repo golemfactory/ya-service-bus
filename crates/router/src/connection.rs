@@ -1,30 +1,27 @@
-use crate::connection::reader::InputHandler;
-use crate::connection::writer::EmptyBufferHandler;
-use crate::router::{IdBytes, InstanceConfig, RouterRef};
+use std::collections::{BTreeMap, HashSet};
+use std::fmt::Debug;
+use std::pin::Pin;
+use std::sync::Arc;
 
-use actix::dev::MessageResponse;
 use actix::prelude::io::WriteHandler;
 use actix::prelude::*;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
 use futures::prelude::*;
-use futures::{FutureExt, SinkExt, TryFutureExt};
-use std::collections::{BTreeMap, HashSet};
-use std::fmt::Debug;
-use std::pin::Pin;
-use std::sync::Arc;
+use futures::FutureExt;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio::stream::StreamExt;
-use tokio::sync::broadcast::RecvError;
 use tokio_util::codec::{FramedRead, FramedWrite};
+
 use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
 use ya_sb_proto::*;
-use ya_sb_proto::{RegisterReply, RegisterReplyCode};
+
+use crate::connection::reader::InputHandler;
+use crate::connection::writer::EmptyBufferHandler;
+use crate::router::{IdBytes, InstanceConfig, RouterRef};
 
 mod reader;
 mod writer;
 
-type TransportWriter<W> = writer::SinkWrite<GsbMessage, W>;
 pub type StreamWriter<Output> = FramedWrite<Output, GsbMessageEncoder>;
 
 #[derive(Message)]
@@ -66,7 +63,7 @@ impl<
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, ctx: &mut Self::Context) {
+    fn started(&mut self, _ctx: &mut Self::Context) {
         log::debug!("[{:?}] connection started", self.conn_info);
     }
 
@@ -150,7 +147,7 @@ where
     fn handle_call_reply(
         &mut self,
         call_reply: CallReply,
-        ctx: &mut <Self as Actor>::Context,
+        _ctx: &mut <Self as Actor>::Context,
     ) -> impl Future<Output = Result<(), String>> + 'static {
         if let Some(dst) = match call_reply.reply_type() {
             CallReplyType::Full => self.reply_map.remove(&call_reply.request_id),
@@ -176,7 +173,7 @@ where
     fn send_message(
         &mut self,
         msg: GsbMessage,
-        ctx: &mut <Self as Actor>::Context,
+        _ctx: &mut <Self as Actor>::Context,
     ) -> LocalBoxFuture<'static, Result<(), oneshot::Canceled>> {
         if self.output.buffer_len() < self.config.high_buffer_mark() && self.hold_queue.is_empty() {
             self.output.write(msg);
@@ -257,7 +254,7 @@ impl<
                 return Box::pin(
                     self.handle_call_reply(call_reply, ctx)
                         .into_actor(self)
-                        .then(|r, act, ctx| {
+                        .then(|r, act, _ctx| {
                             if let Err(msg) = r {
                                 log::warn!("[{:?}] {}", act.conn_info, msg);
                             }
@@ -294,7 +291,7 @@ impl<
                                     GsbMessage::BroadcastRequest(broadcast_request),
                                     ctx,
                                 ),
-                                Err(e) => {
+                                Err(_e) => {
                                     log::warn!("[{:?}] failed to recv broadcast", act.conn_info);
                                     future::ok(()).boxed_local()
                                 }
@@ -396,11 +393,13 @@ impl<
         for (msg, tx) in self
             .hold_queue
             .drain(..)
-            .filter(|(msg, tx)| !tx.is_canceled())
+            .filter(|(_msg, tx)| !tx.is_canceled())
             .take(self.config.high_buffer_mark())
         {
             self.output.write(msg);
-            tx.send(());
+            if let Err(_) = tx.send(()) {
+                log::error!("[{:?}] failed to notify sender", self.conn_info);
+            }
         }
         log::debug!(
             "[{:?}] on empty buffer, filled {}",

@@ -2,6 +2,7 @@ use futures::prelude::*;
 
 use uuid::Uuid;
 
+use std::time::Duration;
 use structopt::StructOpt;
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
@@ -47,6 +48,9 @@ async fn run_client(args: Args) {
                 .await
                 .expect("Send failed");
             println!("sending done");
+            if let Some(delay_secs) = &args.delay {
+                tokio::time::delay_for(Duration::from_secs(*delay_secs)).await;
+            }
         }
     };
 

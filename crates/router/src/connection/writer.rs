@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use bitflags::bitflags;
 use std::cell::RefCell;
 use std::marker::PhantomData;

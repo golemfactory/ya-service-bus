@@ -6,12 +6,12 @@ use bitflags::_core::sync::atomic::AtomicU64;
 use futures::{Future, Sink};
 use parking_lot::RwLock;
 use std::cell::RefCell;
-use std::cmp::Ordering;
+
 use std::collections::{hash_map, HashMap};
 use std::fmt::Debug;
 use std::net::SocketAddr;
 use std::path::Path;
-use std::rc::Rc;
+
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -20,8 +20,6 @@ use ya_sb_proto::codec::{GsbMessage, ProtocolError};
 use ya_sb_proto::BroadcastRequest;
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
-
-const BCAST_BACKLOG: usize = 16;
 
 pub type RouterRef<W, C> = Arc<RwLock<Router<W, C>>>;
 
@@ -129,7 +127,7 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
     pub fn subscribe_topic(&mut self, topic_id: String) -> broadcast::Receiver<BroadcastRequest> {
         match self.topics.entry(topic_id) {
             hash_map::Entry::Vacant(v) => {
-                let (tx, rx) = broadcast::channel(BCAST_BACKLOG);
+                let (tx, rx) = broadcast::channel(self.instance.config.broadcast_backlog);
                 v.insert(tx);
                 rx
             }
