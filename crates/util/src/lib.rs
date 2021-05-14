@@ -19,12 +19,12 @@ impl<'a> Iterator for RevPrefixes<'a> {
         if cv.is_empty() {
             return None;
         }
-        if let Some(sep_pos) = cv.rfind("/") {
+        if let Some(sep_pos) = cv.rfind('/') {
             self.0 = &cv[..sep_pos];
         } else {
             self.0 = ""
         }
-        return Some(cv);
+        Some(cv)
     }
 }
 
@@ -76,6 +76,10 @@ impl<T> PrefixLookupBag<T> {
 
     pub fn len(&self) -> usize{
         self.dict.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.dict.is_empty()
     }
 }
 

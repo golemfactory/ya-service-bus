@@ -1,28 +1,35 @@
-use super::config::RouterConfig;
-use crate::connection::{Connection, DropConnection};
-use actix::Addr;
-use actix_rt::net::TcpStream;
-use bitflags::_core::sync::atomic::AtomicU64;
-use futures::{Future, Sink};
-use parking_lot::RwLock;
 use std::cell::RefCell;
-
 use std::collections::{hash_map, HashMap};
 use std::fmt::Debug;
+use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
-
 use std::sync::Arc;
 use std::time::Duration;
+
+use actix::Addr;
+use actix_rt::net::TcpStream;
+use actix_rt::time::delay_for;
+use actix_service::fn_service;
+use bitflags::_core::sync::atomic::AtomicU64;
+use futures::{Future, FutureExt, Sink};
+use futures::prelude::*;
+use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;
-use ya_sb_proto::codec::{GsbMessage, ProtocolError};
-use ya_sb_proto::BroadcastRequest;
+
 use ya_sb_proto::*;
+use ya_sb_proto::BroadcastRequest;
+use ya_sb_proto::codec::{GsbMessage, ProtocolError};
 use ya_sb_util::PrefixLookupBag;
+
+use crate::connection::{Connection, DropConnection};
+
+use super::config::RouterConfig;
 
 pub type RouterRef<W, C> = Arc<RwLock<Router<W, C>>>;
 
+/// Router config with instance identification info.
 pub struct InstanceConfig {
     config: RouterConfig,
     instance_id: uuid::Uuid,
@@ -31,6 +38,7 @@ pub struct InstanceConfig {
 }
 
 impl InstanceConfig {
+    /// Default instance identification
     pub fn new(config: RouterConfig) -> Self {
         InstanceConfig {
             config,
@@ -40,12 +48,25 @@ impl InstanceConfig {
         }
     }
 
+    /// Instance with custom application name and version.
+    pub fn with_app(
+        config: RouterConfig,
+        name: impl Into<String>,
+        version: impl Into<String>,
+    ) -> Self {
+        InstanceConfig {
+            config,
+            instance_id: Uuid::new_v4(),
+            name: name.into(),
+            version: version.into(),
+        }
+    }
+
     pub(crate) fn hello(&self) -> Hello {
         Hello {
             instance_id: self.instance_id.as_bytes().to_vec(),
             name: self.name.clone(),
             version: self.version.clone(),
-            ..Default::default()
         }
     }
 
@@ -70,6 +91,119 @@ impl InstanceConfig {
 
     pub(super) fn forward_timeout(&self) -> Duration {
         self.config.forward_timeout
+    }
+
+    pub(super) fn ping_interval(&self) -> Duration {
+        self.config.ping_interval
+    }
+
+    pub(super) fn ping_timeout(&self) -> Duration {
+        self.config.ping_timeout
+    }
+
+    /// Starts new server instance on given tcp address.
+    pub async fn bind_tcp(self, addr: SocketAddr) -> io::Result<impl Future<Output = ()>> {
+        let instance_config = Arc::new(self);
+        let router = instance_config.new_router();
+
+        let router_status = router.clone();
+
+        log::info!("Router listening on: {}", addr);
+        let server = actix_server::ServerBuilder::new()
+            .bind("gsb", addr, move || {
+                let router = router.clone();
+                let instance_config = instance_config.clone();
+
+                fn_service(move |sock: TcpStream| {
+                    let addr = sock.peer_addr().unwrap();
+                    let (input, output) = sock.into_split();
+                    let _connection = super::connection::connection(
+                        instance_config.clone(),
+                        router.clone(),
+                        addr,
+                        input,
+                        output,
+                    );
+                    futures::future::ok::<_, anyhow::Error>(())
+                })
+            })?
+            .run();
+        let worker = router_gc_worker(server, router_status);
+        Ok(worker)
+    }
+
+    #[cfg(unix)]
+    /// Starts new server instance on given unix socket path address.
+    pub async fn bind_unix(self, path: &Path) -> io::Result<impl Future<Output = ()> + 'static> {
+        use tokio::net::UnixStream;
+        let instance_config = Arc::new(self);
+        let router = instance_config.new_router();
+
+        let router_status = router.clone();
+        let worker_counter = Arc::new(AtomicU64::new(1));
+
+        let server = actix_server::ServerBuilder::new()
+            .bind_uds("gsb", path, move || {
+                let router = router.clone();
+                let instance_config = instance_config.clone();
+                let request_counter = RefCell::new(0u64);
+                let worker_id = worker_counter.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+
+                fn_service(move |sock: UnixStream| {
+                    let _addr = sock.peer_addr().unwrap();
+                    let connection_id = {
+                        let mut b = request_counter.borrow_mut();
+                        *b += 1;
+                        *b
+                    };
+
+                    let (input, output) = sock.into_split();
+
+                    let _connection = super::connection::connection(
+                        instance_config.clone(),
+                        router.clone(),
+                        (worker_id, connection_id),
+                        input,
+                        output,
+                    );
+                    futures::future::ok::<_, anyhow::Error>(())
+                })
+            })?
+            .run();
+        let worker = router_gc_worker(server, router_status);
+
+        Ok(worker)
+    }
+
+    #[cfg(not(unix))]
+    /// Starts new server instance on given gsb url address.
+    pub async fn bind_url(
+        self,
+        gsb_url: Option<url::Url>,
+    ) -> io::Result<impl Future<Output = ()> + 'static> {
+        match GsbAddr::from_url(gsb_url) {
+            GsbAddr::Tcp(addr) => self.bind_tcp(addr).await,
+            GsbAddr::Unix(_) => panic!("Unix sockets not supported on this OS"),
+        }
+    }
+
+    #[cfg(unix)]
+    /// Starts new server instance on given gsb url address.
+    pub async fn bind_url(
+        self,
+        gsb_url: Option<url::Url>,
+    ) -> io::Result<impl Future<Output = ()> + 'static> {
+        Ok(match GsbAddr::from_url(gsb_url) {
+            GsbAddr::Tcp(addr) => self.bind_tcp(addr).await?.left_future(),
+            GsbAddr::Unix(path) => self.bind_unix(&path).await?.right_future(),
+        })
+    }
+
+    /// Starts new server instance on given gsb url address and waits until it stops.
+    pub async fn run_url(self, gsb_url: impl Into<Option<url::Url>>) -> io::Result<()> {
+        let fut = self.bind_url(gsb_url.into()).await?;
+        fut.await;
+        Ok(())
     }
 }
 
@@ -144,17 +278,14 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
         instance_id: IdBytes,
         connection: Addr<Connection<W, ConnInfo>>,
     ) -> impl Future<Output = ()> + 'static {
-        let fut = if let Some(old_connection) =
-            self.registered_instances.insert(instance_id, connection)
-        {
-            Some(
+        let fut = self
+            .registered_instances
+            .insert(instance_id, connection)
+            .map(|old_connection| {
                 old_connection
                     .send(DropConnection)
-                    .timeout(Duration::from_secs(10)),
-            )
-        } else {
-            None
-        };
+                    .timeout(Duration::from_secs(10))
+            });
         async move {
             if let Some(fut) = fut {
                 if let Err(_e) = fut.await {
@@ -178,108 +309,42 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
     }
 }
 
-pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
-    use actix_service::fn_service;
-    let instance_config = Arc::new(InstanceConfig::new(RouterConfig::from_env()));
-    let router = instance_config.new_router();
-
-    let router_status = router.clone();
-
-    log::info!("Router listening on: {}", addr);
-    tokio::spawn(
-        actix_server::ServerBuilder::new()
-            .bind("gsb", addr, move || {
-                let router = router.clone();
-                let instance_config = instance_config.clone();
-
-                fn_service(move |sock: TcpStream| {
-                    let addr = sock.peer_addr().unwrap();
-                    let (input, output) = sock.into_split();
-                    let _connection = super::connection::connection(
-                        instance_config.clone(),
-                        router.clone(),
-                        addr,
-                        input,
-                        output,
-                    );
-                    futures::future::ok::<_, anyhow::Error>(())
-                })
-            })?
-            .run(),
-    );
-    tokio::spawn(router_gc_worker(router_status));
-    Ok(())
-}
-
-#[cfg(unix)]
-pub async fn bind_unix_router<P: AsRef<Path>>(path: P) -> std::io::Result<()> {
-    use actix_service::fn_service;
-    use tokio::net::UnixStream;
-    let instance_config = Arc::new(InstanceConfig::new(RouterConfig::from_env()));
-    let router = instance_config.new_router();
-
-    let router_status = router.clone();
-    let worker_counter = Arc::new(AtomicU64::new(1));
-
-    tokio::spawn(
-        actix_server::ServerBuilder::new()
-            .bind_uds("gsb", path, move || {
-                let router = router.clone();
-                let instance_config = instance_config.clone();
-                let request_counter = RefCell::new(0u64);
-                let worker_id = worker_counter.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
-
-                fn_service(move |sock: UnixStream| {
-                    let _addr = sock.peer_addr().unwrap();
-                    let connection_id = {
-                        let mut b = request_counter.borrow_mut();
-                        *b += 1;
-                        *b
-                    };
-
-                    let (input, output) = sock.into_split();
-                    let _connection = super::connection::connection(
-                        instance_config.clone(),
-                        router.clone(),
-                        (worker_id, connection_id),
-                        input,
-                        output,
-                    );
-                    futures::future::ok::<_, anyhow::Error>(())
-                })
-            })?
-            .run(),
-    );
-    tokio::spawn(router_gc_worker(router_status));
-    Ok(())
-}
-
 async fn router_gc_worker<
     S: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     C: Debug + Unpin + 'static,
 >(
+    server: actix_server::Server,
     router: RouterRef<S, C>,
 ) {
-    let gc_interval = match router.read().instance.config.gc_interval.clone() {
-        Some(interval) => interval,
-        None => return,
+    let (gc_interval, scan) = match router.read().instance.config.gc_interval {
+        Some(interval) => (interval, true),
+        None => (Duration::from_secs(60), false),
     };
 
+    let mut sc = server;
     loop {
-        tokio::time::delay_for(gc_interval).await;
-        let (num_of_connections, num_of_endpoints, num_of_topics) = {
-            let r = router.read();
-            (
-                r.registered_instances.len(),
-                r.registered_endpoints.len(),
-                r.topics.len(),
-            )
+        match futures::future::select(sc, delay_for(gc_interval)).await {
+            future::Either::Left(_) => return,
+            future::Either::Right((_, f)) => {
+                sc = f;
+            }
         };
-        log::info!(
-            "GSB status [connections:{}], [endpoints:{}], [topics:{}]",
-            num_of_connections,
-            num_of_endpoints,
-            num_of_topics
-        );
+
+        if scan {
+            let (num_of_connections, num_of_endpoints, num_of_topics) = {
+                let r = router.read();
+                (
+                    r.registered_instances.len(),
+                    r.registered_endpoints.len(),
+                    r.topics.len(),
+                )
+            };
+            log::info!(
+                "GSB status [connections:{}], [endpoints:{}], [topics:{}]",
+                num_of_connections,
+                num_of_endpoints,
+                num_of_topics
+            );
+        }
     }
 }

@@ -103,7 +103,7 @@ async fn run_client() {
             )
         }
         GsbMessage::Ping(_) => {}
-        _ => panic!("Unexpected message received"),
+        msg => panic!("Unexpected message received: {:?}", msg),
     }
 }
 

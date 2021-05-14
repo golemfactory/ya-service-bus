@@ -134,17 +134,23 @@ where
         {
             let inner = &mut this.inner.borrow_mut();
 
-            // ensure sink is ready to receive next item
-            match Pin::new(&mut inner.sink).poll_ready(cx) {
-                Poll::Ready(Ok(())) => {
-                    if let Some(item) = inner.buffer.pop_front() {
-                        // send front of buffer to sink
-                        let _ = Pin::new(&mut inner.sink).start_send(item);
-                        trigger_empty = inner.buffer.is_empty();
+            loop {
+                // ensure sink is ready to receive next item
+                match Pin::new(&mut inner.sink).poll_ready(cx) {
+                    Poll::Ready(Ok(())) => {
+                        if let Some(item) = inner.buffer.pop_front() {
+                            // send front of buffer to sink
+                            let _ = Pin::new(&mut inner.sink).start_send(item);
+                        } else {
+                            if let Poll::Ready(Ok(())) = Pin::new(&mut inner.sink).poll_flush(cx) {
+                                trigger_empty = inner.buffer.is_empty()
+                            }
+                            break;
+                        }
                     }
+                    Poll::Ready(Err(_err)) => break,
+                    Poll::Pending => break,
                 }
-                Poll::Ready(Err(_err)) => {}
-                Poll::Pending => {}
             }
 
             if !inner.closing_flag.contains(Flags::CLOSING) {

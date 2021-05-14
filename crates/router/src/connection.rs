@@ -1,19 +1,22 @@
+#![allow(clippy::map_entry)]
+
 use std::collections::{BTreeMap, HashSet};
 use std::fmt::Debug;
 use std::pin::Pin;
 use std::sync::Arc;
+use std::time::Instant;
 
-use actix::prelude::io::WriteHandler;
 use actix::prelude::*;
+use actix::prelude::io::WriteHandler;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
-use futures::prelude::*;
 use futures::FutureExt;
+use futures::prelude::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
 use ya_sb_proto::*;
+use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
 
 use crate::connection::reader::InputHandler;
 use crate::connection::writer::EmptyBufferHandler;
@@ -54,6 +57,7 @@ pub struct Connection<
     hold_queue: Vec<(GsbMessage, oneshot::Sender<()>)>,
     topic_map: BTreeMap<String, SpawnHandle>,
     conn_info: ConnInfo,
+    last_packet: Instant,
 }
 
 impl<
@@ -63,8 +67,29 @@ impl<
 {
     type Context = Context<Self>;
 
-    fn started(&mut self, _ctx: &mut Self::Context) {
+    fn started(&mut self, ctx: &mut Self::Context) {
         log::debug!("[{:?}] connection started", self.conn_info);
+        let _ = ctx.run_interval(self.config.ping_interval(), move |act, ctx| {
+            let since_last = Instant::now().duration_since(act.last_packet);
+            if since_last > act.config.ping_interval() {
+                if since_last > act.config.ping_timeout() {
+                    log::warn!(
+                        "[{:?}] no data for {:?} killing connection",
+                        act.conn_info,
+                        since_last
+                    );
+                    ctx.stop();
+                    return;
+                }
+                log::debug!(
+                    "[{:?}] no data for: {:?}, sending ping (buffer={})",
+                    act.conn_info,
+                    since_last,
+                    act.output.buffer_len()
+                );
+                act.output.write(GsbMessage::Ping(Default::default()));
+            }
+        });
     }
 
     fn stopped(&mut self, ctx: &mut Self::Context) {
@@ -122,11 +147,13 @@ where
                     };
 
                     if let Some(err_msg) = error {
-                        let mut reply = CallReply::default();
-                        reply.request_id = request_id;
+                        let mut reply = CallReply {
+                            request_id,
+                            data: err_msg.as_bytes().to_vec(),
+                            ..Default::default()
+                        };
                         reply.set_code(CallReplyCode::ServiceFailure);
                         reply.set_reply_type(CallReplyType::Full);
-                        reply.data = err_msg.as_bytes().to_vec();
                         Err(reply)
                     } else {
                         Ok(())
@@ -134,8 +161,10 @@ where
                 })
                 .left_future()
         } else {
-            let mut reply = CallReply::default();
-            reply.request_id = request_id;
+            let mut reply = CallReply {
+                request_id,
+                ..Default::default()
+            };
             reply.set_code(CallReplyCode::CallReplyBadRequest);
             reply.set_reply_type(CallReplyType::Full);
             reply.data = "endpoint address not found".as_bytes().to_vec();
@@ -214,6 +243,7 @@ pub fn connection<
             topic_map: Default::default(),
             conn_info,
             output,
+            last_packet: Instant::now(),
         }
     })
 }
@@ -228,6 +258,8 @@ impl<
         item: Result<GsbMessage, ProtocolError>,
         ctx: &mut Context<Self>,
     ) -> Pin<Box<dyn ActorFuture<Output = (), Actor = Self>>> {
+        self.last_packet = Instant::now();
+
         let msg = match item {
             Err(e) => {
                 log::error!("[{:?}] protocol error {:?}", self.conn_info, e);
@@ -286,6 +318,7 @@ impl<
                     let handle = ctx.spawn(fut::wrap_stream(rx).fold(
                         (),
                         |_, request, act: &mut Self, ctx| {
+                            log::debug!("[{:?}] new item", act.conn_info);
                             match request {
                                 Ok(broadcast_request) => act.send_message(
                                     GsbMessage::BroadcastRequest(broadcast_request),
@@ -309,11 +342,20 @@ impl<
                     ));
                     self.topic_map.insert(topic_id, handle);
                 }
-                self.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
+                ctx.spawn(fut::ready(()).then(|(), act: &mut Self, ctx| {
+                    let _ =
+                        act.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
+                    fut::ready(())
+                }));
             }
 
             GsbMessage::UnsubscribeRequest(unsubscribe_request) => {
                 let mut reply = UnsubscribeReply::default();
+                log::debug!(
+                    "[{:?}] unsubscribe {}",
+                    self.conn_info,
+                    unsubscribe_request.topic
+                );
                 if let Some(handle) = self.topic_map.remove(&unsubscribe_request.topic) {
                     ctx.cancel_future(handle);
                 } else {
@@ -325,6 +367,11 @@ impl<
             GsbMessage::BroadcastRequest(broadcast_request) => {
                 let reply = BroadcastReply::default();
                 if let Some(sender) = { self.router.read().find_topic(&broadcast_request.topic) } {
+                    log::debug!(
+                        "[{:?}] sending bcast to {} receivers",
+                        self.conn_info,
+                        sender.receiver_count()
+                    );
                     let _ = sender.send(broadcast_request);
                 }
                 self.send_reply(GsbMessage::BroadcastReply(reply), ctx);
@@ -336,6 +383,12 @@ impl<
                 } else {
                     let instance_id: IdBytes = hello_request.instance_id.into();
                     self.instance_id = Some(instance_id.clone());
+                    log::debug!(
+                        "[{:?}] connection initialized peer {}/{}",
+                        self.conn_info,
+                        hello_request.name,
+                        hello_request.version
+                    );
                     return Box::pin(
                         self.router
                             .write()
@@ -343,6 +396,12 @@ impl<
                             .into_actor(self),
                     );
                 }
+            }
+            GsbMessage::Ping(_) => {
+                self.send_reply(GsbMessage::Ping(Default::default()), ctx);
+            }
+            GsbMessage::Pong(_) => {
+                log::debug!("[{:?}] pong recv", self.conn_info);
             }
             m => {
                 log::error!("[{:?}] unexpected gsb message: {:?}", self.conn_info, m);
@@ -397,7 +456,7 @@ impl<
             .take(self.config.high_buffer_mark())
         {
             self.output.write(msg);
-            if let Err(_) = tx.send(()) {
+            if tx.send(()).is_err() {
                 log::error!("[{:?}] failed to notify sender", self.conn_info);
             }
         }
@@ -429,9 +488,10 @@ where
     type Result = ResponseFuture<Result<(), oneshot::Canceled>>;
 
     fn handle(&mut self, msg: ForwardCallRequest, ctx: &mut Self::Context) -> Self::Result {
-        if let Some(_) = self
+        if self
             .reply_map
             .insert(msg.call_request.request_id.clone(), msg.reply_to)
+            .is_some()
         {
             log::warn!(
                 "[{:?}] duplicate message request id forwarded {}",

@@ -1,27 +1,49 @@
-use futures::prelude::*;
-
+#![deny(missing_docs)]
+//! # Gsb Router
+//!
+//! ```
+//! use ya_sb_router::{InstanceConfig, RouterConfig};
+//! let mut config = RouterConfig::from_env();
+//! config.gc_interval_secs(60);
+//! InstanceConfig::new(config).run_url(None).await;
+//!
+//! ```
+use std::io;
 use std::net::SocketAddr;
 
+use futures::prelude::*;
 use tokio::net::TcpStream;
 
-use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
+pub use config::RouterConfig;
+pub use router::InstanceConfig;
+#[cfg(unix)]
+pub use unix::connect;
 use ya_sb_proto::*;
+use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
 
 mod config;
 mod connection;
 mod router;
 
+/// Starts in background new server instance on given tcp address.
 pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
-    router::bind_tcp_router(addr).await
+    actix_rt::spawn(
+        InstanceConfig::new(RouterConfig::from_env())
+            .bind_tcp(addr)
+            .await?,
+    );
+    Ok(())
 }
 
 #[cfg(unix)]
 mod unix {
-
-    use super::*;
     use std::path::Path;
+
     use tokio::net::UnixStream;
 
+    use super::*;
+
+    #[doc(hidden)]
     pub async fn connect(
         gsb_addr: GsbAddr,
     ) -> (
@@ -52,20 +74,14 @@ mod unix {
     }
 }
 
-#[cfg(not(unix))]
-pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::Error> {
-    match GsbAddr::from_url(gsb_url) {
-        GsbAddr::Tcp(addr) => router::bind_tcp_router(addr).await,
-        GsbAddr::Unix(_) => panic!("Unix sockets not supported on this OS"),
-    }
-}
-
-#[cfg(unix)]
-pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> Result<(), std::io::Error> {
-    match GsbAddr::from_url(gsb_url) {
-        GsbAddr::Tcp(addr) => router::bind_tcp_router(addr).await,
-        GsbAddr::Unix(path) => router::bind_unix_router(path).await,
-    }
+/// Starts in background new server instance on given gsb address.
+pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> io::Result<()> {
+    let _ = actix_rt::spawn(
+        InstanceConfig::new(RouterConfig::from_env())
+            .bind_url(gsb_url)
+            .await?,
+    );
+    Ok(())
 }
 
 #[cfg(not(unix))]
@@ -84,9 +100,7 @@ pub async fn connect(
     }
 }
 
-#[cfg(unix)]
-pub use unix::connect;
-
+#[doc(hidden)]
 pub async fn tcp_connect(
     addr: &SocketAddr,
 ) -> (

@@ -53,6 +53,7 @@ impl GsbMessage {
 macro_rules! into_packet {
     ($($t:ident),*) => {
         $(
+        #[allow(clippy::from_over_into)]
         impl Into<packet::Packet> for $t {
             fn into(self) -> packet::Packet {
                 packet::Packet::$t(self)
