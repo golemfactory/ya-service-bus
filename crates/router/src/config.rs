@@ -46,4 +46,10 @@ impl RouterConfig {
             })
             .unwrap_or_else(|_| Default::default())
     }
+
+    /// Sets the number of seconds to scan for unused resources.
+    pub fn gc_interval_secs(&mut self, gc_secs: u64) -> &mut Self {
+        self.gc_interval = Some(Duration::from_secs(gc_secs));
+        self
+    }
 }

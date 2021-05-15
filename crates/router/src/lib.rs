@@ -1,11 +1,15 @@
 #![deny(missing_docs)]
 //! # Gsb Router
 //!
-//! ```
+//! ```no_run
 //! use ya_sb_router::{InstanceConfig, RouterConfig};
-//! let mut config = RouterConfig::from_env();
-//! config.gc_interval_secs(60);
-//! InstanceConfig::new(config).run_url(None).await;
+//!
+//! #[actix_rt::main]
+//! async fn main() {
+//!     let mut config = RouterConfig::from_env();
+//!     config.gc_interval_secs(60);
+//!     InstanceConfig::new(config).run_url(None).await;
+//! }
 //!
 //! ```
 use std::io;
