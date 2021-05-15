@@ -41,7 +41,6 @@ impl<T> Default for PrefixLookupBag<T> {
 }
 
 impl<T> PrefixLookupBag<T> {
-
     pub fn get(&self, key: &str) -> Option<&T> {
         RevPrefixes(key).find_map(|key| self.dict.get(key))
     }
@@ -74,7 +73,7 @@ impl<T> PrefixLookupBag<T> {
         self.dict.remove(key)
     }
 
-    pub fn len(&self) -> usize{
+    pub fn len(&self) -> usize {
         self.dict.len()
     }
 

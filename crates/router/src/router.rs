@@ -12,15 +12,14 @@ use actix_rt::net::TcpStream;
 use actix_rt::time::delay_for;
 use actix_service::fn_service;
 use bitflags::_core::sync::atomic::AtomicU64;
-use futures::{Future, FutureExt, Sink};
 use futures::prelude::*;
+use futures::{Future, FutureExt, Sink};
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;
 
-use ya_sb_proto::*;
-use ya_sb_proto::BroadcastRequest;
 use ya_sb_proto::codec::{GsbMessage, ProtocolError};
+use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
 use crate::connection::{Connection, DropConnection};

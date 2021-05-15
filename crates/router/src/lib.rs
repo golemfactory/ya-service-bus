@@ -18,8 +18,8 @@ pub use config::RouterConfig;
 pub use router::InstanceConfig;
 #[cfg(unix)]
 pub use unix::connect;
-use ya_sb_proto::*;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
+use ya_sb_proto::*;
 
 mod config;
 mod connection;
