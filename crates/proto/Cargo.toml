@@ -16,7 +16,7 @@ with-codec = ['tokio-util', 'tokio']
 bytes = "0.5.6"
 thiserror = "1.0.9"
 prost = "0.6.1"
-tokio-util = { version = "0.2", optional = true, features = ["codec"] }
+tokio-util = { version = "0.3", optional = true, features = ["codec"] }
 tokio = { version = "0.2", optional = true, features = ["sync"] }
 url="2.1.1"
 

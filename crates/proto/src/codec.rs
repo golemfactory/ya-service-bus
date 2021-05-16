@@ -154,11 +154,10 @@ impl Decoder for GsbMessageDecoder {
 #[derive(Default)]
 pub struct GsbMessageEncoder;
 
-impl Encoder for GsbMessageEncoder {
-    type Item = GsbMessage;
+impl Encoder<GsbMessage> for GsbMessageEncoder {
     type Error = ProtocolError;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: GsbMessage, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
         encode_message(dst, item)
     }
 }
@@ -169,11 +168,10 @@ pub struct GsbMessageCodec {
     decoder: GsbMessageDecoder,
 }
 
-impl Encoder for GsbMessageCodec {
-    type Item = GsbMessage;
+impl Encoder<GsbMessage> for GsbMessageCodec {
     type Error = ProtocolError;
 
-    fn encode(&mut self, item: Self::Item, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
+    fn encode(&mut self, item: GsbMessage, dst: &mut bytes::BytesMut) -> Result<(), Self::Error> {
         self.encoder.encode(item, dst)
     }
 }

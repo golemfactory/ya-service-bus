@@ -1,13 +1,16 @@
+use std::collections::{hash_map::Entry, HashMap};
+
+#[cfg(feature = "with-futures")]
+pub use crate::futures::IntoFlatten as _;
+
 #[cfg(feature = "with-bytes")]
 pub mod bytes;
 
 #[cfg(feature = "with-futures")]
 pub mod futures;
 
-#[cfg(feature = "with-futures")]
-pub use crate::futures::IntoFlatten as _;
-
-use std::collections::{hash_map::Entry, HashMap};
+#[cfg(feature = "with-writer")]
+pub mod writer;
 
 struct RevPrefixes<'a>(&'a str);
 

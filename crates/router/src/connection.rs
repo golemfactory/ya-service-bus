@@ -6,24 +6,24 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use actix::prelude::io::WriteHandler;
 use actix::prelude::*;
+use actix::prelude::io::WriteHandler;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
-use futures::prelude::*;
 use futures::FutureExt;
+use futures::prelude::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
 use ya_sb_proto::*;
+use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
+use ya_sb_util::writer;
+use ya_sb_util::writer::EmptyBufferHandler;
 
 use crate::connection::reader::InputHandler;
-use crate::connection::writer::EmptyBufferHandler;
 use crate::router::{IdBytes, InstanceConfig, RouterRef};
 
 mod reader;
-mod writer;
 
 pub type StreamWriter<Output> = FramedWrite<Output, GsbMessageEncoder>;
 
