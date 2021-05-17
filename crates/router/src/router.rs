@@ -1,8 +1,8 @@
-use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
-use std::fmt::{self, Debug};
+
 use std::io;
 use std::net::SocketAddr;
+#[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
@@ -11,9 +11,7 @@ use actix::Addr;
 use actix_rt::net::TcpStream;
 use actix_rt::time::delay_for;
 use actix_service::fn_service;
-use bitflags::_core::sync::atomic::AtomicU64;
 use futures::prelude::*;
-use futures::{Future, FutureExt, Sink};
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -25,6 +23,7 @@ use ya_sb_util::PrefixLookupBag;
 use crate::connection::{Connection, DropConnection};
 
 use super::config::RouterConfig;
+use std::fmt::Debug;
 
 pub type RouterRef<W, C> = Arc<RwLock<Router<W, C>>>;
 
@@ -134,7 +133,11 @@ impl InstanceConfig {
     #[cfg(unix)]
     /// Starts new server instance on given unix socket path address.
     pub async fn bind_unix(self, path: &Path) -> io::Result<impl Future<Output = ()> + 'static> {
+        use std::cell::RefCell;
+        use std::fmt;
+        use std::sync::atomic::{AtomicU64, Ordering};
         use tokio::net::UnixStream;
+
         let instance_config = Arc::new(self);
         let router = instance_config.new_router();
 
@@ -154,7 +157,7 @@ impl InstanceConfig {
                 let router = router.clone();
                 let instance_config = instance_config.clone();
                 let request_counter = RefCell::new(0u64);
-                let worker_id = worker_counter.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
+                let worker_id = worker_counter.fetch_add(1, Ordering::AcqRel);
 
                 fn_service(move |sock: UnixStream| {
                     let _addr = sock.peer_addr().unwrap();
