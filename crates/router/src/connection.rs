@@ -6,17 +6,17 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use actix::prelude::*;
 use actix::prelude::io::WriteHandler;
+use actix::prelude::*;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
-use futures::FutureExt;
 use futures::prelude::*;
+use futures::FutureExt;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
-use ya_sb_proto::*;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
+use ya_sb_proto::*;
 use ya_sb_util::writer;
 use ya_sb_util::writer::EmptyBufferHandler;
 
@@ -71,7 +71,7 @@ impl<
         log::debug!("[{:?}] connection started", self.conn_info);
         let _ = ctx.run_interval(self.config.ping_interval(), move |act, ctx| {
             let since_last = Instant::now().duration_since(act.last_packet);
-            if since_last > act.config.ping_interval() {
+            if since_last > act.config.ping_interval() / 2 {
                 if since_last > act.config.ping_timeout() {
                     log::warn!(
                         "[{:?}] no data for {:?} killing connection",

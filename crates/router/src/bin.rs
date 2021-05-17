@@ -17,13 +17,13 @@ struct Options {
     #[structopt(long, default_value = "5min", env = "YA_SB_PING_TIMEOUT")]
     ping_timeout: humantime::Duration,
     #[structopt(long, default_value = "30s", env = "YA_SB_FW_TIMEOUT")]
-    forward_timeout : humantime::Duration,
+    forward_timeout: humantime::Duration,
     #[structopt(long, env = "YA_SB_GC")]
     gc_interval: Option<humantime::Duration>,
     #[structopt(long, short, default_value = "8", env = "YA_SB_HIGH_BUFFER")]
     high_buffer_mark: usize,
     #[structopt(long, short, default_value = "4", env = "YA_SB_BROADCAST_BACKLOG")]
-    broadcast_backlog_max_size : usize,
+    broadcast_backlog_max_size: usize,
 }
 
 #[actix_rt::main]
@@ -41,7 +41,6 @@ async fn main() -> anyhow::Result<()> {
     config.high_buffer_mark = options.high_buffer_mark;
     config.forward_timeout = options.forward_timeout.into();
     config.broadcast_backlog = options.broadcast_backlog_max_size;
-
 
     InstanceConfig::new(config)
         .run_url(Some(options.gsb_url))

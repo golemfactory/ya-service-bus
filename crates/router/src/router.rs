@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::{hash_map, HashMap};
-use std::fmt::Debug;
+use std::fmt::{self, Debug};
 use std::io;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -141,6 +141,14 @@ impl InstanceConfig {
         let router_status = router.clone();
         let worker_counter = Arc::new(AtomicU64::new(1));
 
+        // Display connection info as W<worker-id>C<connection-id-worker>
+        struct ConnInfo(u64, u64);
+        impl Debug for ConnInfo {
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                write!(f, "W{:02}C{:04}", self.0, self.1)
+            }
+        }
+
         let server = actix_server::ServerBuilder::new()
             .bind_uds("gsb", path, move || {
                 let router = router.clone();
@@ -161,7 +169,7 @@ impl InstanceConfig {
                     let _connection = super::connection::connection(
                         instance_config.clone(),
                         router.clone(),
-                        (worker_id, connection_id),
+                        ConnInfo(worker_id, connection_id),
                         input,
                         output,
                     );
@@ -330,20 +338,39 @@ async fn router_gc_worker<
         };
 
         if scan {
-            let (num_of_connections, num_of_endpoints, num_of_topics) = {
+            let (num_of_connections, num_of_endpoints, num_of_topics, empty_topics) = {
                 let r = router.read();
                 (
                     r.registered_instances.len(),
                     r.registered_endpoints.len(),
                     r.topics.len(),
+                    r.topics
+                        .iter()
+                        .filter_map(|(topic_id, sender)| {
+                            if sender.receiver_count() == 0 {
+                                Some(topic_id.clone())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<_>>(),
                 )
             };
+            if !empty_topics.is_empty() {
+                let mut rw = router.write();
+                for topic_id in &empty_topics {
+                    let _ = rw.topics.remove(topic_id);
+                }
+            }
             log::info!(
                 "GSB status [connections:{}], [endpoints:{}], [topics:{}]",
                 num_of_connections,
                 num_of_endpoints,
                 num_of_topics
             );
+            if !empty_topics.is_empty() {
+                log::info!("GSB removing unused topics {:?}", empty_topics);
+            }
         }
     }
 }

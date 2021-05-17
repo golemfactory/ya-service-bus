@@ -207,10 +207,11 @@ fn handle_reply<Ctx: ActorContext, F: FnOnce() -> Result<(), Error>>(
 }
 
 impl<W, H> EmptyBufferHandler for Connection<W, H>
-    where
-        W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
-        H: CallRequestHandler + 'static,
-{}
+where
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
+{
+}
 
 impl<W, H> Connection<W, H>
 where
