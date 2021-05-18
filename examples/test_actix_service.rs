@@ -141,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let _ = ExeUnit::default().start();
 
             let result = sys.block_on(async {
-                tokio::time::delay_for(Duration::from_millis(500)).await;
+                tokio::time::sleep(Duration::from_millis(500)).await;
                 run_script(script).await
             })?;
             eprintln!("got result: {:?}", result);

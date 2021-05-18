@@ -77,7 +77,7 @@ impl Endpoint {
     pub fn call<T: RpcMessage + Unpin>(
         &self,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
         self.router
             .lock()
             .unwrap()
@@ -88,7 +88,7 @@ impl Endpoint {
         &self,
         caller: impl ToString,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
         self.router
             .lock()
             .unwrap()

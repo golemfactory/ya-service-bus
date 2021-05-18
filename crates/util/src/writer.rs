@@ -113,14 +113,13 @@ struct SinkWriteFuture<I: 'static, S: Sink<I>, A> {
     _actor: PhantomData<A>,
 }
 
-impl<I: 'static, S: Sink<I>, A> ActorFuture for SinkWriteFuture<I, S, A>
+impl<I: 'static, S: Sink<I>, A> ActorFuture<A> for SinkWriteFuture<I, S, A>
 where
     S: Sink<I> + Unpin,
     A: Actor + WriteHandler<S::Error> + EmptyBufferHandler,
     A::Context: AsyncContext<A>,
 {
     type Output = ();
-    type Actor = A;
 
     fn poll(
         self: Pin<&mut Self>,

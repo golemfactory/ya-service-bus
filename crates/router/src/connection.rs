@@ -257,7 +257,7 @@ impl<
         &mut self,
         item: Result<GsbMessage, ProtocolError>,
         ctx: &mut Context<Self>,
-    ) -> Pin<Box<dyn ActorFuture<Output = (), Actor = Self>>> {
+    ) -> Pin<Box<dyn ActorFuture<Self, Output = ()>>> {
         self.last_packet = Instant::now();
 
         let msg = match item {
@@ -342,11 +342,13 @@ impl<
                     ));
                     self.topic_map.insert(topic_id, handle);
                 }
-                ctx.spawn(fut::ready(()).then(|(), act: &mut Self, ctx| {
+
+                ActorFutureExt::then(fut::ready(()), |(), act: &mut Self, ctx| {
                     let _ =
                         act.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
                     fut::ready(())
-                }));
+                })
+                .spawn(ctx);
             }
 
             GsbMessage::UnsubscribeRequest(unsubscribe_request) => {

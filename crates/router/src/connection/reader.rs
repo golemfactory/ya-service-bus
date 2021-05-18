@@ -14,7 +14,7 @@ where
         &mut self,
         item: I,
         ctx: &mut Self::Context,
-    ) -> Pin<Box<dyn ActorFuture<Output = (), Actor = Self>>>;
+    ) -> Pin<Box<dyn ActorFuture<Self, Output = ()>>>;
 
     fn finished(&mut self, ctx: &mut Self::Context) {
         ctx.stop()
@@ -45,7 +45,7 @@ where
 {
     #[pin]
     stream: S,
-    processing: Option<Pin<Box<dyn ActorFuture<Output = (), Actor = A>>>>,
+    processing: Option<Pin<Box<dyn ActorFuture<A, Output = ()>>>>,
     started: bool,
     act: PhantomData<A>,
     msg: PhantomData<M>,
@@ -67,14 +67,13 @@ where
     }
 }
 
-impl<A, M, S> ActorFuture for ActorStream<A, M, S>
+impl<A, M, S> ActorFuture<A> for ActorStream<A, M, S>
 where
     S: Stream<Item = M>,
     A: Actor + InputHandler<M>,
     A::Context: AsyncContext<A>,
 {
     type Output = ();
-    type Actor = A;
 
     fn poll(
         self: Pin<&mut Self>,

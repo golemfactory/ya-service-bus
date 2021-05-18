@@ -100,7 +100,7 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
             reply: tx,
         };
         let me = self.clone();
-        Arbiter::spawn(async move {
+        Arbiter::current().spawn(async move {
             match me.send(call).await {
                 Err(e) => {
                     let _ = txe.send(Err(Error::from_addr(addr, e)));
@@ -163,7 +163,7 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
     fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
         let (tx, rx) = futures::channel::mpsc::channel(1);
         // TODO: send error to caller
-        Arbiter::spawn(
+        Arbiter::current().spawn(
             self.send(RpcRawStreamCall {
                 caller: msg.caller,
                 addr: msg.addr,
@@ -194,7 +194,7 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
     ) -> Pin<Box<dyn Stream<Item = Result<ResponseChunk, Error>>>> {
         let (tx, rx) = futures::channel::mpsc::channel(16);
         // TODO: send error to caller
-        Arbiter::spawn(
+        Arbiter::current().spawn(
             self.send(RpcRawStreamCall {
                 caller: msg.caller,
                 addr: msg.addr,
@@ -338,7 +338,7 @@ impl Slot {
                 reply,
             };
 
-            Arbiter::spawn(async move {
+            Arbiter::current().spawn(async move {
                 h.send(call)
                     .await
                     .unwrap_or_else(|e| Ok(log::error!("streaming forward error: {}", e)))
@@ -359,7 +359,7 @@ impl Slot {
                     reply,
                 };
 
-                Arbiter::spawn(async move {
+                Arbiter::current().spawn(async move {
                     h.send(call)
                         .await
                         .unwrap_or_else(|e| Ok(log::error!("streaming raw forward error: {}", e)))
@@ -519,7 +519,7 @@ impl Router {
         &mut self,
         addr: &str,
         msg: RpcEnvelope<T>,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
         let addr = format!("{}/{}", addr, T::ID);
         if let Some(slot) = self.handlers.get_mut(&addr) {
             (if let Some(h) = slot.recipient() {
@@ -593,7 +593,7 @@ impl Router {
                 body,
                 reply,
             };
-            let _ = Arbiter::spawn(async move {
+            let _ = Arbiter::current().spawn(async move {
                 let v = RemoteRouter::from_registry().send(call).await;
                 log::trace!("call result={:?}", v);
             });
@@ -612,7 +612,7 @@ impl Router {
         addr: &str,
         caller: &str,
         msg: Vec<u8>,
-    ) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
         let addr = addr.to_string();
         if let Some(slot) = self.handlers.get_mut(&addr) {
             slot.send(RpcRawCall {

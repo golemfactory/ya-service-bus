@@ -13,7 +13,7 @@ const SERVICE_ADDR: &str = "/local/raw/echo";
 
 async fn delay_for(secs: Option<u64>) {
     if let Some(secs) = secs {
-        tokio::time::delay_for(Duration::from_secs(secs)).await
+        tokio::time::sleep(Duration::from_secs(secs)).await
     } else {
         future::pending().await
     }

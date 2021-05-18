@@ -1,5 +1,6 @@
 use std::collections::{hash_map, HashMap};
 
+use std::fmt::Debug;
 use std::io;
 use std::net::SocketAddr;
 #[cfg(unix)]
@@ -9,11 +10,12 @@ use std::time::Duration;
 
 use actix::Addr;
 use actix_rt::net::TcpStream;
-use actix_rt::time::delay_for;
 use actix_service::fn_service;
 use futures::prelude::*;
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
+use tokio::time::sleep;
+use tokio_stream::wrappers::BroadcastStream;
 use uuid::Uuid;
 
 use ya_sb_proto::codec::{GsbMessage, ProtocolError};
@@ -23,7 +25,6 @@ use ya_sb_util::PrefixLookupBag;
 use crate::connection::{Connection, DropConnection};
 
 use super::config::RouterConfig;
-use std::fmt::Debug;
 
 pub type RouterRef<W, C> = Arc<RwLock<Router<W, C>>>;
 
@@ -118,7 +119,7 @@ impl InstanceConfig {
                     let _connection = super::connection::connection(
                         instance_config.clone(),
                         router.clone(),
-                        addr,
+                        addr.clone(),
                         input,
                         output,
                     );
@@ -268,15 +269,16 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
         }
     }
 
-    pub fn subscribe_topic(&mut self, topic_id: String) -> broadcast::Receiver<BroadcastRequest> {
-        match self.topics.entry(topic_id) {
+    pub fn subscribe_topic(&mut self, topic_id: String) -> BroadcastStream<BroadcastRequest> {
+        let rx = match self.topics.entry(topic_id) {
             hash_map::Entry::Vacant(v) => {
                 let (tx, rx) = broadcast::channel(self.instance.config.broadcast_backlog);
                 v.insert(tx);
                 rx
             }
             hash_map::Entry::Occupied(o) => o.get().subscribe(),
-        }
+        };
+        BroadcastStream::new(rx)
     }
 
     pub fn find_topic(&self, topic_id: &str) -> Option<broadcast::Sender<BroadcastRequest>> {
@@ -333,7 +335,10 @@ async fn router_gc_worker<
 
     let mut sc = server;
     loop {
-        match futures::future::select(sc, delay_for(gc_interval)).await {
+        tokio::pin! {
+            let sleep_fut = sleep(gc_interval);
+        };
+        match futures::future::select(sc, sleep_fut).await {
             future::Either::Left(_) => return,
             future::Either::Right((_, f)) => {
                 sc = f;
