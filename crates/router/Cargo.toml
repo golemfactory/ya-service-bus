@@ -47,6 +47,9 @@ pin-project = "1.0.7"
 humantime = { version = "2.1.0", optional = true }
 env_logger = { version = "0.8", optional = true, default-features = false }
 
+[dev-dependencies]
+ubyte="0.10.1"
+
 [package.metadata.deb]
 features = ["bin"]
 maintainer-scripts = "debian/"

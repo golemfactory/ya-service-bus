@@ -74,7 +74,7 @@ impl<
             if since_last > act.config.ping_interval() / 2 {
                 if since_last > act.config.ping_timeout() {
                     log::warn!(
-                        "[{:?}] no data for {:?} killing connection",
+                        "[{:?}] [PING CHECK] no data for {:?} killing connection",
                         act.conn_info,
                         since_last
                     );
@@ -82,12 +82,31 @@ impl<
                     return;
                 }
                 log::debug!(
-                    "[{:?}] no data for: {:?}, sending ping (buffer={})",
+                    "[{:?}] [PING CHECK] no data for: {:?}, sending ping (buffer={})",
                     act.conn_info,
                     since_last,
                     act.output.buffer_len()
                 );
                 act.output.write(GsbMessage::Ping(Default::default()));
+            }
+            let dead_replay: Vec<_> = act
+                .reply_map
+                .iter()
+                .filter_map(|(request_id, replay_addr)| {
+                    if replay_addr.connected() {
+                        None
+                    } else {
+                        Some(request_id.clone())
+                    }
+                })
+                .collect();
+            for request_id in dead_replay {
+                let _ = act.reply_map.remove(&request_id);
+                log::debug!(
+                    "[{:?}] removing dead reply map for {}",
+                    act.conn_info,
+                    request_id
+                );
             }
         });
     }
@@ -324,8 +343,12 @@ impl<
                                     GsbMessage::BroadcastRequest(broadcast_request),
                                     ctx,
                                 ),
-                                Err(_e) => {
-                                    log::warn!("[{:?}] failed to recv broadcast", act.conn_info);
+                                Err(e) => {
+                                    log::warn!(
+                                        "[{:?}] failed to recv broadcast: {:?}",
+                                        act.conn_info,
+                                        e
+                                    );
                                     future::ok(()).boxed_local()
                                 }
                             }
@@ -342,11 +365,7 @@ impl<
                     ));
                     self.topic_map.insert(topic_id, handle);
                 }
-                ctx.spawn(fut::ready(()).then(|(), act: &mut Self, ctx| {
-                    let _ =
-                        act.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
-                    fut::ready(())
-                }));
+                let _ = self.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
             }
 
             GsbMessage::UnsubscribeRequest(unsubscribe_request) => {
