@@ -15,7 +15,7 @@ flex = ["flexbuffers"]
 json = ["serde_json"]
 
 [dependencies]
-ya-sb-proto = { version = "^0.3", path = "crates/proto" }
+ya-sb-proto = { version = "^0.4", path = "crates/proto" }
 ya-sb-util = { version = "0.1", features=["with-futures", 'with-writer'], path = "crates/util" }
 
 actix = { version = "0.10", default-features = false }
