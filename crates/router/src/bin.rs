@@ -1,6 +1,7 @@
 use std::env;
 use structopt::{clap, StructOpt};
 use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
+use ya_sb_router::{InstanceConfig, RouterConfig};
 
 #[derive(StructOpt)]
 #[structopt(about = "Service Bus Router")]
@@ -8,11 +9,24 @@ use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
 struct Options {
     #[structopt(short = "l", env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
     gsb_url: url::Url,
-    #[structopt(long, default_value = "debug")]
+    #[structopt(long, default_value = "info")]
     log_level: String,
+    /// How often send pings if there is no incoming packets.
+    #[structopt(long, default_value = "2min", env = "YA_SB_PING_INTERVAL")]
+    ping_interval: humantime::Duration,
+    #[structopt(long, default_value = "5min", env = "YA_SB_PING_TIMEOUT")]
+    ping_timeout: humantime::Duration,
+    #[structopt(long, default_value = "30s", env = "YA_SB_FW_TIMEOUT")]
+    forward_timeout: humantime::Duration,
+    #[structopt(long, env = "YA_SB_GC")]
+    gc_interval: Option<humantime::Duration>,
+    #[structopt(long, short, default_value = "8", env = "YA_SB_HIGH_BUFFER")]
+    high_buffer_mark: usize,
+    #[structopt(long, short, default_value = "4", env = "YA_SB_BROADCAST_BACKLOG")]
+    broadcast_backlog_max_size: usize,
 }
 
-#[tokio::main]
+#[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
     let options = Options::from_args();
     env::set_var(
@@ -20,10 +34,17 @@ async fn main() -> anyhow::Result<()> {
         env::var("RUST_LOG").unwrap_or(options.log_level),
     );
     env_logger::init();
+    let mut config = RouterConfig::default();
+    config.ping_interval = options.ping_interval.into();
+    config.ping_timeout = options.ping_timeout.into();
+    config.gc_interval = options.gc_interval.map(Into::into);
+    config.high_buffer_mark = options.high_buffer_mark;
+    config.forward_timeout = options.forward_timeout.into();
+    config.broadcast_backlog = options.broadcast_backlog_max_size;
 
-    ya_sb_router::bind_gsb_router(Some(options.gsb_url)).await?;
-    tokio::signal::ctrl_c().await?;
-    println!();
-    log::info!("SIGINT received, exiting");
+    InstanceConfig::new(config)
+        .run_url(Some(options.gsb_url))
+        .await?;
+
     Ok(())
 }

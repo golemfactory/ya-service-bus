@@ -1,13 +1,16 @@
+use std::collections::{hash_map::Entry, HashMap};
+
+#[cfg(feature = "with-futures")]
+pub use crate::futures::IntoFlatten as _;
+
 #[cfg(feature = "with-bytes")]
 pub mod bytes;
 
 #[cfg(feature = "with-futures")]
 pub mod futures;
 
-#[cfg(feature = "with-futures")]
-pub use crate::futures::IntoFlatten as _;
-
-use std::collections::{hash_map::Entry, HashMap};
+#[cfg(feature = "with-writer")]
+pub mod writer;
 
 struct RevPrefixes<'a>(&'a str);
 
@@ -19,12 +22,12 @@ impl<'a> Iterator for RevPrefixes<'a> {
         if cv.is_empty() {
             return None;
         }
-        if let Some(sep_pos) = cv.rfind("/") {
+        if let Some(sep_pos) = cv.rfind('/') {
             self.0 = &cv[..sep_pos];
         } else {
             self.0 = ""
         }
-        return Some(cv);
+        Some(cv)
     }
 }
 
@@ -41,12 +44,10 @@ impl<T> Default for PrefixLookupBag<T> {
 }
 
 impl<T> PrefixLookupBag<T> {
-    #[allow(dead_code)]
     pub fn get(&self, key: &str) -> Option<&T> {
         RevPrefixes(key).find_map(|key| self.dict.get(key))
     }
 
-    #[allow(dead_code)]
     pub fn keys(&self) -> impl Iterator<Item = &String> {
         self.dict.keys()
     }
@@ -73,6 +74,14 @@ impl<T> PrefixLookupBag<T> {
 
     pub fn remove(&mut self, key: &str) -> Option<T> {
         self.dict.remove(key)
+    }
+
+    pub fn len(&self) -> usize {
+        self.dict.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.dict.is_empty()
     }
 }
 

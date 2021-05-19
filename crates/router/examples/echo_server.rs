@@ -1,10 +1,12 @@
 use futures::prelude::*;
 
+use std::time::Duration;
+use structopt::*;
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
 use ya_sb_router::connect;
 
-async fn run_server() {
+async fn run_server(args: Args) {
     let (mut writer, mut reader) = connect(Default::default()).await;
 
     println!("Sending hello");
@@ -76,6 +78,11 @@ async fn run_server() {
                         "Received call request request_id = {} caller = {} address = {}",
                         msg.request_id, msg.caller, msg.address
                     );
+                    if let Some(delay_secs) = args.delay.as_ref() {
+                        println!("delay for {} secs", delay_secs);
+                        tokio::time::delay_for(Duration::from_secs(*delay_secs)).await;
+                        println!("done");
+                    }
                     Some(Ok(CallReply {
                         request_id: msg.request_id,
                         code: CallReplyCode::CallReplyOk as i32,
@@ -99,7 +106,13 @@ async fn run_server() {
         .await;
 }
 
+#[derive(StructOpt)]
+struct Args {
+    #[structopt(long, short)]
+    delay: Option<u64>,
+}
+
 #[tokio::main]
 async fn main() {
-    run_server().await;
+    run_server(Args::from_args()).await;
 }

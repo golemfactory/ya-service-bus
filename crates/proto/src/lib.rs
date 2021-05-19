@@ -55,7 +55,8 @@ pub enum GsbAddr {
 impl GsbAddr {
     pub fn from_url(gsb_url: Option<Url>) -> Self {
         let gsb_url = gsb_url.unwrap_or_else(|| {
-            let default_url = std::env::var(GSB_URL_ENV_VAR).unwrap_or(DEFAULT_GSB_URL.into());
+            let default_url =
+                std::env::var(GSB_URL_ENV_VAR).unwrap_or_else(|_| DEFAULT_GSB_URL.into());
             match Url::parse(&default_url) {
                 Err(ParseError::RelativeUrlWithoutBase) => {
                     Url::parse(&format!("tcp://{}", default_url))
