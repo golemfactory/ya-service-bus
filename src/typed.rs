@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// }
 ///
 /// fn main() {
-///      let sys = System::new("test");
+///      let sys = System::new();
 ///      let _ = bus::bind("/local/echo", |e:Echo| {
 ///          async {
 ///             Ok(e.0)

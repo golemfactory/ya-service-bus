@@ -26,8 +26,8 @@ ya-sb-proto = { version = "^0.3", path = "../proto" }
 ya-sb-util = { version = "0.2", path = "../util", features = ["with-writer"] }
 actix-rt = "2.2"
 actix = { version = "0.11", default-features = false, features = ["macros"] }
-actix-server = "2.0.0-beta.5"
-actix-service = "2.0.0"
+actix-server = "=2.0.0-beta.4"
+actix-service = "=2.0.0-beta.5"
 
 anyhow = "1.0.28"
 chrono = "0.4"
@@ -37,7 +37,7 @@ lazy_static = "1.4"
 log = "0.4.8"
 prost = "0.7.0"
 structopt = "0.3"
-tokio = { version = "1.6", features = ["net", "sync", "macros", "time"] }
+tokio = { version = "1.6", features = ["net", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-util = { version = "0.6", features = ["codec"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 url = "2.1.1"

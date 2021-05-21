@@ -47,9 +47,9 @@ dependencies = [
 
 [[package]]
 name = "actix-server"
-version = "2.0.0-beta.5"
+version = "2.0.0-beta.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "26369215fcc3b0176018b3b68756a8bcc275bb000e6212e454944913a1f9bf87"
+checksum = "0872f02a1871257ef09c5a269dce5dc5fea5ccf502adbf5d39f118913b61411c"
 dependencies = [
  "actix-rt",
  "actix-service",
@@ -64,12 +64,11 @@ dependencies = [
 
 [[package]]
 name = "actix-service"
-version = "2.0.0"
+version = "2.0.0-beta.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "77f5f9d66a8730d0fae62c26f3424f5751e5518086628a40b7ab6fca4a705034"
+checksum = "cf82340ad9f4e4caf43737fd3bbc999778a268015cdc54675f60af6240bd2b05"
 dependencies = [
  "futures-core",
- "paste",
  "pin-project-lite",
 ]
 
@@ -408,9 +407,9 @@ dependencies = [
 
 [[package]]
 name = "getrandom"
-version = "0.2.2"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c9495705279e7140bf035dde1f6e750c162df8b625267cd52cc44e0b156732c8"
+checksum = "7fcd999463524c52659517fe2cea98493cfe485d10565e7b0fb07dbba7ad2753"
 dependencies = [
  "cfg-if 1.0.0",
  "libc",
@@ -702,12 +701,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acbf547ad0c65e31259204bd90935776d1c693cec2f4ff7abb7a1bbbd40dfe58"
-
-[[package]]
 name = "percent-encoding"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -837,9 +830,9 @@ checksum = "bc881b2c22681370c6a780e47af9840ef841837bc98118431d4e1868bd0c1086"
 
 [[package]]
 name = "proc-macro2"
-version = "1.0.26"
+version = "1.0.27"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a152013215dca273577e18d2bf00fa862b89b24169fb78c4c95aeb07992c9cec"
+checksum = "f0d8caf72986c1a598726adc988bb5984792ef84f5ee5aa50209145ee8077038"
 dependencies = [
  "unicode-xid",
 ]
@@ -1224,6 +1217,7 @@ dependencies = [
  "libc",
  "memchr",
  "mio",
+ "num_cpus",
  "once_cell",
  "parking_lot 0.11.1",
  "pin-project-lite",
@@ -1477,6 +1471,7 @@ dependencies = [
  "structopt",
  "thiserror",
  "tokio",
+ "tokio-stream",
  "tokio-util",
  "url",
  "uuid",

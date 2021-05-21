@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
     let bus_addr = "127.0.0.1:7464".parse().unwrap();
     let args = Args::from_args();
-    let mut sys = System::new("");
+    let sys = System::new();
     sys.block_on(async move {
         let mut client_info = ClientInfo::default();
         let (tx, rx) = oneshot::channel();

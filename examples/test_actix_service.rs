@@ -112,7 +112,7 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Er
 fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
-    let mut sys = System::new("test");
+    let sys = System::new();
     let args = Args::from_args();
     match args {
         Args::Server { .. } => {
