@@ -135,7 +135,7 @@ where
 
     fn send_reply(&mut self, reply: impl Into<GsbMessage>, _ctx: &mut <Self as Actor>::Context) {
         self.output.write(reply.into());
-        log::debug!(
+        log::trace!(
             "[{:?}] reply queued. size={}",
             self.conn_info,
             self.output.buffer_len()
@@ -225,12 +225,12 @@ where
     ) -> LocalBoxFuture<'static, Result<(), oneshot::Canceled>> {
         if self.output.buffer_len() < self.config.high_buffer_mark() && self.hold_queue.is_empty() {
             self.output.write(msg);
-            log::debug!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
+            log::trace!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
             future::ok(()).boxed_local()
         } else {
             let (tx, rx) = oneshot::channel();
             self.hold_queue.push((msg, tx));
-            log::debug!("[{:?}] queue {}", self.conn_info, self.hold_queue.len());
+            log::trace!("[{:?}] queue {}", self.conn_info, self.hold_queue.len());
             rx.boxed_local()
         }
     }
