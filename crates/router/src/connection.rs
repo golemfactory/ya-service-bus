@@ -280,6 +280,11 @@ impl<
         self.last_packet = Instant::now();
 
         let msg = match item {
+            Err(ProtocolError::Io(e)) if e.kind() == std::io::ErrorKind::ConnectionReset => {
+                log::debug!("[{:?}] connection closed", self.conn_info);
+                ctx.stop();
+                return Box::pin(fut::ready(()));
+            }
             Err(e) => {
                 log::error!("[{:?}] protocol error {:?}", self.conn_info, e);
                 ctx.stop();
