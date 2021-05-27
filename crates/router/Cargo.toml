@@ -1,6 +1,6 @@
 [package]
 name = "ya-sb-router"
-version = "0.4.1"
+version = "0.4.3"
 description = "Service Bus Router"
 authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/ya-service-bus/crates/router"
@@ -9,8 +9,8 @@ license = "GPL-3.0"
 edition = "2018"
 
 [features]
-default=[]
-bin=['env_logger', 'tokio/signal']
+default = []
+bin = ['env_logger', 'tokio/signal', 'humantime', "log/release_max_level_debug"]
 
 [lib]
 name = "ya_sb_router"
@@ -19,25 +19,45 @@ path = "src/lib.rs"
 [[bin]]
 name = "ya-sb-router"
 path = "src/bin.rs"
-required-features=['bin']
+required-features = ['bin']
 
 [dependencies]
-ya-sb-proto = { version = "^0.3", path = "../proto" }
-ya-sb-util = { version = "0.1", path = "../util" }
+ya-sb-proto = { version = "^0.4", path = "../proto" }
+ya-sb-util = { version = "^0.2", path = "../util", features = ["with-writer"] }
+actix-rt = "1.1"
+actix = { version = "0.10", default-features = false }
+actix-server = "1.0"
+actix-service = "1.0"
 
 anyhow = "1.0.28"
-bytes = "0.4.12"
 chrono = "0.4"
-env_logger = { version = "0.7", optional = true }
+
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4.8"
 prost = "0.6.1"
 structopt = "0.3"
 tokio = { version = "0.2", features = ["tcp", "net", "sync", "macros", "rt-core", "stream", "time"] }
-tokio-util = "0.2.0"
+tokio-util = { version = "0.3.0", features = ["codec"] }
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
+parking_lot = "0.11.1"
+bitflags = "1.2.1"
+pin-project = "1.0.7"
+humantime = { version = "2.1.0", optional = true }
+env_logger = { version = "0.8", optional = true, default-features = false }
+
+[dev-dependencies]
+ubyte="0.10.1"
 
 [package.metadata.deb]
 features = ["bin"]
+maintainer-scripts = "debian/"
+systemd-units = { enable = false }
+assets = [
+    ["target/release/ya-sb-router", "usr/bin/", "755"],
+    ["debian/ya-sb-router.conf", "etc/", "644"]
+]
+conf-files = [
+    "/etc/ya-sb-router.conf"
+]

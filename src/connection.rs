@@ -17,6 +17,7 @@ use ya_sb_proto::{
     RegisterReplyCode, RegisterRequest, SubscribeReplyCode, SubscribeRequest, UnregisterReplyCode,
     UnregisterRequest, UnsubscribeReplyCode, UnsubscribeRequest,
 };
+use ya_sb_util::writer::*;
 
 use crate::local_router::router;
 use crate::Error;
@@ -164,7 +165,7 @@ impl<
     }
 }
 
-type TransportWriter<W> = actix::io::SinkWrite<GsbMessage, futures::sink::Buffer<W, GsbMessage>>;
+type TransportWriter<W> = SinkWrite<GsbMessage, W>;
 type ReplyQueue = VecDeque<oneshot::Sender<Result<(), Error>>>;
 
 struct Connection<W, H>
@@ -205,6 +206,13 @@ fn handle_reply<Ctx: ActorContext, F: FnOnce() -> Result<(), Error>>(
     }
 }
 
+impl<W, H> EmptyBufferHandler for Connection<W, H>
+where
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    H: CallRequestHandler + 'static,
+{
+}
+
 impl<W, H> Connection<W, H>
 where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
@@ -212,7 +220,7 @@ where
 {
     fn new(client_info: ClientInfo, w: W, handler: H, ctx: &mut <Self as Actor>::Context) -> Self {
         Connection {
-            writer: io::SinkWrite::new(w.buffer(256), ctx),
+            writer: SinkWrite::new(w, ctx),
             register_reply: Default::default(),
             unregister_reply: Default::default(),
             subscribe_reply: Default::default(),
@@ -570,8 +578,8 @@ where
                 self.handler.handle_event(r.caller, r.topic, r.data);
             }
             GsbMessage::Ping(_) => {
-                if let Err(e) = self.writer.write(GsbMessage::pong()) {
-                    log::error!("error sending pong: {}", e);
+                if self.writer.write(GsbMessage::pong()).is_some() {
+                    log::error!("error sending pong");
                     ctx.stop();
                 }
             }
@@ -671,8 +679,8 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
     let (tx, rx) = oneshot::channel();
     queue.push_back(tx);
 
-    if let Err(e) = writer.write(msg) {
-        ActorResponse::reply(Err(Error::GsbFailure(format!("no connection: {:?}", e))))
+    if writer.write(msg).is_some() {
+        ActorResponse::reply(Err(Error::GsbFailure(format!("no connection"))))
     } else {
         ActorResponse::r#async(fut::wrap_future(async move {
             rx.await.map_err(|_| Error::Cancelled)??;

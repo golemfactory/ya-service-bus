@@ -1,0 +1,14 @@
+[Unit]
+Description=ya-sb-router
+
+[Service]
+ExecStart=/usr/bin/ya-sb-router
+EnvironmentFile=/etc/ya-sb-router.conf
+
+DynamicUser=true
+LimitNOFILE=1000000
+ProtectSystem=strict
+
+[Install]
+WantedBy=multi-user.target
+
