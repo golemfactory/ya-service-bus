@@ -349,7 +349,7 @@ impl<
                                     ctx,
                                 ),
                                 Err(e) => {
-                                    log::warn!(
+                                    log::debug!(
                                         "[{:?}] failed to recv broadcast: {:?}",
                                         act.conn_info,
                                         e
