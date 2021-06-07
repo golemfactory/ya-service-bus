@@ -16,7 +16,7 @@ use std::io;
 use std::net::SocketAddr;
 
 use futures::prelude::*;
-use tokio::net::TcpStream;
+use tokio::net::{TcpStream, ToSocketAddrs};
 
 pub use config::RouterConfig;
 pub use router::InstanceConfig;
@@ -56,7 +56,7 @@ mod unix {
     ) {
         match gsb_addr {
             GsbAddr::Tcp(addr) => {
-                let (sink, stream) = tcp_connect(&addr).await;
+                let (sink, stream) = tcp_connect(addr).await;
                 (Box::new(sink), Box::new(stream))
             }
             GsbAddr::Unix(path) => {
@@ -88,7 +88,7 @@ pub async fn connect(
 ) {
     match gsb_addr {
         GsbAddr::Tcp(addr) => {
-            let (sink, stream) = tcp_connect(&addr).await;
+            let (sink, stream) = tcp_connect(addr).await;
             (Box::new(sink), Box::new(stream))
         }
         GsbAddr::Unix(_) => panic!("Unix sockets not supported on this OS"),
@@ -107,7 +107,7 @@ pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> io::Result<()> {
 
 #[doc(hidden)]
 pub async fn tcp_connect(
-    addr: &SocketAddr,
+    addr: impl ToSocketAddrs,
 ) -> (
     impl Sink<GsbMessage, Error = ProtocolError>,
     impl Stream<Item = Result<GsbMessage, ProtocolError>>,
