@@ -81,7 +81,7 @@ impl<
                     ctx.stop();
                     return;
                 }
-                log::debug!(
+                log::trace!(
                     "[{:?}] [PING CHECK] no data for: {:?}, sending ping (buffer={})",
                     act.conn_info,
                     since_last,
@@ -123,7 +123,7 @@ where
 {
     fn cleanup(&mut self, ctx: &mut <Self as Actor>::Context) {
         if let Some(instance_id) = self.instance_id.take() {
-            log::debug!("[{:?}] cleanup connection", self.conn_info);
+            log::trace!("[{:?}] cleanup connection", self.conn_info);
             let addr = ctx.address();
             let mut router = self.router.write();
             for service_id in self.services.drain() {
@@ -342,14 +342,14 @@ impl<
                     let handle = ctx.spawn(fut::wrap_stream(rx).fold(
                         (),
                         |_, request, act: &mut Self, ctx| {
-                            log::debug!("[{:?}] new item", act.conn_info);
+                            log::trace!("[{:?}] broadcast new item", act.conn_info);
                             match request {
                                 Ok(broadcast_request) => act.send_message(
                                     GsbMessage::BroadcastRequest(broadcast_request),
                                     ctx,
                                 ),
                                 Err(e) => {
-                                    log::warn!(
+                                    log::debug!(
                                         "[{:?}] failed to recv broadcast: {:?}",
                                         act.conn_info,
                                         e
@@ -362,7 +362,7 @@ impl<
                                 if r.is_err() {
                                     log::warn!("[{:?}] broadcast forward dropped", act.conn_info);
                                 } else {
-                                    log::debug!("[{:?}] broadcast forwarded", act.conn_info);
+                                    log::trace!("[{:?}] broadcast forwarded", act.conn_info);
                                 }
                                 fut::ready(())
                             })
@@ -425,7 +425,7 @@ impl<
                 self.send_reply(GsbMessage::Ping(Default::default()), ctx);
             }
             GsbMessage::Pong(_) => {
-                log::debug!("[{:?}] pong recv", self.conn_info);
+                log::trace!("[{:?}] pong recv", self.conn_info);
             }
             m => {
                 log::error!("[{:?}] unexpected gsb message: {:?}", self.conn_info, m);
@@ -472,7 +472,7 @@ impl<
             return;
         }
 
-        log::debug!("[{:?}] empty buffer", self.conn_info);
+        log::trace!("[{:?}] empty buffer", self.conn_info);
         for (msg, tx) in self
             .hold_queue
             .drain(..)
@@ -484,7 +484,7 @@ impl<
                 log::error!("[{:?}] failed to notify sender", self.conn_info);
             }
         }
-        log::debug!(
+        log::trace!(
             "[{:?}] on empty buffer, filled {}",
             self.conn_info,
             self.output.buffer_len()
