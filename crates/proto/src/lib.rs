@@ -1,7 +1,7 @@
 pub use gsb_api::*;
+use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
 use std::path::PathBuf;
-use std::{convert::TryFrom, net::SocketAddr};
 use url::{ParseError, Url};
 
 mod gsb_api {
@@ -45,10 +45,11 @@ pub const GSB_URL_ENV_VAR: &str = "GSB_URL";
 pub const DEFAULT_GSB_URL: &str = "unix:/tmp/yagna.sock";
 #[cfg(not(unix))]
 pub const DEFAULT_GSB_URL: &str = "tcp://127.0.0.1:7464";
+pub const DEFAULT_GSB_PORT: u16 = 7464;
 
 #[derive(Clone, Debug)]
 pub enum GsbAddr {
-    Tcp(SocketAddr),
+    Tcp(String),
     Unix(PathBuf),
 }
 
@@ -89,18 +90,11 @@ impl Display for GsbAddr {
     }
 }
 
-fn parse_tcp_url(url: Url) -> SocketAddr {
-    let ip_addr = url
-        .host_str()
-        .expect("need IP address for GSB URL")
-        .parse()
-        .expect("only IP address supported for GSB URL");
+fn parse_tcp_url(url: Url) -> String {
+    let host = url.host_str().expect("need host for GSB URL");
+    let port = url.port().unwrap_or(DEFAULT_GSB_PORT);
 
-    SocketAddr::new(
-        ip_addr,
-        url.port()
-            .unwrap_or_else(|| Url::parse(DEFAULT_GSB_URL).unwrap().port().unwrap()),
-    )
+    format!("{}:{}", host, port)
 }
 
 #[cfg(unix)]
@@ -115,8 +109,6 @@ fn parse_unix_url(_url: Url) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
-    use std::net::{IpAddr, Ipv4Addr};
-
     use super::*;
 
     #[cfg(unix)]
@@ -142,8 +134,7 @@ mod tests {
             GsbAddr::Tcp(addr) => addr,
             _ => panic!("Not a TCP addr"),
         };
-        assert!(addr.ip().is_loopback());
-        assert_eq!(addr.port(), 7464)
+        assert_eq!(addr, "127.0.0.1:7464")
     }
 
     #[test]
@@ -155,8 +146,7 @@ mod tests {
             GsbAddr::Tcp(addr) => addr,
             _ => panic!("Not a TCP addr"),
         };
-        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::new(10, 9, 8, 7)));
-        assert_eq!(addr.port(), 2345);
+        assert_eq!(addr, "10.9.8.7:2345");
     }
 
     #[test]
@@ -168,8 +158,7 @@ mod tests {
             GsbAddr::Tcp(addr) => addr,
             _ => panic!("Not a TCP addr"),
         };
-        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::new(10, 9, 8, 7)));
-        assert_eq!(addr.port(), 1234)
+        assert_eq!(addr, "10.9.8.7:1234");
     }
 
     #[test]
@@ -187,8 +176,7 @@ mod tests {
             GsbAddr::Tcp(addr) => addr,
             _ => panic!("Not a TCP addr"),
         };
-        assert_eq!(addr.ip(), IpAddr::V4(Ipv4Addr::new(10, 9, 8, 7)));
-        assert_eq!(addr.port(), 2345)
+        assert_eq!(addr, "10.9.8.7:2345");
     }
 
     #[cfg(unix)]
@@ -216,13 +204,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic(expected = "only IP address supported for GSB URL: AddrParseError(())")]
-    pub fn panic_domain_gsb_url() {
-        GsbAddr::from_url(Some("tcp://zima".parse().unwrap()));
-    }
-
-    #[test]
-    #[should_panic(expected = "need IP address for GSB URL")]
+    #[should_panic(expected = "need host for GSB URL")]
     pub fn panic_no_host_gsb_url() {
         GsbAddr::from_url(Some("tcp:".parse().unwrap()));
     }
