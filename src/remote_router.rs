@@ -1,5 +1,5 @@
 use actix::{prelude::*, WrapFuture};
-use futures::{channel::oneshot, prelude::*, SinkExt};
+use futures::{channel::oneshot, prelude::*, FutureExt, SinkExt};
 use std::ops::Not;
 use std::{collections::HashSet, time::Duration};
 
@@ -20,13 +20,28 @@ pub struct RemoteRouter {
     local_bindings: HashSet<String>,
     pending_calls: Vec<oneshot::Sender<Result<RemoteConnection, ConnectionTimeout>>>,
     connection: Option<RemoteConnection>,
+    shutdown_rx: Option<oneshot::Receiver<()>>,
 }
 
 impl Actor for RemoteRouter {
     type Context = Context<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
-        self.try_connect(ctx);
+        if self.shutdown_rx.is_none() {
+            let (tx, rx) = oneshot::channel();
+            tokio::task::spawn_local(async move {
+                let _ = tokio::signal::ctrl_c().await;
+                let _ = tx.send(());
+            });
+            self.shutdown_rx.replace(rx);
+        }
+
+        if let Some(ref mut rx) = self.shutdown_rx {
+            match rx.try_recv() {
+                Ok(None) => self.try_connect(ctx),
+                _ => log::debug!("(re)connection interrupted"),
+            }
+        }
     }
 }
 
@@ -143,6 +158,7 @@ impl Default for RemoteRouter {
             local_bindings: Default::default(),
             pending_calls: Default::default(),
             client_info: ClientInfo::new("sb-client"),
+            shutdown_rx: Default::default(),
         }
     }
 }
