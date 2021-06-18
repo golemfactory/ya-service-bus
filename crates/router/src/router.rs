@@ -1,7 +1,7 @@
 use std::collections::{hash_map, HashMap};
 
 use std::io;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 #[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
@@ -23,7 +23,7 @@ use ya_sb_util::PrefixLookupBag;
 use crate::connection::{Connection, DropConnection};
 
 use super::config::RouterConfig;
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 
 pub type RouterRef<W, C> = Arc<RwLock<Router<W, C>>>;
 
@@ -100,7 +100,10 @@ impl InstanceConfig {
     }
 
     /// Starts new server instance on given tcp address.
-    pub async fn bind_tcp(self, addr: SocketAddr) -> io::Result<impl Future<Output = ()>> {
+    pub async fn bind_tcp<A: ToSocketAddrs + Display>(
+        self,
+        addr: A,
+    ) -> io::Result<impl Future<Output = ()>> {
         let instance_config = Arc::new(self);
         let router = instance_config.new_router();
 
