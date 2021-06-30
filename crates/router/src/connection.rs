@@ -127,7 +127,7 @@ where
             let addr = ctx.address();
             let mut router = self.router.write();
             for service_id in self.services.drain() {
-                router.unregister_service(&service_id, &addr)
+                router.unregister_service(&service_id, &addr);
             }
             router.remove_connection(instance_id, &addr);
         }
@@ -326,11 +326,22 @@ impl<
                 if registered {
                     self.services.insert(service_id);
                 } else {
-                    reply.set_code(RegisterReplyCode::RegisterConflict)
+                    reply.set_code(RegisterReplyCode::RegisterConflict);
                 }
                 self.send_reply(reply, ctx);
             }
-
+            GsbMessage::UnregisterRequest(unregister_request) => {
+                let me = ctx.address();
+                let service_id = unregister_request.service_id;
+                let unregistered = { self.router.write().unregister_service(&service_id, &me) };
+                let mut reply = UnregisterReply::default();
+                if unregistered {
+                    self.services.remove(&service_id);
+                } else {
+                    reply.set_code(UnregisterReplyCode::NotRegistered);
+                }
+                self.send_reply(reply, ctx);
+            }
             GsbMessage::SubscribeRequest(subscribe_request) => {
                 let topic_id = subscribe_request.topic;
                 let mut reply = SubscribeReply::default();
