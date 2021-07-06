@@ -429,8 +429,7 @@ where
                 .into_actor(self),
             );
         } else {
-            log::error!("unmatched call reply");
-            ctx.stop()
+            log::debug!("unmatched call reply");
         }
 
         if is_full {

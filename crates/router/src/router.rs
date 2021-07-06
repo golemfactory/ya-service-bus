@@ -260,15 +260,18 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
         &mut self,
         service_id: &str,
         connection: &Addr<Connection<W, ConnInfo>>,
-    ) {
+    ) -> bool {
         if let Some(prev_addr) = self.registered_endpoints.remove(service_id) {
             if prev_addr != *connection && prev_addr.connected() {
                 let _ = self
                     .registered_endpoints
                     .insert(service_id.into(), prev_addr);
                 log::error!("attempt for unregister unowned service {}", service_id);
+            } else {
+                return true;
             }
         }
+        false
     }
 
     pub fn subscribe_topic(&mut self, topic_id: String) -> broadcast::Receiver<BroadcastRequest> {

@@ -1662,7 +1662,7 @@ dependencies = [
 
 [[package]]
 name = "ya-sb-router"
-version = "0.4.4"
+version = "0.4.5"
 dependencies = [
  "actix",
  "actix-rt",
@@ -1703,7 +1703,7 @@ dependencies = [
 
 [[package]]
 name = "ya-service-bus"
-version = "0.4.9"
+version = "0.4.10"
 dependencies = [
  "actix",
  "actix-rt",
