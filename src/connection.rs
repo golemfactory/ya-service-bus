@@ -429,8 +429,7 @@ where
                 .into_actor(self),
             );
         } else {
-            log::error!("unmatched call reply");
-            ctx.stop()
+            log::debug!("unmatched call reply");
         }
 
         if is_full {
@@ -1010,7 +1009,7 @@ where
 pub type TcpTransport =
     tokio_util::codec::Framed<tokio::net::TcpStream, ya_sb_proto::codec::GsbMessageCodec>;
 
-pub async fn tcp(addr: std::net::SocketAddr) -> Result<TcpTransport, std::io::Error> {
+pub async fn tcp(addr: impl tokio::net::ToSocketAddrs) -> Result<TcpTransport, std::io::Error> {
     let s = tokio::net::TcpStream::connect(addr).await?;
     Ok(tokio_util::codec::Framed::new(
         s,

@@ -1,8 +1,7 @@
 use std::collections::{hash_map, HashMap};
-
-use std::fmt::Debug;
+use std::fmt::{Debug, Display};
 use std::io;
-use std::net::SocketAddr;
+use std::net::ToSocketAddrs;
 #[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
@@ -101,7 +100,10 @@ impl InstanceConfig {
     }
 
     /// Starts new server instance on given tcp address.
-    pub async fn bind_tcp(self, addr: SocketAddr) -> io::Result<impl Future<Output = ()>> {
+    pub async fn bind_tcp<A: ToSocketAddrs + Display>(
+        self,
+        addr: A,
+    ) -> io::Result<impl Future<Output = ()>> {
         let instance_config = Arc::new(self);
         let router = instance_config.new_router();
 
@@ -258,15 +260,18 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
         &mut self,
         service_id: &str,
         connection: &Addr<Connection<W, ConnInfo>>,
-    ) {
+    ) -> bool {
         if let Some(prev_addr) = self.registered_endpoints.remove(service_id) {
             if prev_addr != *connection && prev_addr.connected() {
                 let _ = self
                     .registered_endpoints
                     .insert(service_id.into(), prev_addr);
                 log::error!("attempt for unregister unowned service {}", service_id);
+            } else {
+                return true;
             }
         }
+        false
     }
 
     pub fn subscribe_topic(&mut self, topic_id: String) -> BroadcastStream<BroadcastRequest> {

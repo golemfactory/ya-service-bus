@@ -89,6 +89,25 @@ impl<
                 );
                 act.output.write(GsbMessage::Ping(Default::default()));
             }
+            let dead_replay: Vec<_> = act
+                .reply_map
+                .iter()
+                .filter_map(|(request_id, replay_addr)| {
+                    if replay_addr.connected() {
+                        None
+                    } else {
+                        Some(request_id.clone())
+                    }
+                })
+                .collect();
+            for request_id in dead_replay {
+                let _ = act.reply_map.remove(&request_id);
+                log::debug!(
+                    "[{:?}] removing dead reply map for {}",
+                    act.conn_info,
+                    request_id
+                );
+            }
         });
     }
 
@@ -104,11 +123,11 @@ where
 {
     fn cleanup(&mut self, ctx: &mut <Self as Actor>::Context) {
         if let Some(instance_id) = self.instance_id.take() {
-            log::debug!("[{:?}] cleanup connection", self.conn_info);
+            log::trace!("[{:?}] cleanup connection", self.conn_info);
             let addr = ctx.address();
             let mut router = self.router.write();
             for service_id in self.services.drain() {
-                router.unregister_service(&service_id, &addr)
+                router.unregister_service(&service_id, &addr);
             }
             router.remove_connection(instance_id, &addr);
         }
@@ -116,7 +135,7 @@ where
 
     fn send_reply(&mut self, reply: impl Into<GsbMessage>, _ctx: &mut <Self as Actor>::Context) {
         self.output.write(reply.into());
-        log::debug!(
+        log::trace!(
             "[{:?}] reply queued. size={}",
             self.conn_info,
             self.output.buffer_len()
@@ -206,12 +225,12 @@ where
     ) -> LocalBoxFuture<'static, Result<(), oneshot::Canceled>> {
         if self.output.buffer_len() < self.config.high_buffer_mark() && self.hold_queue.is_empty() {
             self.output.write(msg);
-            log::debug!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
+            log::trace!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
             future::ok(()).boxed_local()
         } else {
             let (tx, rx) = oneshot::channel();
             self.hold_queue.push((msg, tx));
-            log::debug!("[{:?}] queue {}", self.conn_info, self.hold_queue.len());
+            log::trace!("[{:?}] queue {}", self.conn_info, self.hold_queue.len());
             rx.boxed_local()
         }
     }
@@ -261,6 +280,11 @@ impl<
         self.last_packet = Instant::now();
 
         let msg = match item {
+            Err(ProtocolError::Io(e)) if e.kind() == std::io::ErrorKind::ConnectionReset => {
+                log::debug!("[{:?}] connection closed", self.conn_info);
+                ctx.stop();
+                return Box::pin(fut::ready(()));
+            }
             Err(e) => {
                 log::error!("[{:?}] protocol error {:?}", self.conn_info, e);
                 ctx.stop();
@@ -302,11 +326,22 @@ impl<
                 if registered {
                     self.services.insert(service_id);
                 } else {
-                    reply.set_code(RegisterReplyCode::RegisterConflict)
+                    reply.set_code(RegisterReplyCode::RegisterConflict);
                 }
                 self.send_reply(reply, ctx);
             }
-
+            GsbMessage::UnregisterRequest(unregister_request) => {
+                let me = ctx.address();
+                let service_id = unregister_request.service_id;
+                let unregistered = { self.router.write().unregister_service(&service_id, &me) };
+                let mut reply = UnregisterReply::default();
+                if unregistered {
+                    self.services.remove(&service_id);
+                } else {
+                    reply.set_code(UnregisterReplyCode::NotRegistered);
+                }
+                self.send_reply(reply, ctx);
+            }
             GsbMessage::SubscribeRequest(subscribe_request) => {
                 let topic_id = subscribe_request.topic;
                 let mut reply = SubscribeReply::default();
@@ -318,14 +353,18 @@ impl<
                     let handle = ctx.spawn(fut::wrap_stream(rx).fold(
                         (),
                         |_, request, act: &mut Self, ctx| {
-                            log::debug!("[{:?}] new item", act.conn_info);
+                            log::trace!("[{:?}] broadcast new item", act.conn_info);
                             match request {
                                 Ok(broadcast_request) => act.send_message(
                                     GsbMessage::BroadcastRequest(broadcast_request),
                                     ctx,
                                 ),
-                                Err(_e) => {
-                                    log::warn!("[{:?}] failed to recv broadcast", act.conn_info);
+                                Err(e) => {
+                                    log::debug!(
+                                        "[{:?}] failed to recv broadcast: {:?}",
+                                        act.conn_info,
+                                        e
+                                    );
                                     future::ok(()).boxed_local()
                                 }
                             }
@@ -334,7 +373,7 @@ impl<
                                 if r.is_err() {
                                     log::warn!("[{:?}] broadcast forward dropped", act.conn_info);
                                 } else {
-                                    log::debug!("[{:?}] broadcast forwarded", act.conn_info);
+                                    log::trace!("[{:?}] broadcast forwarded", act.conn_info);
                                 }
                                 fut::ready(())
                             })
@@ -342,13 +381,7 @@ impl<
                     ));
                     self.topic_map.insert(topic_id, handle);
                 }
-
-                ActorFutureExt::then(fut::ready(()), |(), act: &mut Self, ctx| {
-                    let _ =
-                        act.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
-                    fut::ready(())
-                })
-                .spawn(ctx);
+                let _ = self.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
             }
 
             GsbMessage::UnsubscribeRequest(unsubscribe_request) => {
@@ -403,7 +436,7 @@ impl<
                 self.send_reply(GsbMessage::Ping(Default::default()), ctx);
             }
             GsbMessage::Pong(_) => {
-                log::debug!("[{:?}] pong recv", self.conn_info);
+                log::trace!("[{:?}] pong recv", self.conn_info);
             }
             m => {
                 log::error!("[{:?}] unexpected gsb message: {:?}", self.conn_info, m);
@@ -450,7 +483,7 @@ impl<
             return;
         }
 
-        log::debug!("[{:?}] empty buffer", self.conn_info);
+        log::trace!("[{:?}] empty buffer", self.conn_info);
         for (msg, tx) in self
             .hold_queue
             .drain(..)
@@ -462,7 +495,7 @@ impl<
                 log::error!("[{:?}] failed to notify sender", self.conn_info);
             }
         }
-        log::debug!(
+        log::trace!(
             "[{:?}] on empty buffer, filled {}",
             self.conn_info,
             self.output.buffer_len()
