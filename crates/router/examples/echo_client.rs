@@ -49,7 +49,7 @@ async fn run_client(args: Args) {
                 .expect("Send failed");
             println!("sending done");
             if let Some(delay_secs) = &args.delay {
-                tokio::time::delay_for(Duration::from_secs(*delay_secs)).await;
+                tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
             }
         }
     };

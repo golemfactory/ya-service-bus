@@ -27,7 +27,7 @@ use std::sync::{Arc, Mutex};
 /// }
 ///
 /// fn main() {
-///      let sys = System::new("test");
+///      let sys = System::new();
 ///      let _ = bus::bind("/local/echo", |e:Echo| {
 ///          async {
 ///             Ok(e.0)
@@ -77,7 +77,7 @@ impl Endpoint {
     pub fn call<T: RpcMessage + Unpin>(
         &self,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
         self.router
             .lock()
             .unwrap()
@@ -88,7 +88,7 @@ impl Endpoint {
         &self,
         caller: impl ToString,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
         self.router
             .lock()
             .unwrap()

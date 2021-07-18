@@ -25,7 +25,7 @@ pub trait IntoFlatten<E> {
 
 impl<Item, Error, F: TryFuture<Ok = Result<Item, Error>>> IntoFlatten<Error> for F {}
 
-impl<Item, Error, F: TryFuture<Ok = Result<Item, Error>> + Unpin> Future for Flatten<F, Error>
+impl<Item, Error, F: TryFuture<Ok = Result<Item, Error>>> Future for Flatten<F, Error>
 where
     Error: From<F::Error>,
 {

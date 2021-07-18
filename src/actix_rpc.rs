@@ -10,6 +10,7 @@ use crate::{RpcEnvelope, RpcMessage};
 
 use super::error::Error as BusError;
 use super::Handle;
+use futures::Future;
 
 pub fn bind<M: RpcMessage>(addr: &str, actor: Recipient<RpcEnvelope<M>>) -> Handle
 where
@@ -43,8 +44,7 @@ impl Endpoint {
     pub fn send<M: RpcMessage + Serialize + DeserializeOwned + Sync + Send + Unpin>(
         &self,
         msg: M,
-    ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + Unpin + 'static
-    {
+    ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + 'static {
         let mut b = self.router.lock().unwrap();
         b.forward(self.addr.as_ref(), RpcEnvelope::local(msg))
     }
@@ -53,8 +53,7 @@ impl Endpoint {
         &self,
         caller: impl ToString,
         msg: M,
-    ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + Unpin + 'static
-    {
+    ) -> impl Future<Output = Result<<RpcEnvelope<M> as Message>::Result, BusError>> + 'static {
         let mut b = self.router.lock().unwrap();
         b.forward(self.addr.as_ref(), RpcEnvelope::with_caller(caller, msg))
     }
