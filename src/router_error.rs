@@ -7,7 +7,8 @@ pub struct RouterErrors {
 use std::sync::{Arc, Mutex};
 
 lazy_static! {
-    static ref ROUTER_ERRORS: Arc<Mutex<RouterErrors>> = Arc::new(Mutex::new(RouterErrors{last_error:None}));
+    static ref ROUTER_ERRORS: Arc<Mutex<RouterErrors>> =
+        Arc::new(Mutex::new(RouterErrors { last_error: None }));
 }
 
 pub fn clear_router_errors() {

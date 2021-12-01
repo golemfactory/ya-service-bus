@@ -8,11 +8,11 @@ pub mod connection;
 pub mod error;
 mod local_router;
 mod remote_router;
+pub mod router_error;
 pub mod serialization;
 pub mod timeout;
 pub mod typed;
 pub mod untyped;
-pub mod router_error;
 
 pub use error::Error;
 

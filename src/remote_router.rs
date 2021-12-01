@@ -4,12 +4,12 @@ use std::ops::Not;
 use std::{collections::HashSet, time::Duration};
 
 use crate::connection::ClientInfo;
+use crate::router_error::report_router_error;
 use crate::{
     connection::{self, ConnectionRef, LocalRouterHandler, Transport},
     error::ConnectionTimeout,
     Error, RpcRawCall, RpcRawStreamCall,
 };
-use crate::router_error::report_router_error;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const RECONNECT_DELAY: Duration = Duration::from_millis(1000);
@@ -61,7 +61,10 @@ impl RemoteRouter {
                     Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
                     ctx,
                 );
-                report_router_error(format!("Connection timed out after {:?}", CONNECT_TIMEOUT), true);
+                report_router_error(
+                    format!("Connection timed out after {:?}", CONNECT_TIMEOUT),
+                    true,
+                );
                 ctx.stop();
             }
         });
