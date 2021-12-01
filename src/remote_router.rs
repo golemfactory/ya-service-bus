@@ -9,6 +9,7 @@ use crate::{
     error::ConnectionTimeout,
     Error, RpcRawCall, RpcRawStreamCall,
 };
+use crate::router_error::report_router_error;
 
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const RECONNECT_DELAY: Duration = Duration::from_millis(1000);
@@ -60,7 +61,7 @@ impl RemoteRouter {
                     Err(ConnectionTimeout(ya_sb_proto::GsbAddr::default())),
                     ctx,
                 );
-                log::warn!("connection timed out after {:?}", CONNECT_TIMEOUT);
+                report_router_error(format!("Connection timed out after {:?}", CONNECT_TIMEOUT), true);
                 ctx.stop();
             }
         });
@@ -90,7 +91,7 @@ impl RemoteRouter {
             .then(move |result: Result<(), Error>, _, ctx| {
                 ctx.cancel_future(timeout_h);
                 if let Err(e) = result {
-                    log::warn!("routing error: {}", e);
+                    report_router_error(format!("Routing error: {:?}", e), true);
                     ctx.run_later(RECONNECT_DELAY, |_, ctx| ctx.stop());
                 }
                 fut::ready(())
