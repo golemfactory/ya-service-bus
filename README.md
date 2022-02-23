@@ -8,6 +8,24 @@ crate provides a high-level API for connecting to the router and allows local
 communication: service calls (one-to-one, bidirectional) and broadcasts
 (one-to-many, unidirectional).
 
+### How to compile your own central net
+
+It is useful for internal development of Golem components or if you want to create your 
+own separated subnet of Golem Network.
+
+YA-SERVICE-BUS - your local repository path
+
+Compile steps:
+1. In terminal go to YA-SERVICE-BUS/crates/router
+2. Run: cargo build --bin ya-sb-router --features bin --release
+3. You should find binary in YA-SERVICE-BUS/target/release
+
+alternatively you can build from YA-SERVICE-BUS using more complicated command:
+1. cargo build --bin ya-sb-router --features ya-sb-router/bin --release --package ya-sb-router
+2. You should find binary in YA-SERVICE-BUS/target/release
+
+Note that ya-sb-router crate can be used as library or binary depending on usage, 
+thus requiring --bin switch to compile correctly
 
 ### Low-level router API
 
