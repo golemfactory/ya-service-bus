@@ -24,10 +24,11 @@ required-features = ['bin']
 [dependencies]
 ya-sb-proto = { version = "^0.4", path = "../proto" }
 ya-sb-util = { version = "^0.2", path = "../util", features = ["with-writer"] }
-actix-rt = "1.1"
-actix = { version = "0.10", default-features = false }
-actix-server = "1.0"
-actix-service = "1.0"
+actix-rt = "2.7.0"
+actix = { version = "0.13.0", default-features = false }
+actix-server = "2.1.1"
+actix-service = "2.0.2"
+actix_derive = "0.6.0"
 
 anyhow = "1.0.28"
 chrono = "0.4"
@@ -35,29 +36,42 @@ chrono = "0.4"
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4.8"
-prost = "0.6.1"
+prost = "0.9.0"
 structopt = "0.3"
-tokio = { version = "0.2", features = ["tcp", "net", "sync", "macros", "rt-core", "stream", "time"] }
-tokio-util = { version = "0.3.0", features = ["codec"] }
+tokio = { version = "1.17.0", features = [
+    "net",
+    "sync",
+    "macros",
+    "rt",
+    "time",
+] }
+tokio-util = { version = "0.6.9", features = ["codec"] }
+tokio-stream = {version = "0.1.8", features = ["sync"] }
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
-parking_lot = "0.11.1"
+parking_lot = "0.12.0"
 bitflags = "1.2.1"
 pin-project = "1.0.7"
 humantime = { version = "2.1.0", optional = true }
-env_logger = { version = "0.8", optional = true, default-features = false }
+env_logger = { version = "0.9.0", optional = true, default-features = false }
 
 [dev-dependencies]
-ubyte="0.10.1"
+ubyte = "0.10.1"
 
 [package.metadata.deb]
 features = ["bin"]
 maintainer-scripts = "debian/"
 systemd-units = { enable = false }
 assets = [
-    ["target/release/ya-sb-router", "usr/bin/", "755"],
-    ["debian/ya-sb-router.conf", "etc/", "644"]
+    [
+        "target/release/ya-sb-router",
+        "usr/bin/",
+        "755",
+    ],
+    [
+        "debian/ya-sb-router.conf",
+        "etc/",
+        "644",
+    ],
 ]
-conf-files = [
-    "/etc/ya-sb-router.conf"
-]
+conf-files = ["/etc/ya-sb-router.conf"]

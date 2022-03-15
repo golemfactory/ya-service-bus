@@ -12,6 +12,7 @@ use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
 use futures::prelude::*;
 use futures::FutureExt;
+use futures::stream::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -22,9 +23,9 @@ use ya_sb_util::writer::EmptyBufferHandler;
 
 use crate::connection::reader::InputHandler;
 use crate::router::{IdBytes, InstanceConfig, RouterRef};
-
+use actix_derive::Message;
 mod reader;
-
+use tokio_stream::wrappers::BroadcastStream;
 pub type StreamWriter<Output> = FramedWrite<Output, GsbMessageEncoder>;
 
 #[derive(Message)]
@@ -226,7 +227,7 @@ where
         if self.output.buffer_len() < self.config.high_buffer_mark() && self.hold_queue.is_empty() {
             self.output.write(msg);
             log::trace!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
-            future::ok(()).boxed_local()
+            FutureExt::boxed_local(future::ok(()))
         } else {
             let (tx, rx) = oneshot::channel();
             self.hold_queue.push((msg, tx));
@@ -276,7 +277,7 @@ impl<
         &mut self,
         item: Result<GsbMessage, ProtocolError>,
         ctx: &mut Context<Self>,
-    ) -> Pin<Box<dyn ActorFuture<Output = (), Actor = Self>>> {
+    ) -> Pin<Box<dyn ActorFuture<Self, Output = ()>>> {
         self.last_packet = Instant::now();
 
         let msg = match item {
@@ -350,7 +351,9 @@ impl<
                     reply.message = "topic already registered".to_string();
                 } else {
                     let rx = self.router.write().subscribe_topic(topic_id.clone());
-                    let handle = ctx.spawn(fut::wrap_stream(rx).fold(
+
+
+                    let handle = ctx.spawn(fut::wrap_stream(BroadcastStream::new(rx)).fold(
                         (),
                         |_, request, act: &mut Self, ctx| {
                             log::trace!("[{:?}] broadcast new item", act.conn_info);
@@ -365,7 +368,7 @@ impl<
                                         act.conn_info,
                                         e
                                     );
-                                    future::ok(()).boxed_local()
+                                    FutureExt::boxed_local(future::ok(()))
                                 }
                             }
                             .into_actor(act)

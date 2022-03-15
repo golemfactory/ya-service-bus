@@ -9,9 +9,9 @@ use std::time::Duration;
 
 use actix::Addr;
 use actix_rt::net::TcpStream;
-use actix_rt::time::delay_for;
+use actix_rt::time::sleep;
 use actix_service::fn_service;
-use futures::prelude::*;
+use futures::{prelude::*, pin_mut};
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;
@@ -339,7 +339,10 @@ async fn router_gc_worker<
 
     let mut sc = server;
     loop {
-        match futures::future::select(sc, delay_for(gc_interval)).await {
+        let sleep = sleep(gc_interval);
+        pin_mut!(sleep);
+
+        match futures::future::select(sc, sleep).await {
             future::Either::Left(_) => return,
             future::Either::Right((_, f)) => {
                 sc = f;
