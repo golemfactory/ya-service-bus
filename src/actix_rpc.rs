@@ -1,6 +1,7 @@
 /// Using GSB with actix 0.9
 use crate::{RpcStreamCall, RpcStreamMessage};
 use actix::prelude::*;
+use futures::Future;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
 use std::sync::{Arc, Mutex};

@@ -18,7 +18,7 @@ json = ["serde_json"]
 ya-sb-proto = { version = "^0.4", path = "crates/proto" }
 ya-sb-util = { version = "^0.2", features=["with-futures", 'with-writer'], path = "crates/util" }
 
-actix = { version = "0.10", default-features = false }
+actix = { version = "0.13.0", default-features = false }
 flexbuffers = { version = "0.2", optional = true }
 futures = "0.3"
 lazy_static = "1.4"
@@ -27,8 +27,8 @@ rand = "0.7.2"
 serde = { version = "1.0.102", features = ["derive"] }
 serde_json = { version = "1.0.48", optional = true }
 thiserror = "1.0.9"
-tokio = { version = "0.2.6", features = ["tcp", "time", "io-util", "signal", "dns"] }
-tokio-util = "0.3.0"
+tokio = { version = "1.17.0", features = ["time", "io-util", "signal"] }
+tokio-util = "0.7.0"
 url = "2.1.1"
 semver="0.11.0"
 uuid = { version = "0.8.1", features = ["v4"] }

@@ -4,29 +4,6 @@ version = 3
 
 [[package]]
 name = "actix"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1be241f88f3b1e7e9a3fbe3b5a8a0f6915b5a1d7ee0d9a248d3376d01068cc60"
-dependencies = [
- "actix-rt 1.1.1",
- "actix_derive 0.5.0",
- "bitflags",
- "bytes 0.5.6",
- "crossbeam-channel 0.4.4",
- "derive_more",
- "futures-channel",
- "futures-util",
- "log",
- "once_cell",
- "parking_lot 0.11.2",
- "pin-project 0.4.29",
- "smallvec",
- "tokio 0.2.25",
- "tokio-util 0.3.1",
-]
-
-[[package]]
-name = "actix"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f728064aca1c318585bf4bb04ffcfac9e75e508ab4e8b1bd9ba5dfe04e2cbed5"
@@ -34,7 +11,7 @@ dependencies = [
  "actix-rt 2.7.0",
  "bitflags",
  "bytes 1.1.0",
- "crossbeam-channel 0.5.3",
+ "crossbeam-channel",
  "futures-core",
  "futures-sink",
  "futures-task",
@@ -146,17 +123,6 @@ checksum = "e491cbaac2e7fc788dfff99ff48ef317e23b3cf63dbaf7aaab6418f40f92aa94"
 dependencies = [
  "local-waker",
  "pin-project-lite 0.2.8",
-]
-
-[[package]]
-name = "actix_derive"
-version = "0.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b95aceadaf327f18f0df5962fedc1bde2f870566a0b9f65c89508a3b1f79334c"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
 ]
 
 [[package]]
@@ -319,33 +285,12 @@ checksum = "a2df960f5d869b2dd8532793fde43eb5427cceb126c929747a26823ab0eeb536"
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.4.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b153fe7cbef478c567df0f972e02e6d736db11affe43dfc9c56a9374d1adfb87"
-dependencies = [
- "crossbeam-utils 0.7.2",
- "maybe-uninit",
-]
-
-[[package]]
-name = "crossbeam-channel"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "fdbfe11fe19ff083c48923cf179540e8cd0535903dc35e178a1fdeeb59aef51f"
 dependencies = [
  "cfg-if 1.0.0",
- "crossbeam-utils 0.8.8",
-]
-
-[[package]]
-name = "crossbeam-utils"
-version = "0.7.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3c7c73a2d1e9fc0886a08b93e98eb643461230d5f1925e4036204d5f2e261a8"
-dependencies = [
- "autocfg",
- "cfg-if 0.1.10",
- "lazy_static",
+ "crossbeam-utils",
 ]
 
 [[package]]
@@ -426,12 +371,6 @@ dependencies = [
  "serde",
  "serde_derive",
 ]
-
-[[package]]
-name = "fnv"
-version = "1.0.7"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "form_urlencoded"
@@ -723,12 +662,6 @@ name = "matches"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a3e378b66a060d48947b590737b30a1be76706c8dd7b8ba0f2fe3989c68a853f"
-
-[[package]]
-name = "maybe-uninit"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "60302e4db3a61da70c0cb7991976248362f30319e88850c487b9b95bbf059e00"
 
 [[package]]
 name = "memchr"
@@ -1506,12 +1439,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6703a273949a90131b290be1fe7b039d0fc884aa1935860dfcbe056f28cd8092"
 dependencies = [
  "bytes 0.5.6",
- "fnv",
  "futures-core",
  "iovec",
  "lazy_static",
  "libc",
- "memchr",
  "mio 0.6.23",
  "mio-uds",
  "pin-project-lite 0.1.12",
@@ -1560,21 +1491,6 @@ dependencies = [
  "pin-project-lite 0.2.8",
  "tokio 1.17.0",
  "tokio-util 0.6.9",
-]
-
-[[package]]
-name = "tokio-util"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "be8242891f2b6cbef26a2d7e8605133c2c554cd35b3e4948ea892d6d68436499"
-dependencies = [
- "bytes 0.5.6",
- "futures-core",
- "futures-io",
- "futures-sink",
- "log",
- "pin-project-lite 0.1.12",
- "tokio 0.2.25",
 ]
 
 [[package]]
@@ -1849,7 +1765,7 @@ dependencies = [
  "serial_test",
  "thiserror",
  "tokio 1.17.0",
- "tokio-util 0.6.9",
+ "tokio-util 0.7.0",
  "url",
 ]
 
@@ -1857,11 +1773,11 @@ dependencies = [
 name = "ya-sb-router"
 version = "0.4.5"
 dependencies = [
- "actix 0.13.0",
+ "actix",
  "actix-rt 2.7.0",
  "actix-server",
  "actix-service",
- "actix_derive 0.6.0",
+ "actix_derive",
  "anyhow",
  "bitflags",
  "chrono",
@@ -1876,7 +1792,7 @@ dependencies = [
  "structopt",
  "tokio 1.17.0",
  "tokio-stream",
- "tokio-util 0.6.9",
+ "tokio-util 0.7.0",
  "ubyte",
  "url",
  "uuid",
@@ -1888,7 +1804,7 @@ dependencies = [
 name = "ya-sb-util"
 version = "0.2.0"
 dependencies = [
- "actix 0.13.0",
+ "actix",
  "bitflags",
  "bytes 0.5.6",
  "bytes 1.1.0",
@@ -1900,7 +1816,7 @@ dependencies = [
 name = "ya-service-bus"
 version = "0.4.10"
 dependencies = [
- "actix 0.10.0",
+ "actix",
  "actix-rt 1.1.1",
  "async-stream",
  "env_logger 0.7.1",
@@ -1914,8 +1830,8 @@ dependencies = [
  "serde_json",
  "structopt",
  "thiserror",
- "tokio 0.2.25",
- "tokio-util 0.3.1",
+ "tokio 1.17.0",
+ "tokio-util 0.7.0",
  "url",
  "uuid",
  "ya-sb-proto",

@@ -92,7 +92,7 @@ mod raw_actor {
     impl<H: RawHandler + Unpin + 'static, S: Unpin + 'static> Handler<RpcRawCall>
         for RawHandlerActor<H, S>
     {
-        type Result = ActorResponse<Self, Vec<u8>, Error>;
+        type Result = ActorResponse<Self, Result<Vec<u8>, Error>>;
 
         fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
             ActorResponse::r#async(

@@ -615,7 +615,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, Vec<u8>, Error>;
+    type Result = ActorResponse<Self, Result<Vec<u8>, Error>>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
         let (tx, mut rx) = mpsc::channel(1);
@@ -650,7 +650,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = ActorResponse<Self, Result<(), Error>>;
 
     fn handle(&mut self, msg: RpcRawStreamCall, _ctx: &mut Self::Context) -> Self::Result {
         let request_id = format!("{}", gen_id());
@@ -674,7 +674,7 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
     writer: &mut TransportWriter<W>,
     queue: &mut VecDeque<oneshot::Sender<Result<(), Error>>>,
     msg: GsbMessage,
-) -> ActorResponse<A, (), Error> {
+) -> ActorResponse<A, Result<(), Error>> {
     let (tx, rx) = oneshot::channel();
     queue.push_back(tx);
 
@@ -701,7 +701,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = ActorResponse<Self, Result<(), Error>>;
 
     fn handle(&mut self, msg: Bind, _ctx: &mut Self::Context) -> Self::Result {
         let service_id = msg.addr;
@@ -726,7 +726,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = ActorResponse<Self, Result<(), Error>>;
 
     fn handle(&mut self, msg: Unbind, _ctx: &mut Self::Context) -> Self::Result {
         let service_id = msg.addr;
@@ -751,7 +751,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = ActorResponse<Self, Result<(), Error>>;
 
     fn handle(&mut self, msg: Subscribe, _ctx: &mut Self::Context) -> Self::Result {
         let topic = msg.topic;
@@ -776,7 +776,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = ActorResponse<Self, Result<(), Error>>;
 
     fn handle(&mut self, msg: Unsubscribe, _ctx: &mut Self::Context) -> Self::Result {
         let topic = msg.topic;
@@ -803,7 +803,7 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     H: CallRequestHandler + 'static,
 {
-    type Result = ActorResponse<Self, (), Error>;
+    type Result = ActorResponse<Self, Result<(), Error>>;
 
     fn handle(&mut self, msg: BcastCall, _ctx: &mut Self::Context) -> Self::Result {
         let caller = msg.caller;
@@ -949,7 +949,7 @@ impl<
             reply: tx.clone(),
         };
         let connection = self.0.clone();
-        let _ = Arbiter::spawn(async move {
+        let _ = actix::spawn(async move {
             let mut tx = tx;
             match connection.send(args).await {
                 Ok(Ok(())) => (),

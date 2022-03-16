@@ -7,7 +7,7 @@ use std::pin::Pin;
 #[pin_project]
 pub struct Flatten<F, E> {
     #[pin]
-    inner: F,
+    pub inner: F,
     _marker: PhantomData<E>,
 }
 

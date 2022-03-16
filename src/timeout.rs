@@ -1,7 +1,8 @@
 use futures::future::{Either, Future, Map};
 use futures::FutureExt;
+use tokio::time::error::Elapsed;
 use std::time::Duration;
-use tokio::time::{timeout, Elapsed, Timeout};
+use tokio::time::{timeout, Timeout};
 
 pub trait IntoDuration {
     fn into_duration(self) -> Duration;
