@@ -53,7 +53,7 @@ async fn run_client(args: Args) -> anyhow::Result<()> {
     for _ in 0..args.count.unwrap_or(1) {
         if let Some(delay) = args.delay {
             println!("pause for {} secs", delay);
-            tokio::time::delay_for(Duration::from_secs(delay)).await;
+            tokio::time::sleep(Duration::from_secs(delay)).await;
         }
         println!("Sending broadcast request...");
         let mut broadcast_data = Vec::new();

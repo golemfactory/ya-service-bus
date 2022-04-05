@@ -11,7 +11,7 @@ use actix::Addr;
 use actix_rt::net::TcpStream;
 use actix_rt::time::sleep;
 use actix_service::fn_service;
-use futures::{prelude::*, pin_mut};
+use futures::{pin_mut, prelude::*};
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use uuid::Uuid;

@@ -1,4 +1,3 @@
-use actix::prelude::*;
 use futures::prelude::*;
 
 use futures::channel::oneshot;
@@ -13,7 +12,7 @@ const SERVICE_ADDR: &str = "/local/raw/echo";
 
 async fn delay_for(secs: Option<u64>) {
     if let Some(secs) = secs {
-        tokio::time::delay_for(Duration::from_secs(secs)).await
+        tokio::time::sleep(Duration::from_secs(secs)).await
     } else {
         future::pending().await
     }
@@ -100,13 +99,13 @@ impl CallRequestHandler for DebugHandler {
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[actix_rt::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
     let bus_addr = "127.0.0.1:7464";
     let args = Args::from_args();
-    let mut sys = System::new("");
-    sys.block_on(async move {
+    async move {
         let mut client_info = ClientInfo::default();
         let (tx, rx) = oneshot::channel();
         client_info.name = "test_router_raw".to_string();
@@ -154,5 +153,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Ok(())
             }
         }
-    })
+    }
+    .await
 }

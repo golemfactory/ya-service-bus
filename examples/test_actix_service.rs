@@ -112,7 +112,7 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Er
 fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
-    let mut sys = System::new("test");
+    let sys = System::new();
     let args = Args::from_args();
     match args {
         Args::Server { .. } => {
@@ -141,7 +141,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             let _ = ExeUnit::default().start();
 
             let result = sys.block_on(async {
-                tokio::time::delay_for(Duration::from_millis(500)).await;
+                actix::clock::sleep(Duration::from_millis(500)).await;
                 run_script(script).await
             })?;
             eprintln!("got result: {:?}", result);

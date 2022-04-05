@@ -152,8 +152,9 @@ impl RawEndpoint for Recipient<RpcRawCall> {
                 .flatten_fut()
                 // .and_then(|v| future::ok(ResponseChunk::Full(v)))
                 // .into_stream(),
-                .inner.and_then(|v| future::ok(ResponseChunk::Full(v.unwrap())))
-                .into_stream()
+                .inner
+                .and_then(|v| future::ok(ResponseChunk::Full(v.unwrap())))
+                .into_stream(),
         )
     }
 
@@ -173,7 +174,8 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
                 body: msg.body,
                 reply: tx,
             })
-            .flatten_fut().inner
+            .flatten_fut()
+            .inner
             .map_err(|e| eprintln!("cell error={}", e))
             .then(|_v| future::ready(())),
         );
@@ -204,7 +206,8 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
                 body: msg.body,
                 reply: tx,
             })
-            .flatten_fut().inner
+            .flatten_fut()
+            .inner
             .map_err(|e| eprintln!("cell error={}", e))
             .then(|_| future::ready(())),
         );
@@ -525,8 +528,7 @@ impl Router {
     ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Unpin {
         let addr = format!("{}/{}", addr, T::ID);
 
-        let result =
-        if let Some(slot) = self.handlers.get_mut(&addr) {
+        let result = if let Some(slot) = self.handlers.get_mut(&addr) {
             (if let Some(h) = slot.recipient() {
                 h.send(msg)
                     .map_err(|e| Error::from_addr(addr, e))

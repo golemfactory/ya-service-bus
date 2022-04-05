@@ -26,8 +26,8 @@ use std::sync::{Arc, Mutex};
 ///     type Error=();
 /// }
 ///
-/// fn main() {
-///      let sys = System::new("test");
+/// #[actix_rt::main]
+/// async fn main() {
 ///      let _ = bus::bind("/local/echo", |e:Echo| {
 ///          async {
 ///             Ok(e.0)

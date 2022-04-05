@@ -19,8 +19,6 @@ pub enum ProtocolError {
     Encode(#[from] prost::EncodeError),
     #[error("decode {0}")]
     Decode(#[from] prost::DecodeError),
-    #[error("{0}")]
-    RecvError(#[from] tokio::sync::mpsc::error::RecvError),
     #[error("packet too big")]
     MsgTooBig,
 }

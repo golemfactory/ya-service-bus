@@ -32,7 +32,7 @@ async fn server() -> Result<(), Box<dyn Error>> {
     };
 
     let _ = bus::bind_stream("/local/test", |_p: Ping| {
-        tokio::time::interval(Duration::from_secs(1))
+        tokio_stream::wrappers::IntervalStream::new(tokio::time::interval(Duration::from_secs(1)))
             .map(|_ts| Ok("tick".to_string()))
             .take(10)
     });

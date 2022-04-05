@@ -11,8 +11,6 @@ use actix::prelude::*;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
 use futures::prelude::*;
-use futures::FutureExt;
-use futures::stream::*;
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -24,6 +22,8 @@ use ya_sb_util::writer::EmptyBufferHandler;
 use crate::connection::reader::InputHandler;
 use crate::router::{IdBytes, InstanceConfig, RouterRef};
 use actix_derive::Message;
+use futures::FutureExt;
+
 mod reader;
 use tokio_stream::wrappers::BroadcastStream;
 pub type StreamWriter<Output> = FramedWrite<Output, GsbMessageEncoder>;
@@ -351,7 +351,6 @@ impl<
                     reply.message = "topic already registered".to_string();
                 } else {
                     let rx = self.router.write().subscribe_topic(topic_id.clone());
-
 
                     let handle = ctx.spawn(fut::wrap_stream(BroadcastStream::new(rx)).fold(
                         (),

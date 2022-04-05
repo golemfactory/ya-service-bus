@@ -1,6 +1,5 @@
-use actix::fut::future;
 use actix::{prelude::*, WrapFuture};
-use futures::future::{Either, try_join_all, ok};
+use futures::future::{try_join_all, Either};
 use futures::{channel::oneshot, prelude::*, FutureExt, SinkExt};
 use std::ops::Not;
 use std::{collections::HashSet, time::Duration};
