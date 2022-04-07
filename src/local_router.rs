@@ -149,11 +149,11 @@ impl RawEndpoint for Recipient<RpcRawCall> {
         Box::pin(
             Recipient::<RpcRawCall>::send(self, msg)
                 .map_err(|e| Error::from_addr(addr, e))
-                .flatten_fut()
-                // .and_then(|v| future::ok(ResponseChunk::Full(v)))
-                // .into_stream(),
-                .inner
-                .and_then(|v| future::ok(ResponseChunk::Full(v.unwrap())))
+                .map(|v| match v {
+                    Ok(Ok(v)) => Ok(ResponseChunk::Full(v)),
+                    Ok(Err(e)) => Err(e),
+                    Err(e) => Err(e),
+                })
                 .into_stream(),
         )
     }

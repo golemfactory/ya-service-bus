@@ -30,7 +30,7 @@ impl Actor for RemoteRouter {
     fn started(&mut self, ctx: &mut Self::Context) {
         if self.shutdown_rx.is_none() {
             let (tx, rx) = oneshot::channel();
-            tokio::task::spawn_local(async move {
+            actix::spawn(async move {
                 let _ = tokio::signal::ctrl_c().await;
                 let _ = tx.send(());
             });
