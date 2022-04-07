@@ -25,7 +25,6 @@ use actix_derive::Message;
 use futures::FutureExt;
 
 mod reader;
-use tokio_stream::wrappers::BroadcastStream;
 pub type StreamWriter<Output> = FramedWrite<Output, GsbMessageEncoder>;
 
 #[derive(Message)]
@@ -352,7 +351,17 @@ impl<
                 } else {
                     let rx = self.router.write().subscribe_topic(topic_id.clone());
 
-                    let handle = ctx.spawn(fut::wrap_stream(BroadcastStream::new(rx)).fold(
+                    fn wrap_receiver<T: Clone>(
+                        rx: tokio::sync::broadcast::Receiver<T>,
+                    ) -> impl Stream<Item = Result<T, tokio::sync::broadcast::error::RecvError>>
+                    {
+                        stream::try_unfold(rx, |mut rx| async move {
+                            let it = rx.recv().await?;
+                            Ok(Some((it, rx)))
+                        })
+                    }
+
+                    let handle = ctx.spawn(fut::wrap_stream(wrap_receiver(rx)).fold(
                         (),
                         |_, request, act: &mut Self, ctx| {
                             log::trace!("[{:?}] broadcast new item", act.conn_info);
