@@ -76,7 +76,7 @@ where
     fn timeout(self, duration: Option<D>) -> Either<Timeout<Self>, MapType<Self>> {
         match duration {
             Some(d) => Either::Left(timeout(d.into_duration(), self)),
-            None => Either::Right(self.map(|v| Result::Ok(v))),
+            None => Either::Right(self.map(Ok)),
         }
     }
 }

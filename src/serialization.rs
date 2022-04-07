@@ -17,7 +17,7 @@ mod flex {
 
     #[inline]
     pub fn from_slice<T: serde::de::DeserializeOwned>(slice: &[u8]) -> Result<T, DecodeError> {
-        flexbuffers::from_slice(&slice).map_err(DecodeError)
+        flexbuffers::from_slice(slice).map_err(DecodeError)
     }
 }
 

@@ -1,3 +1,5 @@
+#![allow(clippy::needless_update)]
+#![allow(clippy::unit_arg)]
 use actix::Message;
 use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
@@ -56,10 +58,7 @@ impl ResponseChunk {
 
     #[inline]
     pub fn is_full(&self) -> bool {
-        match self {
-            ResponseChunk::Full(_) => true,
-            _ => false,
-        }
+        matches!(self, ResponseChunk::Full(_))
     }
 
     pub fn is_eos(&self) -> bool {

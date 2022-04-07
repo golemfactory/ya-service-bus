@@ -51,7 +51,7 @@ impl<T: RpcStreamMessage, H: RpcStreamHandler<T> + 'static> Handler<RpcStreamCal
         use futures::stream::StreamExt;
 
         let mut reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
-        let mut result = self.0.handle(&msg.caller, msg.body).map(|v| Ok(v));
+        let mut result = self.0.handle(&msg.caller, msg.body).map(Ok);
         let send_all = async move { reply.send_all(&mut result).await };
 
         ActorResponse::r#async(send_all.into_actor(self))

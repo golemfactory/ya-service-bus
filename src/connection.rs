@@ -28,7 +28,7 @@ fn gen_id() -> u64 {
 
     let mut rng = rand::thread_rng();
 
-    rng.gen::<u64>() & 0x1f_ff_ff__ff_ff_ff_ffu64
+    rng.gen::<u64>() & 0x001f_ffff_ffff_ffff_u64
 }
 
 #[derive(Default, Clone)]
@@ -120,7 +120,9 @@ impl CallRequestHandler for LocalRouterHandler {
     }
 
     fn on_disconnect(&mut self) {
-        self.disconnect_h.take().map(|f| f());
+        if let Some(handler) = self.disconnect_h.take() {
+            handler()
+        }
     }
 }
 
@@ -679,7 +681,7 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
     queue.push_back(tx);
 
     if writer.write(msg).is_some() {
-        ActorResponse::reply(Err(Error::GsbFailure(format!("no connection"))))
+        ActorResponse::reply(Err(Error::GsbFailure("no connection".into())))
     } else {
         ActorResponse::r#async(fut::wrap_future(async move {
             rx.await.map_err(|_| Error::Cancelled)??;
@@ -881,7 +883,7 @@ impl<
         });
         async move {
             fut.await
-                .map_err(|e| Error::from_addr(format!("subscribing {}", topic).into(), e))?
+                .map_err(|e| Error::from_addr(format!("subscribing {}", topic), e))?
         }
     }
 
@@ -895,7 +897,7 @@ impl<
         });
         async move {
             fut.await
-                .map_err(|e| Error::from_addr(format!("unsubscribing {}", topic).into(), e))?
+                .map_err(|e| Error::from_addr(format!("unsubscribing {}", topic), e))?
         }
     }
 
@@ -913,7 +915,7 @@ impl<
         });
         async move {
             fut.await
-                .map_err(|e| Error::from_addr(format!("broadcasting {}", topic).into(), e))?
+                .map_err(|e| Error::from_addr(format!("broadcasting {}", topic), e))?
         }
     }
 
