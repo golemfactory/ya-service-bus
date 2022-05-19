@@ -860,12 +860,12 @@ dependencies = [
 
 [[package]]
 name = "prost"
-version = "0.8.0"
+version = "0.10.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de5e2533f59d08fcf364fd374ebda0692a70bd6d7e66ef97f306f45c6c5d8020"
+checksum = "bc03e116981ff7d8da8e5c220e374587b98d294af7ba7dd7fda761158f00086f"
 dependencies = [
  "bytes",
- "prost-derive 0.8.0",
+ "prost-derive 0.10.1",
 ]
 
 [[package]]
@@ -901,9 +901,9 @@ dependencies = [
 
 [[package]]
 name = "prost-derive"
-version = "0.8.0"
+version = "0.10.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "600d2f334aa05acb02a755e217ef1ab6dea4d51b58b7846588b747edec04efba"
+checksum = "7b670f45da57fb8542ebdbb6105a925fe571b67f9e7ed9f47a06a84e72b4e7cc"
 dependencies = [
  "anyhow",
  "itertools 0.10.1",
@@ -1443,7 +1443,7 @@ name = "ya-sb-proto"
 version = "0.4.0"
 dependencies = [
  "bytes",
- "prost 0.7.0",
+ "prost 0.10.3",
  "prost-build",
  "serial_test",
  "thiserror",
@@ -1470,7 +1470,7 @@ dependencies = [
  "log",
  "parking_lot 0.11.1",
  "pin-project 1.0.7",
- "prost 0.8.0",
+ "prost 0.10.3",
  "structopt",
  "tokio",
  "tokio-stream",
