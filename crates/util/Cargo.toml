@@ -18,5 +18,5 @@ with-writer = ['actix', 'bitflags', 'futures']
 bytes = { version = "1", optional = true }
 futures = { version = "0.3", optional = true }
 pin-project = { version = "0.4", optional = true }
-actix = { version = "0.11", default-features = false, optional = true }
+actix = { version = "0.13", default-features = false, optional = true }
 bitflags = { version = "1.2.1", optional = true }

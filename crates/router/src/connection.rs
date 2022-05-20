@@ -226,7 +226,7 @@ where
         if self.output.buffer_len() < self.config.high_buffer_mark() && self.hold_queue.is_empty() {
             self.output.write(msg);
             log::trace!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
-            future::ok(()).boxed_local()
+            Box::pin(future::ok(()))
         } else {
             let (tx, rx) = oneshot::channel();
             self.hold_queue.push((msg, tx));
@@ -365,7 +365,7 @@ impl<
                                         act.conn_info,
                                         e
                                     );
-                                    future::ok(()).boxed_local()
+                                    Box::pin(future::ok(()))
                                 }
                             }
                             .into_actor(act)
