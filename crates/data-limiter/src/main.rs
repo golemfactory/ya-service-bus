@@ -8,13 +8,12 @@ use tokio;
 use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 
-use figment::{
-    Figment,
-};
+use figment::Figment;
 
-
+use rocket::response::content::RawHtml;
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{get, routes};
+
 struct TransportLoopData {
     _synched: i32,
     transferred: u64,
@@ -168,10 +167,44 @@ struct Opt {
     rest_api_addr: String,
 }
 
+#[get("/")] // <- route attribute
+fn main_route() -> RawHtml<&'static str> {
+    RawHtml(
+        r#"<ul><li><a href="/world">Hello world</a></li><li><a href="/stats">Statistics</a></li></ul>"#,
+    )
+}
+
 #[get("/world")] // <- route attribute
-fn world() -> &'static str {
+fn world() -> RawHtml<&'static str> {
     // <- request handler
-    "hello, world!"
+    RawHtml(r#"<div style="border:1px solid gray">Hello world</div>"#)
+}
+
+#[get("/stats")] // <- route attribute
+fn stats() -> RawHtml<&'static str> {
+    // <- request handler
+    RawHtml(r#"<div style="border:1px solid gray">Hello world</div>"#)
+}
+
+async fn run_rocket() -> anyhow::Result<()> {
+    let opt = Opt::from_args();
+    let str: String = opt.rest_api_addr;
+    let split: Vec<&str> = str.split(":").collect();
+
+    let address = split.get(0).ok_or(anyhow!("failed to split address"))?;
+    let port_str = split.get(1).ok_or(anyhow!("failed to split address"))?;
+    let port = port_str.parse::<u16>()?;
+
+    log::debug!("Starting rocket at address {}:{}", address, port);
+
+    let cfg = Figment::from(rocket::config::Config::default())
+        .merge(("port", port))
+        .merge(("address", address));
+    let _rock = rocket::custom(cfg)
+        .mount("/", routes![main_route, world, stats])
+        .launch()
+        .await?;
+    Ok(())
 }
 
 async fn run() -> anyhow::Result<()> {
@@ -180,59 +213,30 @@ async fn run() -> anyhow::Result<()> {
 
     log::debug!("Run ...");
 
-    let str: String = opt.rest_api_addr;
-    let split: Vec<&str> = str.split(":").collect();
-
-    let _address = split.get(0).ok_or(anyhow!("failed to split address"))?;
-    let port_str = split.get(1).ok_or(anyhow!("failed to split address"))?;
-    let port = port_str.parse::<u16>()?;
-    /*
-        log::debug!("Applying configuration to rocket rest api address: {} port: {}", address, port);
-        let figment = Figment::from(rocket::Config::default())
-            .merge(("port", port))
-            .merge(("address", address))
-            .merge(("limits", Limits::new().limit("json", ByteUnit::from(2000000))));
-
-        log::debug!("Starting rocket at api address: {} port: {}", address, port);
-        let rock = rocket::custom(figment).mount("/api", routes![world]).attach(AdHoc::config::<Config>()).launch().await?;
-    */
-
-    let cfg = Figment::from(rocket::config::Config::default()).merge(("port", port));
-    rocket::custom(cfg)
-        .mount("/api", routes![world])
-        .launch()
-        .await?;
-
-    let rocket = rocket::build();
-    let figment = rocket.figment();
-
-    #[derive(Deserialize)]
-    #[serde(crate = "rocket::serde")]
-    struct Config {
-        port: u16,
-    }
-
-    // extract the entire config any `Deserialize` value
-    let _config: Config = figment.extract().expect("config");
-
-    // or a piece of it into any `Deserialize` value
-    //let custom: Vec<String> = figment.extract_inner("custom").expect("custom");
-    /*
-    let _rocket = rocket::build()
-        .mount("/api", routes![world])
-        .launch()
-        .await?;*/
-
     log::debug!(
         "Starting relay. Listen addr: {}, target addr: {}",
         opt.listen_addr,
         opt.target_addr
     );
 
+    tokio::spawn(async move {
+        {
+            match run_rocket().await {
+                Ok(()) => {
+                    log::info!("Rocket finished without error");
+                }
+                Err(err) => {
+                    log::error!("Rocket ended with error: {}", err);
+                }
+            }
+        }
+    });
     let listener = TcpListener::bind(opt.listen_addr).await?;
     let (socket, _) = listener.accept().await?;
     let connection = TcpStream::connect(opt.target_addr).await?;
+
     process_socket(socket, connection).await?;
+
     Ok(())
 }
 
