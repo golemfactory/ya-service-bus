@@ -9,11 +9,10 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt, ReadHalf, WriteHalf};
 use tokio::net::{TcpListener, TcpStream};
 
 use figment::{
-    providers::{Env, Format, Serialized, Toml},
-    Figment, Profile,
+    Figment,
 };
-use rocket::data::{ByteUnit, Limits};
-use rocket::fairing::AdHoc;
+
+
 use rocket::serde::{Deserialize, Serialize};
 use rocket::{get, routes};
 struct TransportLoopData {
@@ -184,7 +183,7 @@ async fn run() -> anyhow::Result<()> {
     let str: String = opt.rest_api_addr;
     let split: Vec<&str> = str.split(":").collect();
 
-    let address = split.get(0).ok_or(anyhow!("failed to split address"))?;
+    let _address = split.get(0).ok_or(anyhow!("failed to split address"))?;
     let port_str = split.get(1).ok_or(anyhow!("failed to split address"))?;
     let port = port_str.parse::<u16>()?;
     /*
@@ -214,7 +213,7 @@ async fn run() -> anyhow::Result<()> {
     }
 
     // extract the entire config any `Deserialize` value
-    let config: Config = figment.extract().expect("config");
+    let _config: Config = figment.extract().expect("config");
 
     // or a piece of it into any `Deserialize` value
     //let custom: Vec<String> = figment.extract_inner("custom").expect("custom");
