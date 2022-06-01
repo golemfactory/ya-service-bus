@@ -13,7 +13,7 @@ const SERVICE_ADDR: &str = "/local/raw/echo";
 
 async fn delay_for(secs: Option<u64>) {
     if let Some(secs) = secs {
-        tokio::time::delay_for(Duration::from_secs(secs)).await
+        tokio::time::sleep(Duration::from_secs(secs)).await
     } else {
         future::pending().await
     }
@@ -105,7 +105,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     env_logger::init();
     let bus_addr = "127.0.0.1:7464";
     let args = Args::from_args();
-    let mut sys = System::new("");
+    let sys = System::new();
     sys.block_on(async move {
         let mut client_info = ClientInfo::default();
         let (tx, rx) = oneshot::channel();

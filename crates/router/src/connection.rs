@@ -74,15 +74,15 @@ impl<
             if since_last > act.config.ping_interval() / 2 {
                 if since_last > act.config.ping_timeout() {
                     log::warn!(
-                        "[{:?}] [PING CHECK] no data for {:?} killing connection",
+                        "[{:?}] no data for {:?} killing connection",
                         act.conn_info,
                         since_last
                     );
                     ctx.stop();
                     return;
                 }
-                log::trace!(
-                    "[{:?}] [PING CHECK] no data for: {:?}, sending ping (buffer={})",
+                log::debug!(
+                    "[{:?}] no data for: {:?}, sending ping (buffer={})",
                     act.conn_info,
                     since_last,
                     act.output.buffer_len()
@@ -226,7 +226,7 @@ where
         if self.output.buffer_len() < self.config.high_buffer_mark() && self.hold_queue.is_empty() {
             self.output.write(msg);
             log::trace!("[{:?}] buffer {}", self.conn_info, self.output.buffer_len());
-            future::ok(()).boxed_local()
+            Box::pin(future::ok(()))
         } else {
             let (tx, rx) = oneshot::channel();
             self.hold_queue.push((msg, tx));
@@ -276,7 +276,7 @@ impl<
         &mut self,
         item: Result<GsbMessage, ProtocolError>,
         ctx: &mut Context<Self>,
-    ) -> Pin<Box<dyn ActorFuture<Output = (), Actor = Self>>> {
+    ) -> Pin<Box<dyn ActorFuture<Self, Output = ()>>> {
         self.last_packet = Instant::now();
 
         let msg = match item {
@@ -365,7 +365,7 @@ impl<
                                         act.conn_info,
                                         e
                                     );
-                                    future::ok(()).boxed_local()
+                                    Box::pin(future::ok(()))
                                 }
                             }
                             .into_actor(act)

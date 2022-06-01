@@ -23,22 +23,23 @@ required-features = ['bin']
 
 [dependencies]
 ya-sb-proto = { version = "^0.4", path = "../proto" }
-ya-sb-util = { version = "^0.2", path = "../util", features = ["with-writer"] }
-actix-rt = "1.1"
-actix = { version = "0.10", default-features = false }
-actix-server = "1.0"
-actix-service = "1.0"
+ya-sb-util = { version = "0.2", path = "../util", features = ["with-writer"] }
+actix-rt = "2.2"
+actix = { version = "0.13", default-features = false, features = ["macros"] }
+actix-server = "2"
+actix-service = "2"
 
-anyhow = "1.0.28"
+anyhow = "1.0"
 chrono = "0.4"
 
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4.8"
-prost = "0.6.1"
+prost = "0.10"
 structopt = "0.3"
-tokio = { version = "0.2", features = ["tcp", "net", "sync", "macros", "rt-core", "stream", "time"] }
-tokio-util = { version = "0.3.0", features = ["codec"] }
+tokio = { version = "1", features = ["net", "sync", "macros", "rt-multi-thread", "time"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+tokio-stream = { version = "0.1", features = ["sync"] }
 url = "2.1.1"
 uuid = { version = "0.8.1", features = ["v4"] }
 parking_lot = "0.11.1"

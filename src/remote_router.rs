@@ -1,5 +1,5 @@
 use actix::{prelude::*, WrapFuture};
-use futures::{channel::oneshot, prelude::*, FutureExt, SinkExt};
+use futures::{channel::oneshot, future::Either, prelude::*, FutureExt, SinkExt};
 use std::ops::Not;
 use std::{collections::HashSet, time::Duration};
 
@@ -70,13 +70,13 @@ impl RemoteRouter {
             .then(|transport, act, ctx| {
                 let transport = match transport {
                     Ok(v) => v,
-                    Err(e) => return fut::Either::Left(fut::err(e)),
+                    Err(e) => return Either::Left(fut::err(e)),
                 };
                 let connection =
                     connection::connect_with_handler(client_info, transport, act.handler(ctx));
                 act.connection = Some(connection.clone());
                 act.clean_pending_calls(Ok(connection.clone()), ctx);
-                fut::Either::Right(
+                Either::Right(
                     future::try_join_all(
                         act.local_bindings
                             .clone()
@@ -187,23 +187,23 @@ impl Handler<UpdateService> for RemoteRouter {
         match msg {
             UpdateService::Add(service_id) => {
                 if let Some(c) = &mut self.connection {
-                    Arbiter::spawn(c.bind(service_id.clone()).then(|v| async {
+                    Arbiter::current().spawn(c.bind(service_id.clone()).then(|v| async {
                         v.unwrap_or_else(|err| match err {
                             Error::GsbAlreadyRegistered(m) => {
                                 log::warn!("already registered: {}", m)
                             }
                             e => log::error!("bind error: {}", e),
                         })
-                    }))
+                    }));
                 }
                 log::trace!("Binding local service '{}'", service_id);
                 self.local_bindings.insert(service_id);
             }
             UpdateService::Remove(service_id) => {
                 if let Some(c) = &mut self.connection {
-                    Arbiter::spawn(c.unbind(service_id.clone()).then(|v| async {
+                    Arbiter::current().spawn(c.unbind(service_id.clone()).then(|v| async {
                         v.unwrap_or_else(|e| log::error!("unbind error: {}", e))
-                    }))
+                    }));
                 }
                 log::trace!("Unbinding local service '{}'", service_id);
                 self.local_bindings.remove(&service_id);
@@ -214,7 +214,7 @@ impl Handler<UpdateService> for RemoteRouter {
 }
 
 impl Handler<RpcRawCall> for RemoteRouter {
-    type Result = ActorResponse<Self, Vec<u8>, Error>;
+    type Result = ActorResponse<Self, Result<Vec<u8>, Error>>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
         ActorResponse::r#async(

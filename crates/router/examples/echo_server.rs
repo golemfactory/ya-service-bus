@@ -80,7 +80,7 @@ async fn run_server(args: Args) {
                     );
                     if let Some(delay_secs) = args.delay.as_ref() {
                         println!("delay for {} secs", delay_secs);
-                        tokio::time::delay_for(Duration::from_secs(*delay_secs)).await;
+                        tokio::time::sleep(Duration::from_secs(*delay_secs)).await;
                         println!("done");
                     }
                     Some(Ok(CallReply {
