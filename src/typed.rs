@@ -104,6 +104,17 @@ impl Endpoint {
             .unwrap()
             .streaming_forward(&self.addr, msg)
     }
+
+    pub fn call_raw_as(
+        &self,
+        caller: &str,
+        msg: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
+        self.router
+            .lock()
+            .unwrap()
+            .forward_bytes(&self.addr, caller, msg)
+    }
 }
 
 impl<T: RpcMessage + Unpin> RpcEndpoint<T> for Endpoint

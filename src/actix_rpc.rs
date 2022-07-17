@@ -1,5 +1,5 @@
 /// Using GSB with actix 0.9
-use crate::{RpcStreamCall, RpcStreamMessage};
+use crate::{RpcRawCall, RpcStreamCall, RpcStreamMessage};
 use actix::prelude::*;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -17,6 +17,11 @@ where
     <RpcEnvelope<M> as Message>::Result: Serialize + DeserializeOwned + Sync + Send,
 {
     router().lock().unwrap().bind_actor(addr, actor);
+    Handle { _inner: {} }
+}
+
+pub fn bind_raw(addr: &str, actor: Recipient<RpcRawCall>) -> Handle {
+    router().lock().unwrap().bind_raw(addr, actor);
     Handle { _inner: {} }
 }
 
