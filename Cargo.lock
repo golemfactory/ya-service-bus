@@ -297,9 +297,9 @@ checksum = "37ab347416e802de484e4d03c7316c48f1ecb56574dfd4a46a80f173ce1de04d"
 
 [[package]]
 name = "flexbuffers"
-version = "0.2.2"
+version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3556c7e0d5b671814709229de0b91aa1e6dff7844df6102cd6b7ec6c3a46a187"
+checksum = "15d14128f06405808ce75bfebe11e9b0f9da18719ede6d7bdb1702d6bfe0f7e8"
 dependencies = [
  "bitflags",
  "byteorder",
