@@ -23,7 +23,7 @@ required-features = ['bin']
 
 [dependencies]
 ya-sb-proto = { version = "^0.5", path = "../proto" }
-ya-sb-util = { version = "0.4", path = "../util", features = ["with-writer"] }
+ya-sb-util = { version = "0.3", path = "../util", features = ["with-writer"] }
 actix-rt = "2.2"
 actix = { version = "0.13", default-features = false, features = ["macros"] }
 actix-server = "2"
