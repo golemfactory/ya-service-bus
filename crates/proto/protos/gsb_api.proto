@@ -109,6 +109,7 @@ message CallRequest {
   string address = 2;
   string request_id = 3;
   bytes data = 4;
+  bool no_reply = 5;
 }
 
 message CallReply {

@@ -113,7 +113,36 @@ impl Endpoint {
         self.router
             .lock()
             .unwrap()
-            .forward_bytes(&self.addr, caller, msg)
+            .forward_bytes(&self.addr, caller, msg, false)
+    }
+
+    pub fn push<T: RpcMessage + Unpin>(&self, msg: T) -> impl Future<Output = Result<(), Error>> {
+        self.router
+            .lock()
+            .unwrap()
+            .push(&self.addr, RpcEnvelope::local(msg))
+    }
+
+    pub fn push_as<T: RpcMessage + Unpin>(
+        &self,
+        caller: impl ToString,
+        msg: T,
+    ) -> impl Future<Output = Result<(), Error>> {
+        self.router
+            .lock()
+            .unwrap()
+            .push(&self.addr, RpcEnvelope::with_caller(caller, msg))
+    }
+
+    pub fn push_raw_as(
+        &self,
+        caller: &str,
+        msg: Vec<u8>,
+    ) -> impl Future<Output = Result<Vec<u8>, Error>> {
+        self.router
+            .lock()
+            .unwrap()
+            .forward_bytes(&self.addr, caller, msg, true)
     }
 }
 

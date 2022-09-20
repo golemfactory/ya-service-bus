@@ -54,6 +54,7 @@ impl CallRequestHandler for DebugHandler {
         caller: String,
         address: String,
         data: Vec<u8>,
+        _no_reply: bool,
     ) -> Self::Reply {
         println!(
             r#"
@@ -144,7 +145,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             }
             Args::Send { script } => {
                 let data = std::fs::read(script)?;
-                let msg = connection.call("me", SERVICE_ADDR, data).await?;
+                let msg = connection.call("me", SERVICE_ADDR, data, false).await?;
                 eprintln!("body={}", String::from_utf8_lossy(msg.as_ref()));
                 Ok(())
             }

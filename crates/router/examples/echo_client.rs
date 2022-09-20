@@ -36,6 +36,7 @@ async fn run_client(args: Args) {
                 address: "echo/test".to_string(),
                 request_id: request_id.clone(),
                 data: payload.to_vec(),
+                no_reply: false,
             }
         })
         .collect();

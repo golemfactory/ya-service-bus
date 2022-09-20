@@ -58,6 +58,7 @@ pub trait CallRequestHandler {
         caller: String,
         address: String,
         data: Vec<u8>,
+        no_reply: bool,
     ) -> Self::Reply;
 
     fn handle_event(&mut self, caller: String, topic: String, data: Vec<u8>) {
@@ -111,11 +112,12 @@ impl CallRequestHandler for LocalRouterHandler {
         caller: String,
         address: String,
         data: Vec<u8>,
+        no_reply: bool,
     ) -> Self::Reply {
         router()
             .lock()
             .unwrap()
-            .forward_bytes_local(&address, &caller, data.as_ref())
+            .forward_bytes_local(&address, &caller, data.as_ref(), no_reply)
             .boxed_local()
     }
 
@@ -137,6 +139,7 @@ impl<
         caller: String,
         address: String,
         data: Vec<u8>,
+        _no_reply: bool,
     ) -> Self::Reply {
         self(request_id, caller, address, data)
     }
@@ -156,6 +159,7 @@ impl<
         caller: String,
         address: String,
         data: Vec<u8>,
+        _no_reply: bool,
     ) -> Self::Reply {
         (self.0)(request_id, caller, address, data)
     }
@@ -324,7 +328,7 @@ where
         ctx: &mut <Self as Actor>::Context,
     ) {
         log::trace!(
-            "handling call from = {}, to = {}, request_id={}, ",
+            "handling rpc call from = {}, to = {}, request_id={}, ",
             caller,
             address,
             request_id
@@ -332,7 +336,7 @@ where
         let eos_request_id = request_id.clone();
         let do_call = self
             .handler
-            .do_call(request_id.clone(), caller, address, data)
+            .do_call(request_id.clone(), caller, address, data, false)
             .into_actor(self)
             .fold(false, move |_got_eos, r, act: &mut Self, _ctx| {
                 let request_id = request_id.clone();
@@ -382,6 +386,28 @@ where
             });
         //do_call.spawn(ctx);
         ctx.spawn(do_call);
+    }
+
+    fn handle_push_request(
+        &mut self,
+        request_id: String,
+        caller: String,
+        address: String,
+        data: Vec<u8>,
+        ctx: &mut <Self as Actor>::Context,
+    ) {
+        log::trace!(
+            "handling push call from = {}, to = {}, request_id={}, ",
+            caller,
+            address,
+            request_id
+        );
+
+        self.handler
+            .do_call(request_id.clone(), caller, address, data, true)
+            .into_actor(self)
+            .fold((), move |_, _, _, _| fut::ready(()))
+            .spawn(ctx);
     }
 
     fn handle_reply(
@@ -565,7 +591,11 @@ where
                 }
             }
             GsbMessage::CallRequest(r) => {
-                self.handle_call_request(r.request_id, r.caller, r.address, r.data, ctx)
+                if r.no_reply {
+                    self.handle_push_request(r.request_id, r.caller, r.address, r.data, ctx)
+                } else {
+                    self.handle_call_request(r.request_id, r.caller, r.address, r.data, ctx)
+                }
             }
             GsbMessage::CallReply(r) => {
                 if let Err(e) = self.handle_reply(r.request_id, r.code, r.reply_type, r.data, ctx) {
@@ -618,30 +648,45 @@ where
     type Result = ActorResponse<Self, Result<Vec<u8>, Error>>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
-        let (tx, mut rx) = mpsc::channel(1);
         let request_id = format!("{}", gen_id());
-        let _ = self.call_reply.insert(request_id.clone(), tx);
         let caller = msg.caller;
         let address = msg.addr;
         let data = msg.body;
+        let no_reply = msg.no_reply;
+
+        let rx = if no_reply {
+            None
+        } else {
+            let (tx, rx) = mpsc::channel(1);
+            let _ = self.call_reply.insert(request_id.clone(), tx);
+            Some(rx)
+        };
+
         log::trace!("handling caller (rpc): {}, addr:{}", caller, address);
         let _r = self.writer.write(GsbMessage::CallRequest(CallRequest {
             request_id,
             caller,
             address,
             data,
+            no_reply,
         }));
-        let fetch_response = async move {
-            match futures::StreamExt::next(&mut rx).await {
-                Some(Ok(ResponseChunk::Full(data))) => Ok(data),
-                Some(Err(e)) => Err(e),
-                Some(Ok(ResponseChunk::Part(_))) => {
-                    Err(Error::GsbFailure("streaming response".to_string()))
-                }
-                None => Err(Error::GsbFailure("unexpected EOS".to_string())),
+
+        match rx {
+            Some(mut rx) => {
+                let fetch_response = async move {
+                    match futures::StreamExt::next(&mut rx).await {
+                        Some(Ok(ResponseChunk::Full(data))) => Ok(data),
+                        Some(Err(e)) => Err(e),
+                        Some(Ok(ResponseChunk::Part(_))) => {
+                            Err(Error::GsbFailure("streaming response".to_string()))
+                        }
+                        None => Err(Error::GsbFailure("unexpected EOS".to_string())),
+                    }
+                };
+                ActorResponse::r#async(fetch_response.into_actor(self))
             }
-        };
-        ActorResponse::r#async(fetch_response.into_actor(self))
+            None => ActorResponse::reply(Ok(Vec::new())),
+        }
     }
 }
 
@@ -665,6 +710,7 @@ where
             caller,
             address,
             data,
+            no_reply: false,
         }));
         ActorResponse::reply(Ok(()))
     }
@@ -922,6 +968,7 @@ impl<
         caller: impl Into<String>,
         addr: impl Into<String>,
         body: impl Into<Vec<u8>>,
+        no_reply: bool,
     ) -> impl Future<Output = Result<Vec<u8>, Error>> {
         let addr = addr.into();
         self.0
@@ -929,6 +976,7 @@ impl<
                 caller: caller.into(),
                 addr: addr.clone(),
                 body: body.into(),
+                no_reply,
             })
             .then(|v| async { v.map_err(|e| Error::from_addr(addr, e))? })
     }
