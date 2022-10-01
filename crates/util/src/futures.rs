@@ -1,10 +1,11 @@
+#![allow(unused)]
+
 use futures::prelude::*;
 use futures::task::{Context, Poll};
-use pin_project::*;
 use std::marker::PhantomData;
 use std::pin::Pin;
 
-#[pin_project]
+#[pin_project::pin_project]
 pub struct Flatten<F, E> {
     #[pin]
     inner: F,
