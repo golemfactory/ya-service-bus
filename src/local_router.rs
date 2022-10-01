@@ -48,7 +48,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
             };
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
-                .map_err(|e| Error::from_addr("unknown recipient".into(), e))
+                .map_err(|e| Error::from_addr(msg.addr, e))
                 .and_then(|r| async move { crate::serialization::to_vec(&r).map_err(Error::from) }),
         )
     }
@@ -65,7 +65,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
-                .map_err(|e| Error::from_addr("unknown stream recipient".into(), e))
+                .map_err(|e| Error::from_addr(msg.addr, e))
                 .and_then(|r| future::ready(crate::serialization::to_vec(&r).map_err(Error::from)))
                 .map_ok(|v| ResponseChunk::Full(v))
                 .into_stream(),
@@ -78,10 +78,11 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 }
 
 impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
-    fn send(&self, _msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
-        Box::pin(future::err(Error::GsbBadRequest(
-            "non-streaming-request on streaming endpoint".into(),
-        )))
+    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+        Box::pin(future::err(Error::GsbBadRequest(format!(
+            "non-streaming-request on streaming endpoint: {}",
+            msg.addr
+        ))))
     }
 
     fn call_stream(
