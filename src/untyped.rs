@@ -90,11 +90,8 @@ impl RawStreamHandler for () {
     }
 }
 
-pub struct Fn4Handler<Fut>
-where
-    Fut: Future<Output = Result<Vec<u8>, Error>>,
-{
-    f: Box<dyn FnMut(&str, &str, &[u8], bool) -> Fut>,
+pub struct Fn4Handler<R> {
+    f: Box<dyn FnMut(&str, &str, &[u8], bool) -> R>,
 }
 
 impl<Fut> RawHandler for Fn4Handler<Fut>
@@ -102,6 +99,17 @@ where
     Fut: Future<Output = Result<Vec<u8>, Error>>,
 {
     type Result = Fut;
+
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], no_reply: bool) -> Self::Result {
+        (*self.f)(caller, addr, msg, no_reply)
+    }
+}
+
+impl<S> RawStreamHandler for Fn4Handler<S>
+where
+    S: Stream<Item = Result<ResponseChunk, Error>>,
+{
+    type Result = S;
 
     fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], no_reply: bool) -> Self::Result {
         (*self.f)(caller, addr, msg, no_reply)
@@ -121,6 +129,23 @@ where
     F: FnMut(&str, &str, &[u8], bool) -> Fut + 'static,
 {
     fn into_handler(self) -> Fn4Handler<Fut> {
+        Fn4Handler { f: Box::new(self) }
+    }
+}
+
+pub trait Fn4StreamHandlerExt<S>
+where
+    S: Stream<Item = Result<ResponseChunk, Error>>,
+{
+    fn into_stream_handler(self) -> Fn4Handler<S>;
+}
+
+impl<F, S> Fn4StreamHandlerExt<S> for F
+where
+    S: Stream<Item = Result<ResponseChunk, Error>>,
+    F: FnMut(&str, &str, &[u8], bool) -> S + 'static,
+{
+    fn into_stream_handler(self) -> Fn4Handler<S> {
         Fn4Handler { f: Box::new(self) }
     }
 }
