@@ -63,6 +63,23 @@ impl Endpoint {
         b.forward(self.addr.as_ref(), RpcEnvelope::with_caller(caller, msg))
     }
 
+    pub fn push<M: RpcMessage + Serialize + DeserializeOwned + Sync + Send + Unpin>(
+        &self,
+        msg: M,
+    ) -> impl Future<Output = Result<(), BusError>> + 'static {
+        let mut b = self.router.lock().unwrap();
+        b.push(self.addr.as_ref(), RpcEnvelope::local(msg))
+    }
+
+    pub fn push_as<M: RpcMessage + Serialize + DeserializeOwned + Sync + Send + Unpin>(
+        &self,
+        caller: impl ToString,
+        msg: M,
+    ) -> impl Future<Output = Result<(), BusError>> + 'static {
+        let mut b = self.router.lock().unwrap();
+        b.push(self.addr.as_ref(), RpcEnvelope::with_caller(caller, msg))
+    }
+
     pub fn call_stream<M: RpcStreamMessage>(
         &self,
         // TODO: add caller

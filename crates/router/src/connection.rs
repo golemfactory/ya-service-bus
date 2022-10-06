@@ -89,7 +89,7 @@ impl<
                 );
                 act.output.write(GsbMessage::Ping(Default::default()));
             }
-            let dead_replay: Vec<_> = act
+            let dead_replies: Vec<_> = act
                 .reply_map
                 .iter()
                 .filter_map(|(request_id, replay_addr)| {
@@ -100,7 +100,7 @@ impl<
                     }
                 })
                 .collect();
-            for request_id in dead_replay {
+            for request_id in dead_replies {
                 let _ = act.reply_map.remove(&request_id);
                 log::debug!(
                     "[{:?}] removing dead reply map for {}",
@@ -192,6 +192,25 @@ where
         }
     }
 
+    fn handle_push_request(
+        &mut self,
+        call_request: CallRequest,
+        ctx: &mut <Self as Actor>::Context,
+    ) -> impl Future<Output = ()> + 'static {
+        match { self.router.read().resolve_node(&call_request.address) } {
+            Some(dst) => {
+                let reply_to = ctx.address().recipient();
+                let msg = ForwardCallRequest {
+                    call_request,
+                    reply_to,
+                };
+
+                dst.send(msg).then(|_| future::ready(())).left_future()
+            }
+            None => future::ready(()).right_future(),
+        }
+    }
+
     fn handle_call_reply(
         &mut self,
         call_reply: CallReply,
@@ -199,7 +218,7 @@ where
     ) -> impl Future<Output = Result<(), String>> + 'static {
         if let Some(dst) = match call_reply.reply_type() {
             CallReplyType::Full => self.reply_map.remove(&call_reply.request_id),
-            CallReplyType::Partial => self.reply_map.get(&call_reply.request_id).map(Clone::clone),
+            CallReplyType::Partial => self.reply_map.get(&call_reply.request_id).cloned(),
         } {
             let request_id = call_reply.request_id.clone();
             dst.send(ForwardCallResponse { call_reply })
@@ -210,11 +229,8 @@ where
                 })
                 .left_future()
         } else {
-            future::err(format!(
-                "received unmatched reply {}",
-                call_reply.request_id
-            ))
-            .right_future()
+            log::debug!("received unmatched reply {}", call_reply.request_id);
+            future::ok(()).right_future()
         }
     }
 
@@ -295,6 +311,9 @@ impl<
 
         match msg {
             GsbMessage::CallRequest(call_request) => {
+                if call_request.no_reply {
+                    return Box::pin(self.handle_push_request(call_request, ctx).into_actor(self));
+                }
                 return Box::pin(
                     self.handle_call_request(call_request, ctx)
                         .into_actor(self)
@@ -304,7 +323,7 @@ impl<
                             }
                             fut::ready(())
                         }),
-                )
+                );
             }
             GsbMessage::CallReply(call_reply) => {
                 return Box::pin(
@@ -523,16 +542,18 @@ where
     type Result = ResponseFuture<Result<(), oneshot::Canceled>>;
 
     fn handle(&mut self, msg: ForwardCallRequest, ctx: &mut Self::Context) -> Self::Result {
-        if self
-            .reply_map
-            .insert(msg.call_request.request_id.clone(), msg.reply_to)
-            .is_some()
-        {
-            log::warn!(
-                "[{:?}] duplicate message request id forwarded {}",
-                self.conn_info,
-                msg.call_request.request_id
-            );
+        if !msg.call_request.no_reply {
+            if self
+                .reply_map
+                .insert(msg.call_request.request_id.clone(), msg.reply_to)
+                .is_some()
+            {
+                log::warn!(
+                    "[{:?}] duplicate message request id forwarded {}",
+                    self.conn_info,
+                    msg.call_request.request_id
+                );
+            }
         }
         self.send_message(GsbMessage::CallRequest(msg.call_request), ctx)
     }

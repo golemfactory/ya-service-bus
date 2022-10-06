@@ -48,7 +48,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
             };
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
-                .map_err(|e| Error::from_addr("unknown recipient".into(), e))
+                .map_err(|e| Error::from_addr(msg.addr, e))
                 .and_then(|r| async move { crate::serialization::to_vec(&r).map_err(Error::from) }),
         )
     }
@@ -65,7 +65,7 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
-                .map_err(|e| Error::from_addr("unknown stream recipient".into(), e))
+                .map_err(|e| Error::from_addr(msg.addr, e))
                 .and_then(|r| future::ready(crate::serialization::to_vec(&r).map_err(Error::from)))
                 .map_ok(|v| ResponseChunk::Full(v))
                 .into_stream(),
@@ -78,10 +78,11 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 }
 
 impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
-    fn send(&self, _msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
-        Box::pin(future::err(Error::GsbBadRequest(
-            "non-streaming-request on streaming endpoint".into(),
-        )))
+    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+        Box::pin(future::err(Error::GsbBadRequest(format!(
+            "non-streaming-request on streaming endpoint: {}",
+            msg.addr
+        ))))
     }
 
     fn call_stream(
@@ -329,6 +330,8 @@ impl Slot {
         addr: String,
         body: T,
     ) -> impl Stream<Item = Result<Result<T::Item, T::Error>, Error>> {
+        let no_reply = false;
+
         if let Some(h) = self.stream_recipient() {
             let (reply, rx) = futures::channel::mpsc::channel(16);
             let call = RpcStreamCall {
@@ -386,19 +389,24 @@ impl Slot {
                     Ok(body) => body,
                     Err(e) => return stream::once(future::err(Error::from(e))).right_stream(),
                 };
-                self.send_streaming(RpcRawCall { caller, addr, body })
-                    .filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
-                    .map(|chunk_result| {
-                        (move || -> Result<Result<T::Item, T::Error>, Error> {
-                            let chunk = match chunk_result {
-                                Ok(ResponseChunk::Part(chunk)) => chunk,
-                                Ok(ResponseChunk::Full(chunk)) => chunk,
-                                Err(e) => return Err(e),
-                            };
-                            Ok(crate::serialization::from_slice(&chunk)?)
-                        })()
-                    })
-                    .left_stream()
+                self.send_streaming(RpcRawCall {
+                    caller,
+                    addr,
+                    body,
+                    no_reply,
+                })
+                .filter(|s| future::ready(s.as_ref().map(|s| !s.is_eos()).unwrap_or(true)))
+                .map(|chunk_result| {
+                    (move || -> Result<Result<T::Item, T::Error>, Error> {
+                        let chunk = match chunk_result {
+                            Ok(ResponseChunk::Part(chunk)) => chunk,
+                            Ok(ResponseChunk::Full(chunk)) => chunk,
+                            Err(e) => return Err(e),
+                        };
+                        Ok(crate::serialization::from_slice(&chunk)?)
+                    })()
+                })
+                .left_stream()
             })()
             .boxed_local()
             .right_stream()
@@ -527,7 +535,7 @@ impl Router {
                     .map_err(|e| Error::from_addr(addr, e))
                     .left_future()
             } else {
-                slot.send(RpcRawCall::from_envelope_addr(msg, addr))
+                slot.send(RpcRawCall::from_envelope_addr(msg, addr, false))
                     .then(|b| {
                         future::ready(match b {
                             Ok(b) => {
@@ -547,7 +555,7 @@ impl Router {
             .left_future()
         } else {
             RemoteRouter::from_registry()
-                .send(RpcRawCall::from_envelope_addr(msg, addr.clone()))
+                .send(RpcRawCall::from_envelope_addr(msg, addr.clone(), false))
                 .then(|v| {
                     future::ready(match v {
                         Ok(v) => v,
@@ -566,6 +574,41 @@ impl Router {
                             }
                         }
                         Err(e) => Err(e),
+                    })
+                })
+                .right_future()
+        }
+    }
+
+    pub fn push<T: RpcMessage + Unpin>(
+        &mut self,
+        addr: &str,
+        msg: RpcEnvelope<T>,
+    ) -> impl Future<Output = Result<(), Error>> {
+        let addr = format!("{}/{}", addr, T::ID);
+        if let Some(slot) = self.handlers.get_mut(&addr) {
+            if let Some(h) = slot.recipient() {
+                h.send(msg)
+                    .then(|v| {
+                        future::ready(match v {
+                            Ok(_) => Ok(()),
+                            Err(e) => Err(Error::from_addr(addr, e)),
+                        })
+                    })
+                    .left_future()
+            } else {
+                slot.send(RpcRawCall::from_envelope_addr(msg, addr.clone(), true))
+                    .then(|v| future::ready(v.map(|_| ())))
+                    .right_future()
+            }
+            .left_future()
+        } else {
+            RemoteRouter::from_registry()
+                .send(RpcRawCall::from_envelope_addr(msg, addr.clone(), true))
+                .then(|v| {
+                    future::ready(match v {
+                        Ok(_) => Ok(()),
+                        Err(e) => Err(Error::from_addr(addr, e)),
                     })
                 })
                 .right_future()
@@ -612,6 +655,7 @@ impl Router {
         addr: &str,
         caller: &str,
         msg: Vec<u8>,
+        no_reply: bool,
     ) -> impl Future<Output = Result<Vec<u8>, Error>> {
         let addr = addr.to_string();
         if let Some(slot) = self.handlers.get_mut(&addr) {
@@ -619,6 +663,7 @@ impl Router {
                 caller: caller.into(),
                 addr: addr.clone(),
                 body: msg,
+                no_reply,
             })
             .left_future()
         } else {
@@ -627,6 +672,7 @@ impl Router {
                     caller: caller.into(),
                     addr: addr.clone(),
                     body: msg,
+                    no_reply,
                 })
                 .then(|v| match v {
                     Ok(r) => future::ready(r),
@@ -647,6 +693,7 @@ impl Router {
                 caller: caller.into(),
                 addr: addr.into(),
                 body: msg,
+                no_reply: false,
             })
             .left_stream()
         } else {
@@ -673,18 +720,27 @@ impl Router {
         addr: &str,
         caller: &str,
         msg: &[u8],
+        no_reply: bool,
     ) -> impl Stream<Item = Result<ResponseChunk, Error>> {
         let addr = addr.to_string();
         if let Some(slot) = self.handlers.get_mut(&addr) {
-            slot.send_streaming(RpcRawCall {
+            let msg = RpcRawCall {
                 caller: caller.into(),
                 addr,
                 body: msg.into(),
-            })
-            .left_stream()
+                no_reply,
+            };
+
+            if no_reply {
+                let fut = slot.send(msg);
+                futures::stream::once(async move { fut.await.map(ResponseChunk::Full) })
+                    .boxed_local()
+            } else {
+                slot.send_streaming(msg).boxed_local()
+            }
         } else {
             log::warn!("no endpoint: {}", addr);
-            futures::stream::once(async { Err(Error::NoEndpoint(addr)) }).right_stream()
+            futures::stream::once(async { Err(Error::NoEndpoint(addr)) }).boxed_local()
         }
     }
 }

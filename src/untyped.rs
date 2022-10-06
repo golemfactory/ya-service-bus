@@ -10,10 +10,15 @@ pub fn send(
     caller: &str,
     bytes: &[u8],
 ) -> impl Future<Output = Result<Vec<u8>, Error>> {
-    router()
-        .lock()
-        .unwrap()
-        .forward_bytes(addr, caller, bytes.into())
+    forward_bytes(addr, caller, bytes.into(), false)
+}
+
+pub fn push(
+    addr: &str,
+    caller: &str,
+    bytes: &[u8],
+) -> impl Future<Output = Result<Vec<u8>, Error>> {
+    forward_bytes(addr, caller, bytes.into(), true)
 }
 
 pub fn call_stream(
@@ -28,10 +33,22 @@ pub fn call_stream(
         .boxed_local()
 }
 
+fn forward_bytes(
+    addr: &str,
+    caller: &str,
+    bytes: &[u8],
+    no_reply: bool,
+) -> impl Future<Output = Result<Vec<u8>, Error>> {
+    router()
+        .lock()
+        .unwrap()
+        .forward_bytes(addr, caller, bytes.into(), no_reply)
+}
+
 pub trait RawHandler {
     type Result: Future<Output = Result<Vec<u8>, Error>>;
 
-    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8]) -> Self::Result;
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], no_reply: bool) -> Self::Result;
 }
 
 impl<
@@ -41,7 +58,7 @@ impl<
 {
     type Result = Output;
 
-    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8]) -> Self::Result {
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], _no_reply: bool) -> Self::Result {
         self(caller, addr, msg)
     }
 }
@@ -49,7 +66,7 @@ impl<
 pub trait RawStreamHandler {
     type Result: Stream<Item = Result<ResponseChunk, Error>>;
 
-    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8]) -> Self::Result;
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], _no_reply: bool) -> Self::Result;
 }
 
 impl<
@@ -59,7 +76,7 @@ impl<
 {
     type Result = Output;
 
-    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8]) -> Self::Result {
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], _no_reply: bool) -> Self::Result {
         self(caller, addr, msg)
     }
 }
@@ -67,9 +84,69 @@ impl<
 impl RawStreamHandler for () {
     type Result = Pin<Box<dyn Stream<Item = Result<ResponseChunk, Error>>>>;
 
-    fn handle(&mut self, _: &str, addr: &str, _: &[u8]) -> Self::Result {
+    fn handle(&mut self, _: &str, addr: &str, _: &[u8], _: bool) -> Self::Result {
         let addr = addr.to_string();
         futures::stream::once(async { Err(Error::NoEndpoint(addr)) }).boxed_local()
+    }
+}
+
+pub struct Fn4Handler<R> {
+    f: Box<dyn FnMut(&str, &str, &[u8], bool) -> R>,
+}
+
+impl<Fut> RawHandler for Fn4Handler<Fut>
+where
+    Fut: Future<Output = Result<Vec<u8>, Error>>,
+{
+    type Result = Fut;
+
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], no_reply: bool) -> Self::Result {
+        (*self.f)(caller, addr, msg, no_reply)
+    }
+}
+
+impl<S> RawStreamHandler for Fn4Handler<S>
+where
+    S: Stream<Item = Result<ResponseChunk, Error>>,
+{
+    type Result = S;
+
+    fn handle(&mut self, caller: &str, addr: &str, msg: &[u8], no_reply: bool) -> Self::Result {
+        (*self.f)(caller, addr, msg, no_reply)
+    }
+}
+
+pub trait Fn4HandlerExt<Fut>
+where
+    Fut: Future<Output = Result<Vec<u8>, Error>>,
+{
+    fn into_handler(self) -> Fn4Handler<Fut>;
+}
+
+impl<F, Fut> Fn4HandlerExt<Fut> for F
+where
+    Fut: Future<Output = Result<Vec<u8>, Error>>,
+    F: FnMut(&str, &str, &[u8], bool) -> Fut + 'static,
+{
+    fn into_handler(self) -> Fn4Handler<Fut> {
+        Fn4Handler { f: Box::new(self) }
+    }
+}
+
+pub trait Fn4StreamHandlerExt<S>
+where
+    S: Stream<Item = Result<ResponseChunk, Error>>,
+{
+    fn into_stream_handler(self) -> Fn4Handler<S>;
+}
+
+impl<F, S> Fn4StreamHandlerExt<S> for F
+where
+    S: Stream<Item = Result<ResponseChunk, Error>>,
+    F: FnMut(&str, &str, &[u8], bool) -> S + 'static,
+{
+    fn into_stream_handler(self) -> Fn4Handler<S> {
+        Fn4Handler { f: Box::new(self) }
     }
 }
 
@@ -97,7 +174,7 @@ mod raw_actor {
         fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
             ActorResponse::r#async(
                 self.handler
-                    .handle(&msg.caller, &msg.addr, msg.body.as_ref())
+                    .handle(&msg.caller, &msg.addr, msg.body.as_ref(), msg.no_reply)
                     .boxed_local()
                     .into_actor(self),
             )
@@ -110,9 +187,9 @@ mod raw_actor {
         type Result = Result<(), Error>;
 
         fn handle(&mut self, msg: RpcRawStreamCall, ctx: &mut Self::Context) -> Self::Result {
-            let stream = self
-                .stream_handler
-                .handle(&msg.caller, &msg.addr, msg.body.as_ref());
+            let stream =
+                self.stream_handler
+                    .handle(&msg.caller, &msg.addr, msg.body.as_ref(), false);
             let sink = msg
                 .reply
                 .sink_map_err(|e| Error::GsbFailure(e.to_string()))

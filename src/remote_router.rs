@@ -219,7 +219,9 @@ impl Handler<RpcRawCall> for RemoteRouter {
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
         ActorResponse::r#async(
             self.connection()
-                .and_then(|connection| connection.call(msg.caller, msg.addr, msg.body))
+                .and_then(|connection| {
+                    connection.call(msg.caller, msg.addr, msg.body, msg.no_reply)
+                })
                 .into_actor(self),
         )
     }

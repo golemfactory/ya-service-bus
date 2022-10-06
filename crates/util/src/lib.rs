@@ -12,7 +12,7 @@ pub mod futures;
 #[cfg(feature = "with-writer")]
 pub mod writer;
 
-struct RevPrefixes<'a>(&'a str);
+pub struct RevPrefixes<'a>(pub &'a str);
 
 impl<'a> Iterator for RevPrefixes<'a> {
     type Item = &'a str;

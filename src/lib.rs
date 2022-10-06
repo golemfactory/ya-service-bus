@@ -85,14 +85,20 @@ pub struct RpcRawCall {
     pub caller: String,
     pub addr: String,
     pub body: Vec<u8>,
+    pub no_reply: bool,
 }
 
 impl RpcRawCall {
-    fn from_envelope_addr<T: Serialize>(envelope: RpcEnvelope<T>, addr: String) -> Self {
+    fn from_envelope_addr<T: Serialize>(
+        envelope: RpcEnvelope<T>,
+        addr: String,
+        no_reply: bool,
+    ) -> Self {
         RpcRawCall {
             caller: envelope.caller,
             addr,
             body: crate::serialization::to_vec(&envelope.body).unwrap(),
+            no_reply,
         }
     }
 }
