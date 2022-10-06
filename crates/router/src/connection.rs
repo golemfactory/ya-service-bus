@@ -229,11 +229,8 @@ where
                 })
                 .left_future()
         } else {
-            future::err(format!(
-                "received unmatched reply {}",
-                call_reply.request_id
-            ))
-            .right_future()
+            log::debug!("received unmatched reply {}", call_reply.request_id);
+            future::ok(()).right_future()
         }
     }
 
