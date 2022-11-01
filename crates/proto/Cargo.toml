@@ -19,6 +19,7 @@ prost = "0.10"
 tokio-util = { version = "0.7", optional = true, features = ["codec"] }
 tokio = { version = "1", optional = true, features = ["sync"] }
 url="2.1"
+tungstenite = "0.17.2"
 
 [build-dependencies]
 prost-build = "0.7"

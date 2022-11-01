@@ -1157,6 +1157,7 @@ mod unix {
         match addr {
             ya_sb_proto::GsbAddr::Tcp(addr) => Ok(Transport::Tcp(tcp(addr).await?)),
             ya_sb_proto::GsbAddr::Unix(path) => Ok(Transport::Unix(unix(path).await?)),
+            ya_sb_proto::GsbAddr::Ws(addr) => Ok(Transport::Tcp(tcp(addr).await?)),
         }
     }
 }

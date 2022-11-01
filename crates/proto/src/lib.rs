@@ -51,6 +51,7 @@ pub const DEFAULT_GSB_PORT: u16 = 7464;
 pub enum GsbAddr {
     Tcp(String),
     Unix(PathBuf),
+    Ws(String),
 }
 
 impl GsbAddr {
@@ -70,6 +71,8 @@ impl GsbAddr {
         match gsb_url.scheme() {
             "tcp" => Self::Tcp(parse_tcp_url(gsb_url)),
             "unix" => Self::Unix(parse_unix_url(gsb_url)),
+            "ws" => Self::Ws(parse_tcp_url(gsb_url)),
+            "wss" => Self::Ws(parse_tcp_url(gsb_url)),
             _ => panic!("unimplemented protocol for GSB URL: {}", gsb_url.scheme()),
         }
     }
@@ -86,6 +89,7 @@ impl Display for GsbAddr {
         match self {
             GsbAddr::Tcp(addr) => std::fmt::Display::fmt(addr, f),
             GsbAddr::Unix(path) => std::fmt::Display::fmt(&path.to_string_lossy(), f),
+            GsbAddr::Ws(addr) => std::fmt::Display::fmt(addr, f),
         }
     }
 }

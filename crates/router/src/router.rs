@@ -4,6 +4,7 @@ use std::io;
 use std::net::ToSocketAddrs;
 #[cfg(unix)]
 use std::path::Path;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -11,10 +12,12 @@ use actix::Addr;
 use actix_rt::net::TcpStream;
 use actix_service::fn_service;
 use futures::prelude::*;
+
 use parking_lot::RwLock;
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
+
 use uuid::Uuid;
 
 use ya_sb_proto::codec::{GsbMessage, ProtocolError};
@@ -133,6 +136,45 @@ impl InstanceConfig {
         Ok(worker)
     }
 
+    /// Doc
+    pub async fn bind_ws<A: ToSocketAddrs + Display>(
+        self,
+        addr: A,
+    ) -> io::Result<impl Future<Output = ()>> {
+        let instance_config = Arc::new(self);
+        let router = instance_config.new_router();
+
+        let router_status = router.clone();
+
+        log::info!("Router listening on: {}", addr);
+        let server = actix_server::ServerBuilder::new()
+            .bind("gsb", addr, move || {
+                let router = router.clone();
+                let instance_config = instance_config.clone();
+
+                fn_service(move |stream: TcpStream| {
+                    let instance_config = instance_config.clone();
+                    let router = router.clone();
+                    let conn_info = stream.peer_addr().unwrap();
+                    async move {
+                        let ws = tokio_tungstenite::accept_async(stream).await.expect("WS?");
+                        let (input, output) = ws.split();
+                        let _connection = super::connection::connection_ws(
+                            instance_config,
+                            router,
+                            conn_info,
+                            input,
+                            output,
+                        );
+                        io::Result::Ok(())
+                    }
+                })
+            })?
+            .run();
+        let worker = router_gc_worker(server, router_status);
+        Ok(worker)
+    }
+
     #[cfg(unix)]
     /// Starts new server instance on given unix socket path address.
     pub async fn bind_unix(self, path: &Path) -> io::Result<impl Future<Output = ()> + 'static> {
@@ -205,16 +247,17 @@ impl InstanceConfig {
     pub async fn bind_url(
         self,
         gsb_url: Option<url::Url>,
-    ) -> io::Result<impl Future<Output = ()> + 'static> {
+    ) -> io::Result<Pin<Box<dyn Future<Output = ()>>>> {
         Ok(match GsbAddr::from_url(gsb_url) {
-            GsbAddr::Tcp(addr) => self.bind_tcp(addr).await?.left_future(),
-            GsbAddr::Unix(path) => self.bind_unix(&path).await?.right_future(),
+            GsbAddr::Tcp(addr) => Box::pin(self.bind_tcp(addr).await?),
+            GsbAddr::Unix(path) => Box::pin(self.bind_unix(&path).await?),
+            GsbAddr::Ws(addr) => Box::pin(self.bind_ws(addr).await?),
         })
     }
 
     /// Starts new server instance on given gsb url address and waits until it stops.
     pub async fn run_url(self, gsb_url: impl Into<Option<url::Url>>) -> io::Result<()> {
-        let fut = self.bind_url(gsb_url.into()).await?;
+        let fut = Box::pin(self.bind_url(gsb_url.into()).await?);
         fut.await;
         Ok(())
     }

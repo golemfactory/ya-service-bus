@@ -151,6 +151,7 @@ struct Args {
 
 #[actix_rt::main]
 async fn main() {
+    env_logger::init();
     let args = Args::from_args();
     if let Some(n) = args.parallel {
         let handles = (0..n).map(|_| run_client(args.clone()));

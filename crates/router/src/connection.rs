@@ -8,12 +8,16 @@ use std::time::Instant;
 
 use actix::prelude::io::WriteHandler;
 use actix::prelude::*;
+use actix_rt::net::TcpStream;
 use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
 use futures::prelude::*;
+use futures::stream::{SplitSink, SplitStream};
 use futures::FutureExt;
+use prost::bytes::BytesMut;
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_util::codec::{FramedRead, FramedWrite};
+use tokio_tungstenite::{tungstenite, WebSocketStream};
+use tokio_util::codec::{Encoder, FramedRead, FramedWrite};
 
 use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
 use ya_sb_proto::*;
@@ -265,6 +269,104 @@ pub fn connection<
 ) -> Addr<Connection<StreamWriter<Output>, ConnInfo>> {
     let reader = FramedRead::new(input, GsbMessageDecoder::default());
     let writer = FramedWrite::new(output, GsbMessageEncoder::default());
+    Connection::create(move |ctx| {
+        let output = writer::SinkWrite::new(writer, ctx);
+        let _ = Connection::add_stream(reader, ctx);
+        Connection {
+            instance_id: None,
+            router,
+            config,
+            services: Default::default(),
+            hold_queue: Default::default(),
+            reply_map: Default::default(),
+            topic_map: Default::default(),
+            conn_info,
+            output,
+            last_packet: Instant::now(),
+        }
+    })
+}
+
+async fn to_ws_msg(msg: GsbMessage) -> Result<tungstenite::Message, ProtocolError> {
+    log::debug!("To WS Msg: {:?}", msg);
+    let mut encoder = GsbMessageEncoder::default();
+    let mut bytes = BytesMut::new();
+    encoder.encode(msg, &mut bytes)?;
+    let bytes = Vec::from(bytes.as_ref());
+    Ok(tungstenite::Message::Binary(bytes))
+}
+
+async fn from_ws_msg(
+    msg: tokio_tungstenite::tungstenite::Result<tokio_tungstenite::tungstenite::Message>,
+) -> Result<GsbMessage, ProtocolError> {
+    log::debug!("From WS Msg: {:?}", msg);
+    todo!()
+}
+
+pub struct WsSink {
+    output: Pin<Box<dyn Stream<Item = Result<ya_sb_proto::packet::Packet, ProtocolError>>>>,
+}
+
+impl WsSink {
+    fn new(stream: SplitStream<WebSocketStream<TcpStream>>) -> Self {
+        let output = stream.then(from_ws_msg).boxed();
+        Self { output }
+    }
+}
+
+impl Sink<GsbMessage> for WsSink {
+    type Error = ya_sb_proto::codec::ProtocolError;
+
+    fn poll_ready(
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        std::task::Poll::Ready(Ok(()))
+    }
+
+    fn start_send(self: Pin<&mut Self>, item: GsbMessage) -> Result<(), Self::Error> {
+        self.start_send(item)
+    }
+
+    fn poll_flush(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.poll_flush(cx)
+    }
+
+    fn poll_close(
+        self: Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
+        self.poll_close(cx)
+    }
+}
+
+pub struct WsReader {
+    input: SplitSink<WebSocketStream<TcpStream>, tokio_tungstenite::tungstenite::Message>,
+}
+
+impl Stream for WsReader {
+    type Item = Result<GsbMessage, ProtocolError>;
+
+    fn poll_next(
+        self: Pin<&mut Self>,
+        _cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Self::Item>> {
+        todo!()
+    }
+}
+
+pub fn connection_ws<ConnInfo: Debug + Unpin + 'static>(
+    config: Arc<InstanceConfig>,
+    router: RouterRef<WsSink, ConnInfo>,
+    conn_info: ConnInfo,
+    input: SplitSink<WebSocketStream<TcpStream>, tokio_tungstenite::tungstenite::Message>,
+    output: SplitStream<WebSocketStream<TcpStream>>,
+) -> Addr<Connection<WsSink, ConnInfo>> {
+    let reader = WsReader { input };
+    let writer = WsSink::new(output);
     Connection::create(move |ctx| {
         let output = writer::SinkWrite::new(writer, ctx);
         let _ = Connection::add_stream(reader, ctx);

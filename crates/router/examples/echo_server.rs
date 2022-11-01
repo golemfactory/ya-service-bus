@@ -114,5 +114,6 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
+    env_logger::init();
     run_server(Args::from_args()).await;
 }

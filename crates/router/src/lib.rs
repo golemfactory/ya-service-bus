@@ -12,17 +12,28 @@
 //! }
 //!
 //! ```
-use std::io;
-use std::net::SocketAddr;
-
-use futures::prelude::*;
-use tokio::net::{TcpStream, ToSocketAddrs};
-
 pub use config::RouterConfig;
 pub use router::InstanceConfig;
+
+use std::io;
+use std::net::SocketAddr;
+use std::pin::Pin;
+use std::str::FromStr;
+
+use anyhow::Result;
+use futures::prelude::*;
+use futures::sink::SinkExt;
+use futures::stream::StreamExt;
+use prost::bytes::BytesMut;
+use tokio::net::{TcpStream, ToSocketAddrs};
+use tokio_tungstenite::*;
+use tokio_util::codec::Encoder;
+
 #[cfg(unix)]
 pub use unix::connect;
-use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
+
+use url::Url;
+use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, GsbMessageEncoder, ProtocolError};
 use ya_sb_proto::*;
 
 mod config;
@@ -61,6 +72,10 @@ mod unix {
             }
             GsbAddr::Unix(path) => {
                 let (sink, stream) = unix_connect(path).await;
+                (Box::new(sink), Box::new(stream))
+            }
+            GsbAddr::Ws(addr) => {
+                let (sink, stream) = ws_connect(addr).await.expect("TODO");
                 (Box::new(sink), Box::new(stream))
             }
         }
@@ -115,4 +130,36 @@ pub async fn tcp_connect(
     let sock = TcpStream::connect(&addr).await.expect("Connect failed");
     let framed = tokio_util::codec::Framed::new(sock, GsbMessageCodec::default());
     framed.split()
+}
+
+#[doc(hidden)]
+pub async fn ws_connect(
+    addr: String,
+) -> Result<(
+    Pin<Box<dyn Sink<GsbMessage, Error = ProtocolError>>>,
+    Pin<Box<dyn Stream<Item = Result<GsbMessage, ProtocolError>>>>,
+)> {
+    //TODO fix support of "wss"
+    let addr = format!("ws://{addr}");
+    let addr = Url::from_str(&addr)?;
+    let (stream, _resp) = tokio_tungstenite::connect_async(addr).await?;
+    let (sink, stream) = stream.split();
+    let sink = sink.with(to_ws_msg);
+    let stream = stream.then(from_ws_msg);
+    Ok((Box::pin(sink), Box::pin(stream)))
+}
+
+async fn to_ws_msg(msg: GsbMessage) -> Result<tungstenite::Message, ProtocolError> {
+    let mut encoder = GsbMessageEncoder::default();
+    let mut bytes = BytesMut::new();
+    encoder.encode(msg, &mut bytes)?;
+    let bytes = Vec::from(bytes.as_ref());
+    Ok(tungstenite::Message::Binary(bytes))
+}
+
+async fn from_ws_msg(
+    msg: tokio_tungstenite::tungstenite::Result<tokio_tungstenite::tungstenite::Message>,
+) -> Result<GsbMessage, ProtocolError> {
+    log::debug!("Msg: {:?}", msg);
+    todo!()
 }

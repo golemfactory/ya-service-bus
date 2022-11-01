@@ -23,6 +23,8 @@ pub enum ProtocolError {
     RecvError,
     #[error("packet too big")]
     MsgTooBig,
+    #[error("WebSocket error: {0:?}")]
+    WsError(#[from] tungstenite::Error),
 }
 
 trait Encodable {
