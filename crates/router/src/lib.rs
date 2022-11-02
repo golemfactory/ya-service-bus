@@ -24,16 +24,18 @@ use anyhow::Result;
 use futures::prelude::*;
 use futures::sink::SinkExt;
 use futures::stream::StreamExt;
-use prost::bytes::BytesMut;
+use prost::bytes::{BufMut, BytesMut};
 use tokio::net::{TcpStream, ToSocketAddrs};
 use tokio_tungstenite::*;
-use tokio_util::codec::Encoder;
+use tokio_util::codec::{Decoder, Encoder};
 
 #[cfg(unix)]
 pub use unix::connect;
 
 use url::Url;
-use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, GsbMessageEncoder, ProtocolError};
+use ya_sb_proto::codec::{
+    GsbMessage, GsbMessageCodec, GsbMessageDecoder, GsbMessageEncoder, ProtocolError,
+};
 use ya_sb_proto::*;
 
 mod config;
@@ -161,5 +163,35 @@ async fn from_ws_msg(
     msg: tokio_tungstenite::tungstenite::Result<tokio_tungstenite::tungstenite::Message>,
 ) -> Result<GsbMessage, ProtocolError> {
     log::debug!("Msg: {:?}", msg);
-    todo!()
+    match msg {
+        Ok(msg) => match msg {
+            tungstenite::Message::Text(_) => todo!(),
+            tungstenite::Message::Binary(msg) => {
+                let mut decoder = GsbMessageDecoder::default();
+                let mut bytes = BytesMut::new();
+                bytes.put_slice(&msg);
+                match decoder.decode(&mut bytes)? {
+                    Some(msg) => return Ok(msg),
+                    None => return Err(ProtocolError::RecvError),
+                }
+            }
+            tungstenite::Message::Ping(_) => todo!(),
+            tungstenite::Message::Pong(_) => todo!(),
+            tungstenite::Message::Close(_) => todo!(),
+            tungstenite::Message::Frame(_) => todo!(),
+        },
+        Err(err) => match err {
+            tungstenite::Error::ConnectionClosed => todo!(),
+            tungstenite::Error::AlreadyClosed => todo!(),
+            tungstenite::Error::Io(_) => todo!(),
+            tungstenite::Error::Tls(_) => todo!(),
+            tungstenite::Error::Capacity(_) => todo!(),
+            tungstenite::Error::Protocol(_) => todo!(),
+            tungstenite::Error::SendQueueFull(_) => todo!(),
+            tungstenite::Error::Utf8 => todo!(),
+            tungstenite::Error::Url(_) => todo!(),
+            tungstenite::Error::Http(_) => todo!(),
+            tungstenite::Error::HttpFormat(_) => todo!(),
+        },
+    }
 }

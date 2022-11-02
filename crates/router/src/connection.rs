@@ -17,7 +17,7 @@ use futures::FutureExt;
 use futures::{Sink, SinkExt};
 
 use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_tungstenite::{WebSocketStream};
+use tokio_tungstenite::WebSocketStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
 
 use ya_sb_proto::codec::{GsbMessage, GsbMessageDecoder, GsbMessageEncoder, ProtocolError};
@@ -288,18 +288,18 @@ pub fn connection<
     })
 }
 
-pub type GsbSink = Pin<Box<dyn Sink<ya_sb_proto::packet::Packet, Error = ProtocolError>>>;
+pub type WsSink = Pin<Box<dyn Sink<ya_sb_proto::packet::Packet, Error = ProtocolError>>>;
 
 pub fn connection_ws<ConnInfo: Debug + Unpin + 'static>(
     config: Arc<InstanceConfig>,
-    router: RouterRef<GsbSink, ConnInfo>,
+    router: RouterRef<WsSink, ConnInfo>,
     conn_info: ConnInfo,
     input: SplitStream<WebSocketStream<TcpStream>>,
     output: SplitSink<WebSocketStream<TcpStream>, tokio_tungstenite::tungstenite::Message>,
-) -> Addr<Connection<GsbSink, ConnInfo>> {
+) -> Addr<Connection<WsSink, ConnInfo>> {
     let reader = input.then(crate::from_ws_msg).boxed();
     Connection::create(move |ctx| {
-        let output: GsbSink = Box::pin(output.with(crate::to_ws_msg));
+        let output: WsSink = Box::pin(output.with(crate::to_ws_msg));
         let output = writer::SinkWrite::new(output, ctx);
         let _ = Connection::add_stream(reader, ctx);
         Connection {
