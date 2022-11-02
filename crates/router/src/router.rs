@@ -158,7 +158,7 @@ impl InstanceConfig {
                     let conn_info = stream.peer_addr().unwrap();
                     async move {
                         let ws = tokio_tungstenite::accept_async(stream).await.expect("WS?");
-                        let (input, output) = ws.split();
+                        let (output, input) = ws.split();
                         let _connection = super::connection::connection_ws(
                             instance_config,
                             router,
