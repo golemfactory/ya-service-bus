@@ -1555,6 +1555,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "ya-sb-proto"
+version = "0.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "368d7e4b74c11137caa9a1cd2c590459581ea0d1ee5f7dc7c56082476cd38ce6"
+dependencies = [
+ "bytes",
+ "prost 0.10.3",
+ "prost-build",
+ "thiserror",
+ "tokio",
+ "tokio-util 0.7.2",
+ "url",
+]
+
+[[package]]
 name = "ya-sb-router"
 version = "0.6.1"
 dependencies = [
@@ -1580,8 +1595,8 @@ dependencies = [
  "ubyte",
  "url",
  "uuid",
- "ya-sb-proto",
- "ya-sb-util",
+ "ya-sb-proto 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ya-sb-util 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -1593,6 +1608,17 @@ dependencies = [
  "bytes",
  "futures",
  "pin-project 0.4.29",
+]
+
+[[package]]
+name = "ya-sb-util"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c525504f7ca7d13825ef10a44005663b91b4b9f3eeebd6768188884bec78a37d"
+dependencies = [
+ "actix",
+ "bitflags",
+ "futures",
 ]
 
 [[package]]
@@ -1619,6 +1645,6 @@ dependencies = [
  "tokio-util 0.7.2",
  "url",
  "uuid",
- "ya-sb-proto",
- "ya-sb-util",
+ "ya-sb-proto 0.6.1",
+ "ya-sb-util 0.4.1",
 ]
