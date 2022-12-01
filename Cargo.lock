@@ -1619,6 +1619,7 @@ dependencies = [
  "actix",
  "bitflags",
  "futures",
+ "pin-project 0.4.29",
 ]
 
 [[package]]
@@ -1645,6 +1646,6 @@ dependencies = [
  "tokio-util 0.7.2",
  "url",
  "uuid",
- "ya-sb-proto 0.6.1",
- "ya-sb-util 0.4.1",
+ "ya-sb-proto 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ya-sb-util 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
