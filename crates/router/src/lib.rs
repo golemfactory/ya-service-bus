@@ -165,7 +165,10 @@ async fn from_ws_msg(
     log::debug!("Msg: {:?}", msg);
     match msg {
         Ok(msg) => match msg {
-            tungstenite::Message::Text(_) => todo!(),
+            tungstenite::Message::Text(_) => {
+                log::info!("Got Text");
+                todo!()
+            },
             tungstenite::Message::Binary(msg) => {
                 let mut decoder = GsbMessageDecoder::default();
                 let mut bytes = BytesMut::new();
@@ -175,23 +178,68 @@ async fn from_ws_msg(
                     None => return Err(ProtocolError::RecvError),
                 }
             }
-            tungstenite::Message::Ping(_) => todo!(),
-            tungstenite::Message::Pong(_) => todo!(),
-            tungstenite::Message::Close(_) => todo!(),
-            tungstenite::Message::Frame(_) => todo!(),
+            tungstenite::Message::Ping(_) => {
+                log::info!("Got Ping");
+                todo!()
+            },
+            tungstenite::Message::Pong(_) => {
+                log::info!("Got Pong");
+                todo!()
+            },
+            tungstenite::Message::Close(_) => {
+                log::info!("Got Close");
+                todo!()
+            },
+            tungstenite::Message::Frame(_) => {
+                log::info!("Got Frame");
+                todo!()
+            },
         },
         Err(err) => match err {
-            tungstenite::Error::ConnectionClosed => todo!(),
-            tungstenite::Error::AlreadyClosed => todo!(),
-            tungstenite::Error::Io(_) => todo!(),
-            tungstenite::Error::Tls(_) => todo!(),
-            tungstenite::Error::Capacity(_) => todo!(),
-            tungstenite::Error::Protocol(_) => todo!(),
-            tungstenite::Error::SendQueueFull(_) => todo!(),
-            tungstenite::Error::Utf8 => todo!(),
-            tungstenite::Error::Url(_) => todo!(),
-            tungstenite::Error::Http(_) => todo!(),
-            tungstenite::Error::HttpFormat(_) => todo!(),
+            tungstenite::Error::ConnectionClosed => {
+                log::error!("Got ConnectionClosed");
+                todo!()
+            },
+            tungstenite::Error::AlreadyClosed => {
+                log::error!("Got AlreadyClosed");
+                todo!()
+            },
+            tungstenite::Error::Io(_) => {
+                log::error!("Got Io");
+                todo!()
+            },
+            tungstenite::Error::Tls(_) => {
+                log::error!("Got Tls");
+                todo!()
+            },
+            tungstenite::Error::Capacity(_) => {
+                log::error!("Got Capacity");
+                todo!()
+            },
+            tungstenite::Error::Protocol(_) => {
+                log::error!("Got Protocol");
+                todo!()
+            },
+            tungstenite::Error::SendQueueFull(_) => {
+                log::error!("Got SendQueueFull");
+                todo!()
+            },
+            tungstenite::Error::Utf8 => {
+                log::error!("Got Utf8");
+                todo!()
+            },
+            tungstenite::Error::Url(_) => {
+                log::error!("Got Url");
+                todo!()
+            },
+            tungstenite::Error::Http(_) => {
+                log::error!("Got Http");
+                todo!()
+            },
+            tungstenite::Error::HttpFormat(_) => {
+                log::error!("Got HttpFormat");
+                todo!()
+            },
         },
     }
 }

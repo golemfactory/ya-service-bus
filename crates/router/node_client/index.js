@@ -1,7 +1,7 @@
 const WebSocket = require('ws');
 const protobufjs = require('protobufjs')
 const uuid = require('uuid');
-const { once, EventEmitter } = require('events');
+const { once, on, EventEmitter } = require('events');
 
 const msgEvent = 'message';
 
@@ -35,7 +35,7 @@ class Codec {
   decodePacket(buffer) {
     try {
       const packet = this.gsb_api.lookup(`GSB_API.Packet`)
-      return packet.decode(buffer).toJSON();
+      return packet.decode(buffer);
     } catch (error) {
       console.log("Failed to decode packet: %s", error);
     }
