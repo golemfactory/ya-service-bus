@@ -1,3 +1,5 @@
+use ya_packet_trace::packet_trace_maybe;
+
 use actix::{prelude::*, WrapFuture};
 use futures::{channel::oneshot, future::Either, prelude::*, FutureExt, SinkExt};
 use std::ops::Not;
@@ -217,6 +219,16 @@ impl Handler<RpcRawCall> for RemoteRouter {
     type Result = ActorResponse<Self, Result<Vec<u8>, Error>>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
+        #[cfg(feature = "packet-trace-enable")]
+        // Only trace IP frames
+        let to_trace = if msg.body[12..14] == [0x08, 0x00] && msg.body.len() > 55 {
+            Some(msg.body[54..].to_owned())
+        } else {
+            None
+        };
+
+        packet_trace_maybe!("RemoteRouter::Handler<RpcRawCall>", { &to_trace });
+
         ActorResponse::r#async(
             self.connection()
                 .and_then(|connection| {
@@ -240,6 +252,16 @@ impl Handler<RpcRawStreamCall> for RemoteRouter {
 
             let reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
             futures::pin_mut!(reply);
+
+            #[cfg(feature = "packet-trace-enable")]
+            // Only trace IP frames
+            let to_trace = if msg.body[12..14] == [0x08, 0x00] && msg.body.len() > 55 {
+                Some(msg.body[54..].to_owned())
+            } else {
+                None
+            };
+
+            packet_trace_maybe!("RemoteRouter::Handler<RpcRawStreamCall>", { &to_trace });
 
             let result = SinkExt::send_all(
                 &mut reply,
