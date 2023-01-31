@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use ya_packet_trace::{packet_trace_maybe, try_extract_from_ip_frame};
-
 use actix::{prelude::*, WrapFuture};
 use futures::{channel::oneshot, future::Either, prelude::*, FutureExt, SinkExt};
 use std::ops::Not;
@@ -220,8 +217,8 @@ impl Handler<RpcRawCall> for RemoteRouter {
     type Result = ActorResponse<Self, Result<Vec<u8>, Error>>;
 
     fn handle(&mut self, msg: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
-        packet_trace_maybe!("RemoteRouter::Handler<RpcRawCall>", {
-            &try_extract_from_ip_frame(&msg.body)
+        ya_packet_trace::packet_trace_maybe!("RemoteRouter::Handler<RpcRawCall>", {
+            &ya_packet_trace::try_extract_from_ip_frame(&msg.body)
         });
 
         ActorResponse::r#async(
@@ -248,8 +245,8 @@ impl Handler<RpcRawStreamCall> for RemoteRouter {
             let reply = msg.reply.sink_map_err(|e| Error::GsbFailure(e.to_string()));
             futures::pin_mut!(reply);
 
-            packet_trace_maybe!("RemoteRouter::Handler<RpcRawStreamCall>", {
-                &{ &try_extract_from_ip_frame(&msg.body) }
+            ya_packet_trace::packet_trace_maybe!("RemoteRouter::Handler<RpcRawStreamCall>", {
+                &{ &ya_packet_trace::try_extract_from_ip_frame(&msg.body) }
             });
 
             let result = SinkExt::send_all(
