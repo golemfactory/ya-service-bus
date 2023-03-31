@@ -28,7 +28,7 @@ fn gen_id() -> u64 {
 
     let mut rng = rand::thread_rng();
 
-    rng.gen::<u64>() & 0x1f_ff_ff__ff_ff_ff_ffu64
+    rng.gen::<u64>() & 0x001f_ffff_ffff_ffffu64
 }
 
 #[derive(Default, Clone)]
@@ -122,7 +122,7 @@ impl CallRequestHandler for LocalRouterHandler {
     }
 
     fn on_disconnect(&mut self) {
-        self.disconnect_h.take().map(|f| f());
+        if let Some(f) = self.disconnect_h.take() { f() };
     }
 }
 

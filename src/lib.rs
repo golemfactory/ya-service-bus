@@ -6,10 +6,14 @@ use std::{fmt::Debug, future::Future};
 pub mod actix_rpc;
 pub mod connection;
 pub mod error;
+#[allow(clippy::redundant_closure)]
 mod local_router;
+#[allow(clippy::redundant_closure)]
 mod remote_router;
 pub mod serialization;
+#[allow(clippy::redundant_closure)]
 pub mod timeout;
+#[allow(clippy::needless_doctest_main)]
 pub mod typed;
 pub mod untyped;
 
@@ -56,6 +60,7 @@ impl ResponseChunk {
 
     #[inline]
     pub fn is_full(&self) -> bool {
+        #[allow(clippy::match_like_matches_macro)]
         match self {
             ResponseChunk::Full(_) => true,
             _ => false,

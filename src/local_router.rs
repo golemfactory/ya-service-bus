@@ -113,12 +113,13 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
             };
         });
 
+
         let recv_stream = rx
             .then(|r| {
                 future::ready(
                     crate::serialization::to_vec(&r)
                         .map_err(Error::from)
-                        .and_then(|r| Ok(ResponseChunk::Part(r))),
+                        .map(|r| ResponseChunk::Part(r)),
                 )
             })
             .chain(rxe.into_stream().filter_map(|v| future::ready(v.ok())));
@@ -282,20 +283,15 @@ impl Slot {
          self
             .inner
             .recipient()
-            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>().map(|r|r.clone())
+            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>().cloned()
 
     }
 
     fn stream_recipient<T: RpcStreamMessage>(&self) -> Option<actix::Recipient<RpcStreamCall<T>>> {
-        if let Some(r) = self
+        self
             .inner
             .recipient()
-            .downcast_ref::<actix::Recipient<RpcStreamCall<T>>>()
-        {
-            Some(r.clone())
-        } else {
-            None
-        }
+            .downcast_ref::<actix::Recipient<RpcStreamCall<T>>>().cloned()
     }
 
     fn raw_stream_recipient(&self) -> Option<actix::Recipient<RpcRawStreamCall>> {
@@ -444,7 +440,7 @@ impl Router {
 
         addrs.iter().for_each(|addr| {
             log::debug!("unbinding {}", addr);
-            self.handlers.remove(&addr);
+            self.handlers.remove(addr);
         });
 
         Box::pin(async move {
@@ -469,7 +465,7 @@ impl Router {
         let addr = format!("{}/{}", addr, T::ID);
         log::debug!("binding stream {}", addr);
         let _ = self.handlers.insert(addr.clone(), slot);
-        RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr));
         Handle { _inner: () }
     }
 
