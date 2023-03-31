@@ -2,7 +2,7 @@
 name = "ya-sb-util"
 version = "0.4.1"
 authors = ["Golem Factory <contact@golem.network>"]
-edition = "2018"
+edition = "2021"
 homepage = "https://github.com/golemfactory/ya-service-bus/crates/util"
 repository = "https://github.com/golemfactory/ya-service-bus"
 license = "LGPL-3.0"
@@ -15,8 +15,8 @@ with-futures = ['pin-project', 'futures']
 with-writer = ['actix', 'bitflags', 'futures']
 
 [dependencies]
-bytes = { version = "1", optional = true }
-futures = { version = "0.3", optional = true }
-pin-project = { version = "0.4", optional = true }
-actix = { version = "0.13", default-features = false, optional = true }
-bitflags = { version = "1.2.1", optional = true }
+bytes = { workspace = true, optional = true }
+futures = { workspace = true, optional = true }
+pin-project = { workspace = true, optional = true }
+actix = { workspace = true, default-features = false, optional = true }
+bitflags = { workspace = true, optional = true }

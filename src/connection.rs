@@ -404,7 +404,7 @@ where
         );
 
         self.handler
-            .do_call(request_id.clone(), caller, address, data, true)
+            .do_call(request_id, caller, address, data, true)
             .into_actor(self)
             .fold((), move |_, _, _, _| fut::ready(()))
             .spawn(ctx);
@@ -484,7 +484,6 @@ where
                 .map(|v| v.to_string())
                 .unwrap_or_default(),
             instance_id: self.client_info.instance_id.clone(),
-            ..Default::default()
         };
 
         let _ = self.writer.write(GsbMessage::Hello(hello));
@@ -725,7 +724,7 @@ fn send_cmd_async<A: Actor, W: Sink<GsbMessage, Error = ProtocolError> + Unpin +
     queue.push_back(tx);
 
     if writer.write(msg).is_some() {
-        ActorResponse::reply(Err(Error::GsbFailure(format!("no connection"))))
+        ActorResponse::reply(Err(Error::GsbFailure("no connection".into())))
     } else {
         ActorResponse::r#async(fut::wrap_future(async move {
             rx.await.map_err(|_| Error::Cancelled)??;
@@ -927,7 +926,7 @@ impl<
         });
         async move {
             fut.await
-                .map_err(|e| Error::from_addr(format!("subscribing {}", topic).into(), e))?
+                .map_err(|e| Error::from_addr(format!("subscribing {}", topic), e))?
         }
     }
 
@@ -941,7 +940,7 @@ impl<
         });
         async move {
             fut.await
-                .map_err(|e| Error::from_addr(format!("unsubscribing {}", topic).into(), e))?
+                .map_err(|e| Error::from_addr(format!("unsubscribing {}", topic), e))?
         }
     }
 
@@ -959,7 +958,7 @@ impl<
         });
         async move {
             fut.await
-                .map_err(|e| Error::from_addr(format!("broadcasting {}", topic).into(), e))?
+                .map_err(|e| Error::from_addr(format!("broadcasting {}", topic), e))?
         }
     }
 

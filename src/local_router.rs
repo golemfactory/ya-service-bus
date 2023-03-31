@@ -279,15 +279,11 @@ impl Slot {
     where
         <RpcEnvelope<T> as Message>::Result: Sync + Send + 'static,
     {
-        if let Some(r) = self
+         self
             .inner
             .recipient()
-            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>()
-        {
-            Some(r.clone())
-        } else {
-            None
-        }
+            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>().map(|r|r.clone())
+
     }
 
     fn stream_recipient<T: RpcStreamMessage>(&self) -> Option<actix::Recipient<RpcStreamCall<T>>> {
@@ -305,14 +301,10 @@ impl Slot {
     fn raw_stream_recipient(&self) -> Option<actix::Recipient<RpcRawStreamCall>> {
         if let Some(e) = self.inner.recipient().downcast_ref::<DualRawEndpoint>() {
             Some(e.stream.clone())
-        } else if let Some(r) = self
+        } else { self
             .inner
             .recipient()
-            .downcast_ref::<actix::Recipient<RpcRawStreamCall>>()
-        {
-            Some(r.clone())
-        } else {
-            None
+            .downcast_ref::<actix::Recipient<RpcRawStreamCall>>().cloned()
         }
     }
 
