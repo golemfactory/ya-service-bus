@@ -113,7 +113,6 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
             };
         });
 
-
         let recv_stream = rx
             .then(|r| {
                 future::ready(
@@ -280,27 +279,27 @@ impl Slot {
     where
         <RpcEnvelope<T> as Message>::Result: Sync + Send + 'static,
     {
-         self
-            .inner
+        self.inner
             .recipient()
-            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>().cloned()
-
+            .downcast_ref::<actix::Recipient<RpcEnvelope<T>>>()
+            .cloned()
     }
 
     fn stream_recipient<T: RpcStreamMessage>(&self) -> Option<actix::Recipient<RpcStreamCall<T>>> {
-        self
-            .inner
+        self.inner
             .recipient()
-            .downcast_ref::<actix::Recipient<RpcStreamCall<T>>>().cloned()
+            .downcast_ref::<actix::Recipient<RpcStreamCall<T>>>()
+            .cloned()
     }
 
     fn raw_stream_recipient(&self) -> Option<actix::Recipient<RpcRawStreamCall>> {
         if let Some(e) = self.inner.recipient().downcast_ref::<DualRawEndpoint>() {
             Some(e.stream.clone())
-        } else { self
-            .inner
-            .recipient()
-            .downcast_ref::<actix::Recipient<RpcRawStreamCall>>().cloned()
+        } else {
+            self.inner
+                .recipient()
+                .downcast_ref::<actix::Recipient<RpcRawStreamCall>>()
+                .cloned()
         }
     }
 

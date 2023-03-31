@@ -122,7 +122,9 @@ impl CallRequestHandler for LocalRouterHandler {
     }
 
     fn on_disconnect(&mut self) {
-        if let Some(f) = self.disconnect_h.take() { f() };
+        if let Some(f) = self.disconnect_h.take() {
+            f()
+        };
     }
 }
 

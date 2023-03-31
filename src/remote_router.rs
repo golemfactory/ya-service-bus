@@ -137,7 +137,9 @@ impl RemoteRouter {
 
         rx.into_actor(self)
             .map(|_, this, ctx| {
-                if let Some(c) = this.connection.as_ref() { c.connected().not().then(|| log::warn!("connection lost")); }
+                if let Some(c) = this.connection.as_ref() {
+                    c.connected().not().then(|| log::warn!("connection lost"));
+                }
 
                 // restarts the actor
                 ctx.run_later(RECONNECT_DELAY, |_, ctx| ctx.stop());
