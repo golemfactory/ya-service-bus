@@ -1,6 +1,6 @@
 [package]
 name = "ya-service-bus"
-version = "0.6.1"
+version = "0.7.0"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2018"
 homepage = "https://github.com/golemfactory/ya-service-bus"
@@ -25,7 +25,7 @@ flexbuffers = { version = "2", optional = true }
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4"
-miniz_oxide = "0.5"
+miniz_oxide = "0.7.1"
 rand = "0.8"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0", optional = true }
@@ -33,13 +33,13 @@ thiserror = "1.0.9"
 tokio = { version = "1", features = ["net", "time", "io-util", "signal"] }
 tokio-util = "0.7"
 url = "2.1.1"
-semver="0.11.0"
-uuid = { version = "0.8.1", features = ["v4"] }
+semver= "1.0.17"
+uuid = { version = "1.3.0", features = ["v4"] }
 
 [dev-dependencies]
 actix-rt = "2.2"
-async-stream = "0.2.0"
-env_logger = "0.7"
+async-stream = "0.3.4"
+env_logger = "0.10.0"
 serde_json = "1.0"
 structopt = "0.3.5"
 tokio-stream = "0.1.8"
