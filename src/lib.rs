@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_closure)]
 use actix::Message;
 use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
@@ -6,12 +7,9 @@ use std::{fmt::Debug, future::Future};
 pub mod actix_rpc;
 pub mod connection;
 pub mod error;
-#[allow(clippy::redundant_closure)]
 mod local_router;
-#[allow(clippy::redundant_closure)]
 mod remote_router;
 pub mod serialization;
-#[allow(clippy::redundant_closure)]
 pub mod timeout;
 #[allow(clippy::needless_doctest_main)]
 pub mod typed;
