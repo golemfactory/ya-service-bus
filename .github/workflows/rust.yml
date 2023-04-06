@@ -9,6 +9,9 @@ on:
       - main
       - release/*
 
+env:
+  rust_stable: 1.68.2
+
 jobs:
   build:
     name: Build
@@ -24,10 +27,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v1
 
-      - name: Install Last Stable Rust
+      - name: Install Rust ${{ env.rust_stable }}
         uses: actions-rs/toolchain@v1
         with:
-          toolchain: stable
+          toolchain: ${{ env.rust_stable }}
           components: rustfmt, clippy
 
       - name: Cache cargo registry
