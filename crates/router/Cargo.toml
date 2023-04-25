@@ -6,7 +6,7 @@ authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/ya-service-bus/crates/router"
 repository = "https://github.com/golemfactory/ya-service-bus"
 license = "GPL-3.0"
-edition = "2018"
+edition = "2021"
 
 [features]
 default = []
@@ -22,34 +22,34 @@ path = "src/bin.rs"
 required-features = ['bin']
 
 [dependencies]
-ya-sb-proto = "0.6"
-ya-sb-util = { version = "0.4.1", features = ["with-writer"] }
-actix-rt = "2.2"
-actix = { version = "0.13", default-features = false, features = ["macros"] }
-actix-server = "2"
-actix-service = "2"
+ya-sb-proto = { workspace = true }
+ya-sb-util = { workspace = true, features = ["with-writer"] }
+actix-rt = { workspace = true }
+actix = { workspace = true, default-features = false, features = ["macros"] }
+actix-server = { workspace = true }
+actix-service = { workspace = true }
 
-anyhow = "1.0"
-chrono = "0.4"
+anyhow = { workspace = true }
+chrono = { workspace = true }
 
-futures = "0.3"
-lazy_static = "1.4"
-log = "0.4.8"
-prost = "0.10"
-structopt = "0.3"
-tokio = { version = "1", features = ["net", "sync", "macros", "rt-multi-thread", "time"] }
-tokio-util = { version = "0.7", features = ["codec"] }
-tokio-stream = { version = "0.1", features = ["sync"] }
-url = "2.1.1"
-uuid = { version = "0.8.1", features = ["v4"] }
-parking_lot = "0.11.1"
-bitflags = "1.2.1"
-pin-project = "1.0.7"
-humantime = { version = "2.1.0", optional = true }
-env_logger = { version = "0.8", optional = true, default-features = false }
+futures = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+prost = { workspace = true }
+structopt = { workspace = true }
+tokio = { workspace = true, features = ["net", "sync", "macros", "rt-multi-thread", "time"] }
+tokio-util = { workspace = true, features = ["codec"] }
+tokio-stream = { workspace = true, features = ["sync"] }
+url = { workspace = true }
+uuid = { workspace = true, features = ["v4"] }
+parking_lot = { workspace = true }
+bitflags = { workspace = true }
+pin-project = { workspace = true }
+humantime = { workspace = true, optional = true }
+env_logger = { workspace = true, optional = true }
 
 [dev-dependencies]
-ubyte="0.10.1"
+ubyte = "0.10.1"
 
 [package.metadata.deb]
 features = ["bin"]

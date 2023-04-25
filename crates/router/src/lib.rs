@@ -97,7 +97,7 @@ pub async fn connect(
 
 /// Starts in background new server instance on given gsb address.
 pub async fn bind_gsb_router(gsb_url: Option<url::Url>) -> io::Result<()> {
-    let _ = actix_rt::spawn(
+    let _join_handle = actix_rt::spawn(
         InstanceConfig::new(RouterConfig::from_env())
             .bind_url(gsb_url)
             .await?,

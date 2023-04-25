@@ -2,26 +2,26 @@
 name = "ya-sb-proto"
 version = "0.6.1"
 authors = ["Golem Factory <contact@golem.network>"]
-edition = "2018"
+edition = "2021"
 homepage = "https://github.com/golemfactory/ya-service-bus/crates/proto"
 repository = "https://github.com/golemfactory/ya-service-bus"
 license = "LGPL-3.0"
-description= "Golem Service Bus Protocol messages"
+description = "Golem Service Bus Protocol messages"
 
 [features]
 default = ["with-codec"]
 with-codec = ['tokio-util', 'tokio']
 
 [dependencies]
-bytes = "1.0"
-thiserror = "1.0.9"
-prost = "0.10"
-tokio-util = { version = "0.7", optional = true, features = ["codec"] }
-tokio = { version = "1", optional = true, features = ["sync"] }
-url="2.1"
+bytes = { workspace = true }
+thiserror = { workspace = true }
+prost = { workspace = true }
+tokio-util = { workspace = true, optional = true, features = ["codec"] }
+tokio = { workspace = true, optional = true, features = ["sync"] }
+url = { workspace = true }
 
 [build-dependencies]
 prost-build = "0.7"
 
 [dev-dependencies]
-serial_test = "0.4.0"
+serial_test = "2.0.0"

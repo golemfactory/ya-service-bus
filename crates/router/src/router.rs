@@ -121,7 +121,7 @@ impl InstanceConfig {
                     let _connection = super::connection::connection(
                         instance_config.clone(),
                         router.clone(),
-                        addr.clone(),
+                        addr,
                         input,
                         output,
                     );
