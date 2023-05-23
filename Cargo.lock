@@ -273,9 +273,9 @@ checksum = "5827cebf4670468b8772dd191856768aedcb1b0278a04f989f7766351917b9dc"
 
 [[package]]
 name = "crossbeam-channel"
-version = "0.5.6"
+version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c2dd04ddaf88237dc3b8d8f9a3c1004b506b54b3313403944054d23c0870c521"
+checksum = "a33c2bf77f2df06183c3aa30d1e96c0695a313d4f9c453cc3762a6db39f99200"
 dependencies = [
  "cfg-if 1.0.0",
  "crossbeam-utils",
@@ -1742,16 +1742,13 @@ checksum = "447660ad36a13288b1db4d4248e857b510e8c3a225c822ba4fb748c0aafecffd"
 [[package]]
 name = "ya-packet-trace"
 version = "0.1.0"
-source = "git+https://github.com/golemfactory/ya-packet-trace#cf7583725930df57298088caa6d0f468037909da"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2a9e5444475d519a584d2adaf6f281cb3deeb0ceb41503db28be4d081afb714c"
 dependencies = [
  "chrono",
  "fxhash",
  "log",
 ]
-
-[[package]]
-name = "ya-sb-derive"
-version = "0.2.0"
 
 [[package]]
 name = "ya-sb-proto"
