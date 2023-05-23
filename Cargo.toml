@@ -18,7 +18,7 @@ packet-trace-enable = ["ya-packet-trace/enable"]
 [dependencies]
 ya-sb-proto = "0.6.1"
 ya-sb-util = { version = "0.4.1", features = ["with-futures", 'with-writer'] }
-ya-packet-trace = { git = "https://github.com/golemfactory/ya-packet-trace" }
+ya-packet-trace = "0.1.0"
 
 actix = { version = "0.13", default-features = false, features = ["macros"] }
 flexbuffers = { version = "2", optional = true }
