@@ -1751,10 +1751,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ya-sb-derive"
-version = "0.2.0"
-
-[[package]]
 name = "ya-sb-proto"
 version = "0.6.1"
 dependencies = [
