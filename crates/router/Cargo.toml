@@ -28,6 +28,8 @@ actix-rt = "2.2"
 actix = { version = "0.13", default-features = false, features = ["macros"] }
 actix-server = "2"
 actix-service = "2"
+# Freeze actix_derive version, because switch to 0.6.1 violated semantic versioning.
+actix_derive = "=0.6.0"
 
 anyhow = "1.0"
 chrono = "0.4"
