@@ -1,4 +1,3 @@
-/// Using GSB with actix 0.9
 use crate::{RpcRawCall, RpcStreamCall, RpcStreamMessage};
 use actix::prelude::*;
 use serde::de::DeserializeOwned;
