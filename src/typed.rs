@@ -271,3 +271,61 @@ where
         self
     }
 }
+
+pub struct StatelessServiceBinder<'a, AUX>
+where
+    AUX: std::clone::Clone,
+{
+    addr: &'a str,
+    aux: AUX,
+}
+
+impl<'a, AUX> StatelessServiceBinder<'a, AUX>
+where
+    AUX: std::clone::Clone + 'static,
+{
+    pub fn new(addr: &'a str, aux: AUX) -> Self {
+        Self { addr, aux }
+    }
+
+    pub fn bind<F: 'static, Msg: RpcMessage, Output: 'static>(self, f: F) -> Self
+    where
+        F: Fn(String, Msg) -> Output,
+        Output: Future<Output = Result<Msg::Item, Msg::Error>>,
+        Msg::Error: std::fmt::Display,
+    {
+        let _ = bind_with_caller(self.addr, move |addr, msg| {
+            log::trace!("Received call to {}", Msg::ID);
+            let fut = f(addr, msg);
+            fut.map(|res| {
+                match &res {
+                    Ok(_) => log::trace!("Call to {} successful", Msg::ID),
+                    Err(e) => log::debug!("Call to {} failed: {}", Msg::ID, e),
+                }
+                res
+            })
+        });
+        self
+    }
+
+    pub fn bind_with_processor<F: 'static, Msg: RpcMessage, Output: 'static>(self, f: F) -> Self
+    where
+        F: Fn(AUX, String, Msg) -> Output,
+        Output: Future<Output = Result<Msg::Item, Msg::Error>>,
+        Msg::Error: std::fmt::Display,
+    {
+        let aux = self.aux.clone();
+        let _ = bind_with_caller(self.addr, move |addr, msg| {
+            log::trace!("Received call to {}", Msg::ID);
+            let fut = f(aux.clone(), addr, msg);
+            fut.map(|res| {
+                match &res {
+                    Ok(_) => log::trace!("Call to {} successful", Msg::ID),
+                    Err(e) => log::debug!("Call to {} failed: {}", Msg::ID, e),
+                }
+                res
+            })
+        });
+        self
+    }
+}
