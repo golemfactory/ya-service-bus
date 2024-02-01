@@ -150,7 +150,7 @@ impl<T: RpcMessage + Unpin> RpcEndpoint<T> for Endpoint
 where
     T: Send,
 {
-    type Result = Pin<Box<dyn Future<Output = Result<Result<T::Item, T::Error>, Error>>>>;
+    type Result = Pin<Box<dyn Future<Output = Result<Result<T::Item, T::Error>, Error>> + Send>>;
 
     fn send(&self, msg: T) -> Self::Result {
         Endpoint::call(self, msg).boxed()
