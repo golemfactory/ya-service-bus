@@ -57,7 +57,7 @@ pub struct Connection<
     services: HashSet<String>,
     output: writer::SinkWrite<GsbMessage, W>,
     reply_map: BTreeMap<String, ReplySender>,
-    reply_to : ReplySender,
+    reply_to: ReplySender,
     hold_queue: Vec<(GsbMessage, oneshot::Sender<()>)>,
     topic_map: BTreeMap<String, SpawnHandle>,
     conn_info: ConnInfo,
@@ -226,10 +226,8 @@ where
         } {
             let request_id = call_reply.request_id.clone();
             match dst.send(ForwardCallResponse { call_reply }) {
-                Err(e) => {
-                    future::err(format!("unable to send reply {}, canceled", request_id))
-                }
-                Ok(_) => future::ok(())
+                Err(e) => future::err(format!("unable to send reply {}, canceled", request_id)),
+                Ok(_) => future::ok(()),
             }
         } else {
             log::debug!("received unmatched reply {}", call_reply.request_id);
@@ -272,9 +270,13 @@ pub fn connection<
         let output = writer::SinkWrite::new(writer, ctx);
         let (reply_to, reply_to_exec) = tokio::sync::mpsc::unbounded_channel();
 
-
-        let _ =  <Connection<_, _> as InputHandler<Result<GsbMessage, ProtocolError>>>::add_stream(reader, ctx);
-        let _ = <Connection<_, _> as InputHandler<ForwardCallResponse>>::add_stream(UnboundedReceiverStream::new(reply_to_exec), ctx);
+        let _ = <Connection<_, _> as InputHandler<Result<GsbMessage, ProtocolError>>>::add_stream(
+            reader, ctx,
+        );
+        let _ = <Connection<_, _> as InputHandler<ForwardCallResponse>>::add_stream(
+            UnboundedReceiverStream::new(reply_to_exec),
+            ctx,
+        );
 
         Connection {
             instance_id: None,
@@ -335,7 +337,10 @@ impl<
                 );
             }
             GsbMessage::CallReply(call_reply) => {
-                log::info!("sending reply: id={}:type={}::{}", call_reply.request_id, call_reply.reply_type,
+                log::info!(
+                    "sending reply: id={}:type={}::{}",
+                    call_reply.request_id,
+                    call_reply.reply_type,
                     String::from_utf8_lossy(&call_reply.data)
                 );
                 return Box::pin(
@@ -347,7 +352,7 @@ impl<
                             }
                             fut::ready(())
                         }),
-                )
+                );
             }
             GsbMessage::RegisterRequest(register_request) => {
                 let me = ctx.address();
@@ -539,11 +544,15 @@ where
     S: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     ConnInfo: Debug + Unpin + 'static,
 {
-
-    fn handle(&mut self, msg: ForwardCallResponse, ctx: &mut Self::Context) -> Pin<Box<dyn ActorFuture<Self, Output = ()>>> {
+    fn handle(
+        &mut self,
+        msg: ForwardCallResponse,
+        ctx: &mut Self::Context,
+    ) -> Pin<Box<dyn ActorFuture<Self, Output = ()>>> {
         self.send_message(GsbMessage::CallReply(msg.call_reply), ctx)
             .map(|_| ())
-            .into_actor(self).boxed_local()
+            .into_actor(self)
+            .boxed_local()
     }
 }
 

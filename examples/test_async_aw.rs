@@ -34,9 +34,7 @@ async fn server() -> Result<(), Box<dyn Error>> {
     let _ = bus::bind_stream("/local/test", |_p: Ping| {
         let interval = tokio::time::interval(Duration::from_secs(1));
         tokio_stream::wrappers::IntervalStream::new(interval)
-            .flat_map(|_ts| stream::iter(
-                (0..150).into_iter().map(|n| Ok(format!("hello {n}")))
-            ))
+            .flat_map(|_ts| stream::iter((0..150).into_iter().map(|n| Ok(format!("hello {n}")))))
             .take(1500)
     });
 
@@ -45,8 +43,6 @@ async fn server() -> Result<(), Box<dyn Error>> {
     let _ = rx.await;
     Ok(())
 }
-
-
 
 #[actix_rt::main]
 async fn main() -> Result<(), Box<dyn Error>> {

@@ -752,4 +752,3 @@ static ref ROUTER: Arc<Mutex<Router>> = Arc::new(Mutex::new(Router::new()));
 pub fn router() -> Arc<Mutex<Router>> {
     (*ROUTER).clone()
 }
-
