@@ -22,7 +22,7 @@ path = "src/bin.rs"
 required-features = ['bin']
 
 [dependencies]
-ya-sb-proto = "0.6"
+ya-sb-proto = { version = "0.6", path = "../proto" }
 ya-sb-util = { version = "0.4.1", features = ["with-writer"], path="../util" }
 actix-rt = "2.2"
 actix = { version = "0.13", default-features = false, features = ["macros"] }

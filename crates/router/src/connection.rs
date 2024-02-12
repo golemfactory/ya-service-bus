@@ -149,7 +149,7 @@ where
     fn handle_call_request(
         &mut self,
         call_request: CallRequest,
-        ctx: &mut <Self as Actor>::Context,
+        _ctx: &mut <Self as Actor>::Context,
     ) -> impl Future<Output = Result<(), CallReply>> + 'static {
         let request_id = call_request.request_id.clone();
 
@@ -199,7 +199,7 @@ where
     fn handle_push_request(
         &mut self,
         call_request: CallRequest,
-        ctx: &mut <Self as Actor>::Context,
+        _ctx: &mut <Self as Actor>::Context,
     ) -> impl Future<Output = ()> + 'static {
         match { self.router.read().resolve_node(&call_request.address) } {
             Some(dst) => {
@@ -226,7 +226,7 @@ where
         } {
             let request_id = call_reply.request_id.clone();
             match dst.send(ForwardCallResponse { call_reply }) {
-                Err(e) => future::err(format!("unable to send reply {}, canceled", request_id)),
+                Err(_) => future::err(format!("unable to send reply {}, canceled", request_id)),
                 Ok(_) => future::ok(()),
             }
         } else {
