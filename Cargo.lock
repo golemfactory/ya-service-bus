@@ -1869,7 +1869,7 @@ dependencies = [
  "url",
  "uuid",
  "ya-sb-proto 0.6.1 (registry+https://github.com/rust-lang/crates.io-index)",
- "ya-sb-util 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ya-sb-util 0.4.1",
 ]
 
 [[package]]

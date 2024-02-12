@@ -2,7 +2,7 @@
 name = "ya-service-bus"
 version = "0.6.3"
 authors = ["Golem Factory <contact@golem.network>"]
-edition = "2018"
+edition = "2021"
 homepage = "https://github.com/golemfactory/ya-service-bus"
 repository = "https://github.com/golemfactory/ya-service-bus"
 license = "LGPL-3.0"
