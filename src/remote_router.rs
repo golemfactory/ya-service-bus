@@ -223,7 +223,7 @@ impl Handler<RpcRawCall> for RemoteRouter {
 
         ActorResponse::r#async(
             self.connection()
-                .and_then(|connection| {
+                .and_then(move |connection| {
                     connection.call(msg.caller, msg.addr, msg.body, msg.no_reply)
                 })
                 .into_actor(self),
