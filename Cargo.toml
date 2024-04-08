@@ -2,7 +2,7 @@
 name = "ya-service-bus"
 version = "0.7.1"
 authors = ["Golem Factory <contact@golem.network>"]
-edition = "2018"
+edition = "2021"
 homepage = "https://github.com/golemfactory/ya-service-bus"
 repository = "https://github.com/golemfactory/ya-service-bus"
 license = "LGPL-3.0"
@@ -16,7 +16,7 @@ json = ["serde_json"]
 packet-trace-enable = ["ya-packet-trace/enable"]
 
 [dependencies]
-ya-sb-proto = "0.6.1"
+ya-sb-proto = { version = "0.6.1", path = "crates/proto" }
 ya-sb-util = { version = "0.4.1", features = ["with-futures", 'with-writer'] }
 ya-packet-trace = "0.1.0"
 
