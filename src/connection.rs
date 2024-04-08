@@ -446,7 +446,7 @@ where
                     Err(Error::GsbFailure(String::from_utf8(chunk.into_bytes())?))
                 }
             };
-            let _ = ctx.spawn(
+            let _ = ctx.wait(
                 async move {
                     let s = r.send(item);
                     s.await
