@@ -1,6 +1,6 @@
 [package]
 name = "ya-service-bus"
-version = "0.6.3"
+version = "0.7.1"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2021"
 homepage = "https://github.com/golemfactory/ya-service-bus"

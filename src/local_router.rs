@@ -28,7 +28,8 @@ impl DualRawEndpoint {
 }
 
 trait RawEndpoint: Any {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>>;
+    fn send(&self, msg: RpcRawCall)
+        -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send>>;
 
     fn call_stream(
         &self,
@@ -40,11 +41,14 @@ trait RawEndpoint: Any {
 
 // Implementation for non-streaming service
 impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+    fn send(
+        &self,
+        msg: RpcRawCall,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send>> {
         let body: T =
             match crate::serialization::from_slice(msg.body.as_slice()).map_err(Error::from) {
                 Ok(v) => v,
-                Err(e) => return future::err(e).boxed_local(),
+                Err(e) => return future::err(e).boxed(),
             };
         Box::pin(
             Recipient::send(self, RpcEnvelope::with_caller(&msg.caller, body))
@@ -78,7 +82,10 @@ impl<T: RpcMessage> RawEndpoint for Recipient<RpcEnvelope<T>> {
 }
 
 impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+    fn send(
+        &self,
+        msg: RpcRawCall,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send>> {
         Box::pin(future::err(Error::GsbBadRequest(format!(
             "non-streaming-request on streaming endpoint: {}",
             msg.addr
@@ -132,7 +139,10 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
 }
 
 impl RawEndpoint for Recipient<RpcRawCall> {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+    fn send(
+        &self,
+        msg: RpcRawCall,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send>> {
         let addr = msg.addr.clone();
         Box::pin(
             Recipient::<RpcRawCall>::send(self, msg)
@@ -161,7 +171,10 @@ impl RawEndpoint for Recipient<RpcRawCall> {
 }
 
 impl RawEndpoint for Recipient<RpcRawStreamCall> {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+    fn send(
+        &self,
+        msg: RpcRawCall,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send>> {
         let (tx, rx) = futures::channel::mpsc::channel(1);
         // TODO: send error to caller
         Arbiter::current().spawn(
@@ -186,7 +199,7 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
                 None => Err(Error::GsbBadRequest("unexpected EOS".into())),
             }
         }
-        .boxed_local()
+        .boxed()
     }
 
     fn call_stream(
@@ -215,7 +228,10 @@ impl RawEndpoint for Recipient<RpcRawStreamCall> {
 }
 
 impl RawEndpoint for DualRawEndpoint {
-    fn send(&self, msg: RpcRawCall) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>>>> {
+    fn send(
+        &self,
+        msg: RpcRawCall,
+    ) -> Pin<Box<dyn Future<Output = Result<Vec<u8>, Error>> + Send>> {
         RawEndpoint::send(&self.rpc, msg)
     }
 
@@ -316,7 +332,7 @@ impl Slot {
         }
     }
 
-    fn send(&self, msg: RpcRawCall) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin {
+    fn send(&self, msg: RpcRawCall) -> impl Future<Output = Result<Vec<u8>, Error>> + Unpin + Send {
         self.inner.send(msg)
     }
 
@@ -527,8 +543,9 @@ impl Router {
         &mut self,
         addr: &str,
         msg: RpcEnvelope<T>,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Send {
         let addr = format!("{}/{}", addr, T::ID);
+
         if let Some(slot) = self.handlers.get_mut(&addr) {
             (if let Some(h) = slot.recipient() {
                 h.send(msg)

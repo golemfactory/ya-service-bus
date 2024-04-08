@@ -77,7 +77,7 @@ impl Endpoint {
     pub fn call<T: RpcMessage + Unpin>(
         &self,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Send {
         self.router
             .lock()
             .unwrap()
@@ -88,7 +88,7 @@ impl Endpoint {
         &self,
         caller: impl ToString,
         msg: T,
-    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> {
+    ) -> impl Future<Output = Result<Result<T::Item, T::Error>, Error>> + Send {
         self.router
             .lock()
             .unwrap()
@@ -150,14 +150,14 @@ impl<T: RpcMessage + Unpin> RpcEndpoint<T> for Endpoint
 where
     T: Send,
 {
-    type Result = Pin<Box<dyn Future<Output = Result<Result<T::Item, T::Error>, Error>>>>;
+    type Result = Pin<Box<dyn Future<Output = Result<Result<T::Item, T::Error>, Error>> + Send>>;
 
     fn send(&self, msg: T) -> Self::Result {
-        Endpoint::call(self, msg).boxed_local()
+        Endpoint::call(self, msg).boxed()
     }
 
     fn send_as(&self, caller: impl ToString + 'static, msg: T) -> Self::Result {
-        Endpoint::call_as(self, caller, msg).boxed_local()
+        Endpoint::call_as(self, caller, msg).boxed()
     }
 }
 
