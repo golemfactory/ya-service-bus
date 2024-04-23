@@ -40,9 +40,15 @@ mod tls {
     use std::io::BufReader;
     use std::path::Path;
     use ya_sb_router::RouterConfig;
+    use ya_sb_util::tls::CertHash;
 
     fn load_certs(path: &Path) -> io::Result<Vec<CertificateDer<'static>>> {
-        certs(&mut BufReader::new(File::open(path)?)).collect()
+        let certs =
+            certs(&mut BufReader::new(File::open(path)?)).collect::<io::Result<Vec<_>>>()?;
+        for cert in &certs {
+            log::info!("loaded cert {:?}", CertHash::from(cert))
+        }
+        Ok(certs)
     }
 
     fn load_keys(path: &Path) -> io::Result<PrivateKeyDer<'static>> {
