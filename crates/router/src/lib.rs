@@ -116,3 +116,9 @@ pub async fn tcp_connect(
     let framed = tokio_util::codec::Framed::new(sock, GsbMessageCodec::default());
     framed.split()
 }
+
+#[cfg(feature = "tls")]
+mod tls;
+
+#[cfg(feature = "tls")]
+pub use tls::*;

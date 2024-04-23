@@ -1,8 +1,8 @@
 use std::convert::TryInto;
 use std::time::Duration;
 
+use clap::Parser;
 use futures::prelude::*;
-use structopt::*;
 use ubyte::*;
 use uuid::Uuid;
 
@@ -50,6 +50,7 @@ async fn run_client(args: Args) -> anyhow::Result<()> {
         _ => panic!("Unexpected message received"),
     }
 
+    let payload_size: ByteUnit = args.payload_size.parse().map_err(anyhow::Error::msg)?;
     for _ in 0..args.count.unwrap_or(1) {
         if let Some(delay) = args.delay {
             println!("pause for {} secs", delay);
@@ -57,7 +58,7 @@ async fn run_client(args: Args) -> anyhow::Result<()> {
         }
         println!("Sending broadcast request...");
         let mut broadcast_data = Vec::new();
-        broadcast_data.resize(args.payload_size.as_u64().try_into()?, 0u8);
+        broadcast_data.resize(payload_size.as_u64().try_into()?, 0u8);
 
         let broadcast_request = BroadcastRequest {
             caller: "some_id".into(),
@@ -134,29 +135,30 @@ async fn run_client(args: Args) -> anyhow::Result<()> {
             msg => panic!("Unexpected message received: {:?}", msg),
         }
     }
+
     Ok(())
 }
 
-#[derive(StructOpt, Clone)]
+#[derive(Parser, Clone)]
 struct Args {
-    #[structopt(long, short)]
+    #[arg(long, short)]
     delay: Option<u64>,
-    #[structopt(long, short)]
+    #[arg(long, short)]
     count: Option<usize>,
-    #[structopt(long, default_value = "10kb")]
-    payload_size: ByteUnit,
-    #[structopt(long, short)]
+    #[arg(long, default_value = "10kb")]
+    payload_size: String,
+    #[arg(long, short)]
     parallel: Option<usize>,
 }
 
 #[actix_rt::main]
 async fn main() {
-    let args = Args::from_args();
+    let args = Args::parse();
     if let Some(n) = args.parallel {
         let handles = (0..n).map(|_| run_client(args.clone()));
 
         let _ = future::join_all(handles).await;
     } else {
-        run_client(Args::from_args()).await.unwrap();
+        run_client(Args::parse()).await.unwrap();
     }
 }

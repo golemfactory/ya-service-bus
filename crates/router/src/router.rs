@@ -12,6 +12,7 @@ use actix_rt::net::TcpStream;
 use actix_service::fn_service;
 use futures::prelude::*;
 use parking_lot::RwLock;
+use tokio::net::tcp::{OwnedReadHalf, OwnedWriteHalf};
 use tokio::sync::broadcast;
 use tokio::time::sleep;
 use tokio_stream::wrappers::BroadcastStream;
@@ -99,6 +100,53 @@ impl InstanceConfig {
         self.config.ping_timeout
     }
 
+    #[cfg(feature = "tls")]
+    /// Starts new tls server instance on given tcp address.
+    pub async fn bind_tls<A: ToSocketAddrs + Display>(
+        self,
+        addr: A,
+    ) -> io::Result<impl Future<Output = ()>> {
+        let instance_config = Arc::new(self);
+        let router = instance_config.new_router();
+
+        let router_status = router.clone();
+        let tls_config = instance_config.config.tls.clone().map(Arc::new);
+
+        log::info!("TLS Router listening on: {}", addr);
+        let server = actix_server::ServerBuilder::new()
+            .bind("gsb-tls", addr, move || {
+                let router = router.clone();
+                let instance_config = instance_config.clone();
+                let acceptor: tokio_rustls::TlsAcceptor = tls_config
+                    .clone()
+                    .map(tokio_rustls::TlsAcceptor::from)
+                    .unwrap();
+
+                fn_service(move |sock: TcpStream| {
+                    let acceptor = acceptor.clone();
+                    let instance_config = instance_config.clone();
+                    let router = router.clone();
+                    async move {
+                        let addr = sock.peer_addr()?;
+                        let tls_sock = acceptor.accept(sock).await?;
+                        let (tls_input, tls_output) = tokio::io::split(tls_sock);
+                        let _connection = super::connection::connection(
+                            instance_config.clone(),
+                            router.clone(),
+                            addr.clone(),
+                            tls_input,
+                            tls_output,
+                        );
+
+                        Ok::<_, anyhow::Error>(())
+                    }
+                })
+            })?
+            .run();
+        let worker = router_gc_worker(server, router_status);
+        Ok(worker)
+    }
+
     /// Starts new server instance on given tcp address.
     pub async fn bind_tcp<A: ToSocketAddrs + Display>(
         self,
@@ -116,16 +164,22 @@ impl InstanceConfig {
                 let instance_config = instance_config.clone();
 
                 fn_service(move |sock: TcpStream| {
-                    let addr = sock.peer_addr().unwrap();
-                    let (input, output) = sock.into_split();
-                    let _connection = super::connection::connection(
-                        instance_config.clone(),
-                        router.clone(),
-                        addr.clone(),
-                        input,
-                        output,
-                    );
-                    futures::future::ok::<_, anyhow::Error>(())
+                    let instance_config = instance_config.clone();
+                    let router = router.clone();
+                    async move {
+                        let addr = sock.peer_addr()?;
+                        let (input, output) = sock.into_split();
+
+                        let _connection =
+                            super::connection::connection::<OwnedReadHalf, OwnedWriteHalf, _>(
+                                instance_config.clone(),
+                                router.clone(),
+                                addr.clone(),
+                                input,
+                                output,
+                            );
+                        Ok::<_, anyhow::Error>(())
+                    }
                 })
             })?
             .run();
@@ -207,8 +261,17 @@ impl InstanceConfig {
         gsb_url: Option<url::Url>,
     ) -> io::Result<impl Future<Output = ()> + 'static> {
         Ok(match GsbAddr::from_url(gsb_url) {
-            GsbAddr::Tcp(addr) => self.bind_tcp(addr).await?.left_future(),
-            GsbAddr::Unix(path) => self.bind_unix(&path).await?.right_future(),
+            GsbAddr::Tcp(addr) => {
+                #[cfg(feature = "tls")]
+                if self.config.tls.is_some() {
+                    self.bind_tls(addr).await?.boxed()
+                } else {
+                    self.bind_tcp(addr).await?.boxed()
+                }
+                #[cfg(not(feature = "tls"))]
+                self.bind_tcp(addr).await?.boxed()
+            }
+            GsbAddr::Unix(path) => self.bind_unix(&path).await?.boxed(),
         })
     }
 

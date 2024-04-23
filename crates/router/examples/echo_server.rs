@@ -1,13 +1,22 @@
+#![allow(unused_imports)]
 use futures::prelude::*;
+use std::net::SocketAddr;
 
+use anyhow::{bail, Context};
+use clap::{arg, Parser};
 use std::time::Duration;
-use structopt::*;
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
-use ya_sb_router::connect;
+use ya_sb_router::*;
 
-async fn run_server(args: Args) {
-    let (mut writer, mut reader) = connect(Default::default()).await;
+async fn run_server(args: Args) -> anyhow::Result<()> {
+    #[cfg(feature = "tls")]
+    let (mut writer, mut reader) = tls_connect(args.server, args.cert)
+        .await
+        .context("connect to router")?;
+
+    #[cfg(not(feature = "tls"))]
+    let (mut writer, mut reader) = connect(GsbAddr::default()).await;
 
     println!("Sending hello");
     let hello = Hello {
@@ -23,7 +32,7 @@ async fn run_server(args: Args) {
     if let GsbMessage::Hello(h) = reader.next().await.unwrap().expect("hello not received") {
         println!("got hello: {:?}", h);
     } else {
-        panic!("Unexpected message received")
+        bail!("Unexpected message received")
     }
 
     println!("Sending register request...");
@@ -45,7 +54,7 @@ async fn run_server(args: Args) {
             println!("Service successfully registered")
         }
         GsbMessage::Ping(_) => {}
-        _ => panic!("Unexpected message received"),
+        _ => bail!("Unexpected message received"),
     }
 
     println!("Sending register request...");
@@ -104,15 +113,29 @@ async fn run_server(args: Args) {
         .forward(writer)
         .map(|_| ())
         .await;
+    Ok(())
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Args {
-    #[structopt(long, short)]
+    #[arg(long, short)]
     delay: Option<u64>,
+    #[cfg(feature = "tls")]
+    #[arg(long, default_value = "18.185.178.4:7464")]
+    server: SocketAddr,
+    #[cfg(feature = "tls")]
+    #[arg(
+        long,
+        default_value = "393479950594e7c676ba121033a677a1316f722460827e217c82d2b3"
+    )]
+    cert: CertHash,
 }
 
 #[tokio::main]
-async fn main() {
-    run_server(Args::from_args()).await;
+async fn main() -> anyhow::Result<()> {
+    env_logger::init();
+    rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
+        .expect("install ring crypto provider");
+
+    run_server(Args::parse()).await
 }

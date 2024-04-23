@@ -1,37 +1,78 @@
+use clap::Parser;
 use std::env;
-use structopt::{clap, StructOpt};
+use std::path::PathBuf;
 use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
 use ya_sb_router::{InstanceConfig, RouterConfig};
 
-#[derive(StructOpt)]
-#[structopt(about = "Service Bus Router")]
-#[structopt(global_setting = clap::AppSettings::ColoredHelp)]
+#[derive(Parser)]
+#[command(about = "Service Bus Router")]
 struct Options {
-    #[structopt(short = "l", env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
+    #[arg(short = 'l', env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
     gsb_url: url::Url,
-    #[structopt(long, default_value = "info")]
+    #[arg(long, default_value = "info")]
     log_level: String,
     /// How often send pings if there is no incoming packets.
-    #[structopt(long, default_value = "2min", env = "YA_SB_PING_INTERVAL")]
+    #[arg(long, default_value = "2min", env = "YA_SB_PING_INTERVAL")]
     ping_interval: humantime::Duration,
-    #[structopt(long, default_value = "5min", env = "YA_SB_PING_TIMEOUT")]
+    #[arg(long, default_value = "5min", env = "YA_SB_PING_TIMEOUT")]
     ping_timeout: humantime::Duration,
-    #[structopt(long, default_value = "30s", env = "YA_SB_FW_TIMEOUT")]
+    #[arg(long, default_value = "30s", env = "YA_SB_FW_TIMEOUT")]
     forward_timeout: humantime::Duration,
-    #[structopt(long, env = "YA_SB_GC")]
+    #[arg(long, env = "YA_SB_GC")]
     gc_interval: Option<humantime::Duration>,
-    #[structopt(long, short, default_value = "8", env = "YA_SB_HIGH_BUFFER")]
+    #[arg(long, default_value = "8", env = "YA_SB_HIGH_BUFFER")]
     high_buffer_mark: usize,
-    #[structopt(long, short, default_value = "4", env = "YA_SB_BROADCAST_BACKLOG")]
+    #[arg(long, short, default_value = "4", env = "YA_SB_BROADCAST_BACKLOG")]
     broadcast_backlog_max_size: usize,
+    #[arg(long, env = "YA_SB_CERT")]
+    cert: Option<PathBuf>,
+    #[arg(long, env = "YA_SB_KEY")]
+    key: Option<PathBuf>,
+}
+
+#[cfg(feature = "tls")]
+mod tls {
+    use crate::Options;
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+    use rustls_pemfile::{certs, ec_private_keys};
+    use std::fs::File;
+    use std::io;
+    use std::io::BufReader;
+    use std::path::Path;
+    use ya_sb_router::RouterConfig;
+
+    fn load_certs(path: &Path) -> io::Result<Vec<CertificateDer<'static>>> {
+        certs(&mut BufReader::new(File::open(path)?)).collect()
+    }
+
+    fn load_keys(path: &Path) -> io::Result<PrivateKeyDer<'static>> {
+        ec_private_keys(&mut BufReader::new(File::open(path)?))
+            .next()
+            .unwrap()
+            .map(Into::into)
+    }
+
+    pub fn add_config(options: &Options, config: &mut RouterConfig) -> anyhow::Result<()> {
+        match (&options.cert, &options.key) {
+            (Some(cert), Some(key)) => {
+                let tls_config = rustls::ServerConfig::builder()
+                    .with_no_client_auth()
+                    .with_single_cert(load_certs(cert)?, load_keys(key)?)?;
+                config.tls = Some(tls_config)
+            }
+            (None, None) => (),
+            _ => anyhow::bail!("misconfigured server expected key & cert"),
+        }
+        Ok(())
+    }
 }
 
 #[actix_rt::main]
 async fn main() -> anyhow::Result<()> {
-    let options = Options::from_args();
+    let options = Options::parse();
     env::set_var(
         "RUST_LOG",
-        env::var("RUST_LOG").unwrap_or(options.log_level),
+        env::var("RUST_LOG").unwrap_or(options.log_level.clone()),
     );
     env_logger::init();
     let mut config = RouterConfig::default();
@@ -41,6 +82,9 @@ async fn main() -> anyhow::Result<()> {
     config.high_buffer_mark = options.high_buffer_mark;
     config.forward_timeout = options.forward_timeout.into();
     config.broadcast_backlog = options.broadcast_backlog_max_size;
+
+    #[cfg(feature = "tls")]
+    tls::add_config(&options, &mut config)?;
 
     InstanceConfig::new(config)
         .run_url(Some(options.gsb_url))

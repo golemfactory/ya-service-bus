@@ -1,15 +1,21 @@
 use futures::prelude::*;
+#[cfg(feature = "tls")]
+use std::net::SocketAddr;
 
 use uuid::Uuid;
 
+use clap::Parser;
 use std::time::Duration;
-use structopt::StructOpt;
 use ya_sb_proto::codec::GsbMessage;
 use ya_sb_proto::*;
-use ya_sb_router::connect;
+use ya_sb_router::*;
 
 async fn run_client(args: Args) {
-    let (mut writer, mut reader) = connect(Default::default()).await;
+    #[cfg(feature = "tls")]
+    let (mut writer, mut reader) = tls_connect(args.server, args.cert).await.unwrap();
+
+    #[cfg(not(feature = "tls"))]
+    let (mut writer, mut reader) = connect(GsbAddr::default()).await;
 
     let instance_id = Uuid::new_v4().as_bytes().to_vec();
     let payload = [0u8; 200000];
@@ -82,15 +88,27 @@ async fn run_client(args: Args) {
     let (_, _) = future::join(senders, recv).await;
 }
 
-#[derive(StructOpt)]
+#[derive(Parser)]
 struct Args {
-    #[structopt(long, short)]
+    #[arg(long, short)]
     delay: Option<u64>,
-    #[structopt(long, short)]
+    #[arg(long, short)]
     count: Option<u64>,
+    #[cfg(feature = "tls")]
+    #[arg(long, default_value = "18.185.178.4:7464")]
+    server: SocketAddr,
+    #[cfg(feature = "tls")]
+    #[arg(
+        long,
+        default_value = "393479950594e7c676ba121033a677a1316f722460827e217c82d2b3"
+    )]
+    cert: CertHash,
 }
 
 #[tokio::main]
 async fn main() {
-    run_client(Args::from_args()).await;
+    rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
+        .unwrap();
+
+    run_client(Args::parse()).await;
 }

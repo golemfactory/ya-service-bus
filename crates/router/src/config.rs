@@ -19,6 +19,9 @@ pub struct RouterConfig {
     pub high_buffer_mark: usize,
     /// How often to scan for unused resources.
     pub gc_interval: Option<Duration>,
+    #[cfg(feature = "tls")]
+    /// TlS Server config.
+    pub tls: Option<rustls::ServerConfig>,
 }
 
 impl Default for RouterConfig {
@@ -30,6 +33,8 @@ impl Default for RouterConfig {
             broadcast_backlog: 16,
             gc_interval: None,
             high_buffer_mark: 16,
+            #[cfg(feature = "tls")]
+            tls: None,
         }
     }
 }
