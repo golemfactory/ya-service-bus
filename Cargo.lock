@@ -2342,7 +2342,7 @@ dependencies = [
  "url",
  "uuid",
  "ya-sb-proto",
- "ya-sb-util 0.4.1",
+ "ya-sb-util",
 ]
 
 [[package]]
@@ -2353,19 +2353,10 @@ dependencies = [
  "bitflags 1.3.2",
  "bytes",
  "futures",
+ "hex",
  "pin-project 0.4.30",
-]
-
-[[package]]
-name = "ya-sb-util"
-version = "0.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c525504f7ca7d13825ef10a44005663b91b4b9f3eeebd6768188884bec78a37d"
-dependencies = [
- "actix",
- "bitflags 1.3.2",
- "futures",
- "pin-project 0.4.30",
+ "rustls",
+ "sha2",
 ]
 
 [[package]]
@@ -2382,19 +2373,21 @@ dependencies = [
  "log",
  "miniz_oxide 0.5.4",
  "rand",
+ "rustls",
  "semver",
  "serde",
  "serde_json",
  "structopt",
  "thiserror",
  "tokio",
+ "tokio-rustls",
  "tokio-stream",
  "tokio-util",
  "url",
  "uuid",
  "ya-packet-trace",
  "ya-sb-proto",
- "ya-sb-util 0.4.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "ya-sb-util",
 ]
 
 [[package]]

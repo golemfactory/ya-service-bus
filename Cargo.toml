@@ -14,10 +14,11 @@ default = ["flex"]
 flex = ["flexbuffers"]
 json = ["serde_json"]
 packet-trace-enable = ["ya-packet-trace/enable"]
+tls = ['ya-sb-util/with-tls', 'rustls', 'tokio-rustls']
 
 [dependencies]
 ya-sb-proto = { version = "0.6.1", path = "crates/proto" }
-ya-sb-util = { version = "0.4.1", features = ["with-futures", 'with-writer'] }
+ya-sb-util = { version = "0.4.1", features = ["with-futures", 'with-writer'], path = "crates/util" }
 ya-packet-trace = "0.1.0"
 
 actix = { version = "0.13", default-features = false, features = ["macros"] }
@@ -35,6 +36,8 @@ tokio-util = "0.7"
 url = "2.1.1"
 semver="0.11.0"
 uuid = { version = "0.8.1", features = ["v4"] }
+rustls = { workspace = true, optional = true }
+tokio-rustls = { workspace = true, optional = true }
 
 [dev-dependencies]
 actix-rt = "2.2"
@@ -46,6 +49,12 @@ tokio-stream = "0.1.8"
 
 [workspace]
 members = [ "crates/*" ]
+
+[workspace.dependencies]
+rustls = "0.23.5"
+tokio-rustls = "0.26.0"
+sha2="0.10.8"
+hex = "0.4.3"
 
 [profile.release]
 lto = true
