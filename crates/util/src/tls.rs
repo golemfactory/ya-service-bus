@@ -49,7 +49,8 @@ pub struct HashVerifier {
 
 impl HashVerifier {
     pub fn new(hash: CertHash) -> Self {
-        let v = Arc::clone(rustls::crypto::CryptoProvider::get_default().unwrap());
+        let provider = rustls::crypto::ring::default_provider();
+        let v = Arc::new(provider);
         Self { v, hash }
     }
 }

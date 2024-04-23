@@ -107,8 +107,5 @@ struct Args {
 
 #[tokio::main]
 async fn main() {
-    rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
-        .unwrap();
-
     run_client(Args::parse()).await;
 }

@@ -25,3 +25,4 @@ bitflags = { version = "1.2.1", optional = true }
 rustls = { workspace = true, optional = true }
 sha2 = { workspace = true, optional = true }
 hex = { workspace = true, optional = true }
+ring = "0.17.8"

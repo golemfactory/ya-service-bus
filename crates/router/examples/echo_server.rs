@@ -134,8 +134,5 @@ struct Args {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     env_logger::init();
-    rustls::crypto::CryptoProvider::install_default(rustls::crypto::ring::default_provider())
-        .expect("install ring crypto provider");
-
     run_server(Args::parse()).await
 }
