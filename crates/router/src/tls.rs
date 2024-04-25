@@ -24,9 +24,13 @@ pub use ya_sb_util::tls::{CertHash, ParseError};
 ///
 /// ```rust
 /// use ya_sb_router::tls_connect;
-/// async move {
+/// use anyhow::Result;
+///
+/// async fn connnect() -> Result<()> {
 ///     let cert_hash = "393479950594e7c676ba121033a677a1316f722460827e217c82d2b3".parse()?;
-///     let (tx, rx) = tls_connect("18.185.178.4:7464".parse()?, cert_hash).await?;
+///     let (_tx, _rx) = tls_connect("18.185.178.4:7464", cert_hash).await?;
+///
+///     todo!()
 /// }
 /// ```
 ///

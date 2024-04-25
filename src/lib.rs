@@ -1,3 +1,4 @@
+#![allow(clippy::redundant_closure)]
 use actix::Message;
 use futures::prelude::Stream;
 use serde::{de::DeserializeOwned, Serialize};
@@ -10,6 +11,7 @@ mod local_router;
 mod remote_router;
 pub mod serialization;
 pub mod timeout;
+#[allow(clippy::needless_doctest_main)]
 pub mod typed;
 pub mod untyped;
 
@@ -56,6 +58,7 @@ impl ResponseChunk {
 
     #[inline]
     pub fn is_full(&self) -> bool {
+        #[allow(clippy::match_like_matches_macro)]
         match self {
             ResponseChunk::Full(_) => true,
             _ => false,

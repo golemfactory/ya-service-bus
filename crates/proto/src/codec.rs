@@ -132,7 +132,7 @@ impl Decoder for GsbMessageDecoder {
     type Error = ProtocolError;
 
     fn decode(&mut self, src: &mut bytes::BytesMut) -> Result<Option<Self::Item>, Self::Error> {
-        if self.msg_header == None {
+        if self.msg_header.is_none() {
             self.msg_header = decode_header(src)?;
         }
         match self.msg_header {

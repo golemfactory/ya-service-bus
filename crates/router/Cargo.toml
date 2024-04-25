@@ -44,7 +44,7 @@ chrono = "0.4"
 futures = "0.3"
 lazy_static = "1.4"
 log = "0.4.8"
-prost = "0.10"
+prost.workspace = true
 tokio = { version = "1", features = ["net", "sync", "macros", "rt-multi-thread", "time"] }
 tokio-util = { version = "0.7", features = ["codec"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
@@ -64,7 +64,7 @@ hex = { version = "0.4.3", optional = true }
 
 
 [dev-dependencies]
-ubyte="0.10.1"
+ubyte = "0.10.1"
 clap = { version = "4.5.4", features = ['derive'] }
 rustls = { workspace = true , features = ['ring']}
 env_logger="0"
