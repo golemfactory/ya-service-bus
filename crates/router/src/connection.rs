@@ -337,12 +337,6 @@ impl<
                 );
             }
             GsbMessage::CallReply(call_reply) => {
-                log::info!(
-                    "sending reply: id={}:type={}::{}",
-                    call_reply.request_id,
-                    call_reply.reply_type,
-                    String::from_utf8_lossy(&call_reply.data)
-                );
                 return Box::pin(
                     self.handle_call_reply(call_reply, ctx)
                         .into_actor(self)

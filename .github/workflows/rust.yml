@@ -16,7 +16,7 @@ jobs:
   build:
     name: Build
     env:
-      RUSTFLAGS: "-D warnings -C opt-level=z -C target-cpu=x86-64 -C debuginfo=1"
+      RUSTFLAGS: "-D warnings -C opt-level=z -C debuginfo=1"
       X86_64_PC_WINDOWS_MSVC_OPENSSL_DIR: c:/vcpkg/installed/x64-windows
     runs-on: ${{ matrix.os }}
     strategy:
