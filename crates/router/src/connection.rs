@@ -411,7 +411,7 @@ impl<
                     ));
                     self.topic_map.insert(topic_id, handle);
                 }
-                let _ = self.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
+                self.send_reply(GsbMessage::SubscribeReply(SubscribeReply::default()), ctx);
             }
 
             GsbMessage::UnsubscribeRequest(unsubscribe_request) => {
@@ -558,18 +558,17 @@ where
     type Result = ResponseFuture<Result<(), oneshot::Canceled>>;
 
     fn handle(&mut self, msg: ForwardCallRequest, ctx: &mut Self::Context) -> Self::Result {
-        if !msg.call_request.no_reply {
-            if self
+        if !msg.call_request.no_reply
+            && self
                 .reply_map
                 .insert(msg.call_request.request_id.clone(), msg.reply_to)
                 .is_some()
-            {
-                log::warn!(
-                    "[{:?}] duplicate message request id forwarded {}",
-                    self.conn_info,
-                    msg.call_request.request_id
-                );
-            }
+        {
+            log::warn!(
+                "[{:?}] duplicate message request id forwarded {}",
+                self.conn_info,
+                msg.call_request.request_id
+            );
         }
         self.send_message(GsbMessage::CallRequest(msg.call_request), ctx)
     }

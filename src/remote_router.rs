@@ -108,7 +108,7 @@ impl RemoteRouter {
             "got connection activating {} calls",
             self.pending_calls.len()
         );
-        for tx in std::mem::replace(&mut self.pending_calls, Default::default()) {
+        for tx in std::mem::take(&mut self.pending_calls) {
             let connection = connection.clone();
             let send_fut = async move {
                 let _v = tx.send(connection);
@@ -137,9 +137,10 @@ impl RemoteRouter {
 
         rx.into_actor(self)
             .map(|_, this, ctx| {
-                this.connection.as_ref().map(|c| {
+                if let Some(c) = this.connection.as_ref() {
                     c.connected().not().then(|| log::warn!("connection lost"));
-                });
+                }
+
                 // restarts the actor
                 ctx.run_later(RECONNECT_DELAY, |_, ctx| ctx.stop());
             })

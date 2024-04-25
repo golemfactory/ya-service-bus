@@ -10,7 +10,7 @@ pub fn send(
     caller: &str,
     bytes: &[u8],
 ) -> impl Future<Output = Result<Vec<u8>, Error>> {
-    forward_bytes(addr, caller, bytes.into(), false)
+    forward_bytes(addr, caller, bytes, false)
 }
 
 pub fn push(
@@ -18,7 +18,7 @@ pub fn push(
     caller: &str,
     bytes: &[u8],
 ) -> impl Future<Output = Result<Vec<u8>, Error>> {
-    forward_bytes(addr, caller, bytes.into(), true)
+    forward_bytes(addr, caller, bytes, true)
 }
 
 pub fn call_stream(
@@ -91,6 +91,7 @@ impl RawStreamHandler for () {
 }
 
 pub struct Fn4Handler<R> {
+    #[allow(clippy::type_complexity)]
     f: Box<dyn FnMut(&str, &str, &[u8], bool) -> R>,
 }
 
