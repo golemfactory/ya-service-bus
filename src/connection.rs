@@ -1065,6 +1065,43 @@ pub async fn tcp(addr: impl tokio::net::ToSocketAddrs) -> Result<TcpTransport, s
     ))
 }
 
+#[cfg(feature = "tls")]
+mod tls {
+    use rustls::pki_types::ServerName;
+    use std::sync::Arc;
+    use tokio::net::TcpStream;
+    use tokio_rustls::client::TlsStream;
+    use ya_sb_proto::codec::GsbMessageCodec;
+    pub use ya_sb_util::tls::CertHash;
+    use ya_sb_util::tls::HashVerifier;
+
+    pub type TlsTransport = tokio_util::codec::Framed<TlsStream<TcpStream>, GsbMessageCodec>;
+
+    pub async fn tls(
+        addr: impl tokio::net::ToSocketAddrs,
+        cert_hash: CertHash,
+    ) -> Result<TlsTransport, std::io::Error> {
+        let v = Arc::new(HashVerifier::new(cert_hash));
+
+        let connector = tokio_rustls::TlsConnector::from(Arc::new(
+            rustls::ClientConfig::builder()
+                .dangerous()
+                .with_custom_certificate_verifier(v)
+                .with_no_client_auth(),
+        ));
+        let sock = TcpStream::connect(&addr).await?;
+        let io = connector
+            .connect(ServerName::IpAddress(sock.peer_addr()?.ip().into()), sock)
+            .await?;
+        let framed = tokio_util::codec::Framed::new(io, GsbMessageCodec::default());
+
+        Ok(framed)
+    }
+}
+
+#[cfg(feature = "tls")]
+pub use tls::*;
+
 #[cfg(unix)]
 mod unix {
 

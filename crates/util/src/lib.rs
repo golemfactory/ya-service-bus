@@ -12,6 +12,9 @@ pub mod futures;
 #[cfg(feature = "with-writer")]
 pub mod writer;
 
+#[cfg(feature = "with-tls")]
+pub mod tls;
+
 pub struct RevPrefixes<'a>(pub &'a str);
 
 impl<'a> Iterator for RevPrefixes<'a> {

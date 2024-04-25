@@ -180,7 +180,7 @@ jobs:
           target: x86_64-unknown-linux-musl
           override: true
 
-      - uses: golemfactory/build-deb-action@v2
+      - uses: golemfactory/build-deb-action@v5
         id: deb
         with:
           debVersion: ${{ steps.version.outputs.version }}
