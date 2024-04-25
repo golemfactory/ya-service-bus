@@ -1,6 +1,6 @@
 [package]
 name = "ya-sb-router"
-version = "0.6.3"
+version = "0.6.4"
 description = "Service Bus Router"
 authors = ["Golem Factory <contact@golem.network>"]
 homepage = "https://github.com/golemfactory/ya-service-bus/crates/router"
@@ -30,7 +30,7 @@ required-features = ['bin']
 
 [dependencies]
 ya-sb-proto = { version = "0.6", path = "../proto" }
-ya-sb-util = { version = "0.5.0", features = ["with-writer"], path="../util" }
+ya-sb-util = { version = "0.5.1", features = ["with-writer"], path="../util" }
 actix-rt = "2.2"
 actix = { version = "0.13", default-features = false, features = ["macros"] }
 actix-server = {  version = "2" }

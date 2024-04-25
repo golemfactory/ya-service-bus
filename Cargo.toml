@@ -1,6 +1,6 @@
 [package]
 name = "ya-service-bus"
-version = "0.7.2"
+version = "0.7.3"
 authors = ["Golem Factory <contact@golem.network>"]
 edition = "2021"
 homepage = "https://github.com/golemfactory/ya-service-bus"
@@ -16,8 +16,8 @@ packet-trace-enable = ["ya-packet-trace/enable"]
 tls = ['ya-sb-util/with-tls', 'rustls', 'tokio-rustls']
 
 [dependencies]
-ya-sb-proto = { version = "0.6.1", path = "crates/proto" }
-ya-sb-util = { version = "0.5.0", features = ["with-futures", 'with-writer'], path = "crates/util" }
+ya-sb-proto = { version = "0.6.2", path = "crates/proto" }
+ya-sb-util = { version = "0.5.1", features = ["with-futures", 'with-writer'], path = "crates/util" }
 ya-packet-trace = "0.1.0"
 actix = { version = "0.13", default-features = false, features = ["macros"] }
 flexbuffers = { version = "2", optional = true }
