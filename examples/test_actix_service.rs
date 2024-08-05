@@ -66,7 +66,11 @@ impl Actor for ExeUnit {
         self.0 = Some(actix_rpc::bind::<Execute>(
             BUS_ID,
             ctx.address().recipient(),
-        ))
+        ));
+        let _  = actix_rpc::bind::<Ping>(
+            BUS_ID,
+            ctx.address().recipient(),
+        );
     }
 }
 
@@ -76,6 +80,16 @@ impl Handler<RpcEnvelope<Execute>> for ExeUnit {
     fn handle(&mut self, msg: RpcEnvelope<Execute>, _ctx: &mut Self::Context) -> Self::Result {
         eprintln!("got {:?}", msg.as_ref());
         Ok(format!("{:?}", msg.into_inner()))
+    }
+}
+
+
+impl Handler<RpcEnvelope<Ping>> for ExeUnit {
+    type Result = Result<String, ()>;
+
+    fn handle(&mut self, msg: RpcEnvelope<Ping>, _ctx: &mut Self::Context) -> Self::Result {
+        eprintln!("got ping {:?}", msg.0);
+        Ok(format!("pong {}", msg.0))
     }
 }
 
@@ -109,41 +123,40 @@ fn run_script(script: PathBuf) -> impl Future<Output = Result<String, Box<dyn Er
     }
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+#[actix_rt::main]
+async fn main() -> Result<(), Box<dyn Error>> {
     env::set_var("RUST_LOG", env::var("RUST_LOG").unwrap_or("debug".into()));
     env_logger::init();
-    let sys = System::new();
+
     let args = Args::from_args();
     match args {
         Args::Server { .. } => {
-            let _ = ExeUnit::default().start();
-            sys.run()?;
+            let a = ExeUnit::default().start();
+            future::pending::<()>().await;
             eprintln!("done");
         }
         Args::Client { script } => {
-            let result = sys.block_on(run_script(script))?;
+            let result = run_script(script).await?;
             eprintln!("got result: {:?}", result);
         }
         Args::Ping { dst, msg } => {
-            let result = sys.block_on(actix_rpc::service(&dst).send(Ping(msg)))?;
+            let result = actix_rpc::service(&dst).send(Ping(msg)).await?;
             eprintln!("got result: {:?}", result);
         }
         Args::StreamPing { dst, msg } => {
-            let result = sys.block_on(
-                actix_rpc::service(&dst)
+            let result = actix_rpc::service(&dst)
                     .call_stream(StreamPing(msg))
-                    .for_each(|item| future::ready(eprintln!("got={:?}", item))),
-            );
+                    .for_each(|item| future::ready(eprintln!("got={:?}", item))).await;
             eprintln!("got result: {:?}", result);
         }
 
         Args::Local { script } => {
             let _ = ExeUnit::default().start();
 
-            let result = sys.block_on(async {
+            let result = async {
                 tokio::time::sleep(Duration::from_millis(500)).await;
                 run_script(script).await
-            })?;
+            }.await?;
             eprintln!("got result: {:?}", result);
         }
     }
