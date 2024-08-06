@@ -18,23 +18,23 @@ tls = ['ya-sb-util/with-tls', 'rustls', 'tokio-rustls']
 [dependencies]
 ya-sb-proto = { version = "0.6.2", path = "crates/proto" }
 ya-sb-util = { version = "0.5.1", features = ["with-futures", 'with-writer'], path = "crates/util" }
-ya-packet-trace = "0.1.0"
-actix = { version = "0.13", default-features = false, features = ["macros"] }
-flexbuffers = { version = "2", optional = true }
-futures = "0.3"
-lazy_static = "1.4"
-log = "0.4"
-miniz_oxide = "0.5"
-rand = "0.8"
-serde = { version = "1.0", features = ["derive"] }
+ya-packet-trace = { workspace = true }
+actix = { workspace = true, features = ["macros"] }
+flexbuffers = { workspace = true, optional = true }
+futures = { workspace = true }
+lazy_static = { workspace = true }
+log = { workspace = true }
+miniz_oxide = { workspace = true }
+rand = { workspace = true }
+serde = { workspace = true, features = ["derive"] }
 serde_json = { workspace = true, optional = true }
 thiserror.workspace = true
 
 tokio = { workspace = true, features = ["net", "time", "io-util", "signal"] }
 tokio-util.workspace = true
 url.workspace = true
-semver="0.11.0"
-uuid = { version = "0.8.1", features = ["v4"] }
+semver={ workspace = true }
+uuid = { workspace = true, features = ["v4"] }
 rustls = { workspace = true, optional = true }
 tokio-rustls = { workspace = true, optional = true }
 
@@ -66,6 +66,31 @@ thiserror = "1.0.9"
 tokio="1"
 tokio-util = "0.7"
 url = "2.1.1"
+actix = { version = "0.13", default-features = false }
+actix-server = "2"
+actix-service = "2"
+actix_derive = "=0.6.0"
+anyhow = "1.0"
+bitflags = "1.2.1"
+chrono = "0.4"
+clap = "4.5.4"
+flexbuffers = "2"
+futures = "0.3"
+humantime = "2.1.0"
+lazy_static = "1.4"
+log = "0.4.8"
+miniz_oxide = "0.5"
+parking_lot = "0.11.1"
+prost-build = "0.10"
+rand = "0.8"
+ring = "0.17.8"
+rustls-pemfile = "2.1.2"
+semver = "0.11.0"
+serde = "1.0"
+serial_test = "2.0.0"
+ubyte = "0.10.1"
+uuid = "0.8.1"
+ya-packet-trace = "0.1.0"
 
 [profile.release]
 lto = true
