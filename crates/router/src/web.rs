@@ -64,7 +64,7 @@ pub async fn nodes(rm: web::Data<Arc<RestManager>>) -> impl Responder {
         .router
         .registered_instance_ids()
         .iter()
-        .map(|id| hex::encode(id))
+        .map(|id| format!("0x{}", hex::encode(id)))
         .collect();
 
     let response = serde_json::json!({
