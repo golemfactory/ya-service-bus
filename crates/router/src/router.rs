@@ -1,11 +1,14 @@
+use futures::FutureExt;
 use std::collections::{hash_map, HashMap};
 use std::fmt::{Debug, Display};
+use std::future::Future;
 use std::io;
 use std::net::ToSocketAddrs;
 #[cfg(unix)]
 use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::task::JoinHandle;
 
 use actix::Addr;
 use actix_rt::net::TcpStream;
@@ -23,17 +26,20 @@ use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
 use crate::connection::{Connection, DropConnection};
+use crate::web::RestManager;
 
 use super::config::RouterConfig;
 
 pub type RouterRef<W, C> = Arc<RwLock<Router<W, C>>>;
 
 /// Router config with instance identification info.
+#[derive(Clone)]
 pub struct InstanceConfig {
     config: RouterConfig,
     instance_id: uuid::Uuid,
     name: String,
     version: String,
+    router: Arc<RwLock<Option<Arc<dyn AbstractRouter>>>>,
 }
 
 impl InstanceConfig {
@@ -44,6 +50,7 @@ impl InstanceConfig {
             instance_id: Uuid::new_v4(),
             name: env!("CARGO_PKG_NAME").to_string(),
             version: env!("CARGO_PKG_VERSION").to_string(),
+            router: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -58,6 +65,7 @@ impl InstanceConfig {
             instance_id: Uuid::new_v4(),
             name: name.into(),
             version: version.into(),
+            router: Arc::new(RwLock::new(None)),
         }
     }
 
@@ -73,14 +81,31 @@ impl InstanceConfig {
         W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
         ConnInfo: Debug + Unpin + 'static,
     >(
-        self: &Arc<Self>,
+        &self,
     ) -> RouterRef<W, ConnInfo> {
+        let (node_trace_tx, _) = broadcast::channel(1000);
         Arc::new(RwLock::new(Router {
-            instance: self.clone(),
+            config: self.config.clone(),
             registered_instances: Default::default(),
             registered_endpoints: Default::default(),
             topics: Default::default(),
+            node_trace_tx,
         }))
+    }
+
+    fn create_router_and_save<
+        W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+        ConnInfo: Debug + Unpin + 'static,
+    >(
+        &mut self,
+    ) -> RouterRef<W, ConnInfo> {
+        if self.router.read().is_some() {
+            log::warn!("Router already existed. Overwriting it.");
+        }
+
+        let router = self.new_router();
+        *self.router.write() = Some(Arc::new(router.clone()));
+        router
     }
 
     #[inline]
@@ -103,12 +128,11 @@ impl InstanceConfig {
     #[cfg(feature = "tls")]
     /// Starts new tls server instance on given tcp address.
     pub async fn bind_tls<A: ToSocketAddrs + Display>(
-        self,
+        mut self,
         addr: A,
     ) -> io::Result<impl Future<Output = ()>> {
+        let router = self.create_router_and_save();
         let instance_config = Arc::new(self);
-        let router = instance_config.new_router();
-
         let router_status = router.clone();
         let tls_config = instance_config.config.tls.clone().map(Arc::new);
 
@@ -149,12 +173,11 @@ impl InstanceConfig {
 
     /// Starts new server instance on given tcp address.
     pub async fn bind_tcp<A: ToSocketAddrs + Display>(
-        self,
+        mut self,
         addr: A,
     ) -> io::Result<impl Future<Output = ()>> {
+        let router = self.create_router_and_save();
         let instance_config = Arc::new(self);
-        let router = instance_config.new_router();
-
         let router_status = router.clone();
 
         log::info!("Router listening on: {}", addr);
@@ -189,15 +212,17 @@ impl InstanceConfig {
 
     #[cfg(unix)]
     /// Starts new server instance on given unix socket path address.
-    pub async fn bind_unix(self, path: &Path) -> io::Result<impl Future<Output = ()> + 'static> {
+    pub async fn bind_unix(
+        mut self,
+        path: &Path,
+    ) -> io::Result<impl Future<Output = ()> + 'static> {
         use std::cell::RefCell;
         use std::fmt;
         use std::sync::atomic::{AtomicU64, Ordering};
         use tokio::net::UnixStream;
 
+        let router = self.create_router_and_save();
         let instance_config = Arc::new(self);
-        let router = instance_config.new_router();
-
         let router_status = router.clone();
         let worker_counter = Arc::new(AtomicU64::new(1));
 
@@ -276,23 +301,69 @@ impl InstanceConfig {
     }
 
     /// Starts new server instance on given gsb url address and waits until it stops.
-    pub async fn run_url(self, gsb_url: impl Into<Option<url::Url>>) -> io::Result<()> {
-        let fut = self.bind_url(gsb_url.into()).await?;
-        fut.await;
+    pub async fn run_router(
+        self,
+        gsb_url: impl Into<Option<url::Url>>,
+        web_addr: impl Into<Option<url::Url>>,
+    ) -> anyhow::Result<()> {
+        let gsb_fut = self.clone().bind_url(gsb_url.into()).await?;
+
+        if let Some(web_addr) = web_addr.into() {
+            let web_fut = self.run_rest_api(web_addr).await?;
+            let (_, web_result) = tokio::join!(gsb_fut, web_fut);
+            web_result?;
+        } else {
+            gsb_fut.await;
+        }
+
         Ok(())
+    }
+
+    /// Starts only the REST API server without the GSB server.
+    pub async fn run_rest_api(self, web_addr: url::Url) -> anyhow::Result<JoinHandle<()>> {
+        let router = self
+            .router
+            .read()
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("Router not initialized"))?;
+        let rest_manager = Arc::new(RestManager::new(router));
+
+        Ok(actix_rt::spawn(async move {
+            if let Err(e) = rest_manager.start_web_server(web_addr).await {
+                log::error!("REST API server error: {}", e);
+            }
+        }))
     }
 }
 
 pub type IdBytes = Box<[u8]>;
 
+#[derive(Clone)]
+pub enum NodeEvent {
+    New(IdBytes),
+    Lost(IdBytes),
+    Lag(u64),
+}
+
+/// Abstract router trait with only the functions used by web.rs
+pub trait AbstractRouter: Send + Sync {
+    fn node_events(&self) -> broadcast::Receiver<NodeEvent>;
+    fn registered_instances_count(&self) -> usize;
+    fn registered_endpoints_count(&self) -> usize;
+    fn topics_count(&self) -> usize;
+    fn registered_instance_ids(&self) -> Vec<IdBytes>;
+}
+
 pub struct Router<
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     ConnInfo: Debug + Unpin + 'static,
 > {
-    instance: Arc<InstanceConfig>,
+    config: RouterConfig,
     registered_instances: HashMap<IdBytes, Addr<Connection<W, ConnInfo>>>,
     registered_endpoints: PrefixLookupBag<Addr<Connection<W, ConnInfo>>>,
     topics: HashMap<String, broadcast::Sender<BroadcastRequest>>,
+    node_trace_tx: broadcast::Sender<NodeEvent>,
 }
 
 impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Debug + Unpin>
@@ -340,7 +411,7 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
     pub fn subscribe_topic(&mut self, topic_id: String) -> BroadcastStream<BroadcastRequest> {
         let rx = match self.topics.entry(topic_id) {
             hash_map::Entry::Vacant(v) => {
-                let (tx, rx) = broadcast::channel(self.instance.config.broadcast_backlog);
+                let (tx, rx) = broadcast::channel(self.config.broadcast_backlog);
                 v.insert(tx);
                 rx
             }
@@ -360,12 +431,16 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
     ) -> impl Future<Output = ()> + 'static {
         let fut = self
             .registered_instances
-            .insert(instance_id, connection)
+            .insert(instance_id.clone(), connection)
             .map(|old_connection| {
                 old_connection
                     .send(DropConnection)
                     .timeout(Duration::from_secs(10))
             });
+
+        // Send node event for new connection, which will be retrieved on REST API.
+        let _ = self.send_node_event(NodeEvent::New(instance_id));
+
         async move {
             if let Some(fut) = fut {
                 if let Err(_e) = fut.await {
@@ -387,6 +462,38 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
             }
         }
     }
+
+    /// Send a node event
+    pub fn send_node_event(
+        &self,
+        event: NodeEvent,
+    ) -> Result<usize, broadcast::error::SendError<NodeEvent>> {
+        self.node_trace_tx.send(event)
+    }
+}
+
+impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Debug + Unpin>
+    AbstractRouter for RouterRef<W, ConnInfo>
+{
+    fn node_events(&self) -> broadcast::Receiver<NodeEvent> {
+        self.read().node_trace_tx.subscribe()
+    }
+
+    fn registered_instances_count(&self) -> usize {
+        self.read().registered_instances.len()
+    }
+
+    fn registered_endpoints_count(&self) -> usize {
+        self.read().registered_endpoints.len()
+    }
+
+    fn topics_count(&self) -> usize {
+        self.read().topics.len()
+    }
+
+    fn registered_instance_ids(&self) -> Vec<IdBytes> {
+        self.read().registered_instances.keys().cloned().collect()
+    }
 }
 
 async fn router_gc_worker<
@@ -396,7 +503,7 @@ async fn router_gc_worker<
     server: actix_server::Server,
     router: RouterRef<S, C>,
 ) {
-    let (gc_interval, scan) = match router.read().instance.config.gc_interval {
+    let (gc_interval, scan) = match router.read().config.gc_interval {
         Some(interval) => (interval, true),
         None => (Duration::from_secs(60), false),
     };

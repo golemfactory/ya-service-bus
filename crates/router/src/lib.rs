@@ -1,4 +1,3 @@
-#![deny(missing_docs)]
 //! # Gsb Router
 //!
 //! ```no_run
@@ -12,14 +11,13 @@
 //! }
 //!
 //! ```
+use futures::prelude::*;
 use std::io;
 use std::net::SocketAddr;
-
-use futures::prelude::*;
 use tokio::net::{TcpStream, ToSocketAddrs};
 
 pub use config::RouterConfig;
-pub use router::InstanceConfig;
+pub use router::{InstanceConfig, Router};
 #[cfg(unix)]
 pub use unix::connect;
 use ya_sb_proto::codec::{GsbMessage, GsbMessageCodec, ProtocolError};
@@ -28,6 +26,7 @@ use ya_sb_proto::*;
 mod config;
 mod connection;
 mod router;
+mod web;
 
 /// Starts in background new server instance on given tcp address.
 pub async fn bind_tcp_router(addr: SocketAddr) -> Result<(), std::io::Error> {
