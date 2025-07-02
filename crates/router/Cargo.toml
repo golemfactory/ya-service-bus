@@ -55,6 +55,7 @@ pin-project = "1.0.7"
 prost.workspace = true
 rustls = { workspace = true , optional = true}
 rustls-pemfile={version = "2.1.2", optional = true}
+serde = { version = "1.0", features = ["derive"] }
 serde_json = { version = "1.0" }
 sha2 = { version = "0.10.8", optional = true }
 tokio = { version = "1", features = ["net", "sync", "macros", "rt-multi-thread", "time"] }

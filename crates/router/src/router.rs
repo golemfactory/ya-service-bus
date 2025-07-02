@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::task::JoinHandle;
 
+use actix::prelude::*;
 use actix::Addr;
 use actix_rt::net::TcpStream;
 use actix_service::fn_service;
@@ -25,7 +26,7 @@ use ya_sb_proto::codec::{GsbMessage, ProtocolError};
 use ya_sb_proto::*;
 use ya_sb_util::PrefixLookupBag;
 
-use crate::connection::{Connection, DropConnection};
+use crate::connection::{Connection, DropConnection, GetNodeInfo};
 use crate::web::RestManager;
 
 use super::config::RouterConfig;
@@ -352,7 +353,7 @@ pub trait AbstractRouter: Send + Sync {
     fn registered_instances_count(&self) -> usize;
     fn registered_endpoints_count(&self) -> usize;
     fn topics_count(&self) -> usize;
-    fn registered_instance_ids(&self) -> Vec<IdBytes>;
+    fn get_connection_recipients(&self) -> Vec<actix::prelude::Recipient<GetNodeInfo>>;
 }
 
 pub struct Router<
@@ -459,6 +460,8 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
             if prev_connection != *connection {
                 self.registered_instances
                     .insert(instance_id, prev_connection);
+            } else {
+                let _ = self.send_node_event(NodeEvent::Lost(instance_id));
             }
         }
     }
@@ -491,8 +494,12 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
         self.read().topics.len()
     }
 
-    fn registered_instance_ids(&self) -> Vec<IdBytes> {
-        self.read().registered_instances.keys().cloned().collect()
+    fn get_connection_recipients(&self) -> Vec<Recipient<GetNodeInfo>> {
+        self.read()
+            .registered_instances
+            .values()
+            .map(|addr| addr.clone().recipient::<GetNodeInfo>())
+            .collect()
     }
 }
 

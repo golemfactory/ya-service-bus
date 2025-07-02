@@ -41,6 +41,18 @@ pub struct ForwardCallResponse {
 }
 
 #[derive(Message)]
+#[rtype("Result<NodeInfo, anyhow::Error>")]
+pub struct GetNodeInfo;
+
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct NodeInfo {
+    pub identities: Vec<String>,
+    pub seen: String,
+    pub peer: String,
+    pub session_id: String,
+}
+
+#[derive(Message)]
 #[rtype("Result<(), oneshot::Canceled>")]
 pub struct ForwardCallRequest {
     call_request: CallRequest,
@@ -125,6 +137,14 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     ConnInfo: Debug + Unpin + 'static,
 {
+    fn parse_node_id(service: &str) -> Option<String> {
+        let mut it = service.split('/').fuse().skip(1).peekable();
+        match (it.next(), it.next()) {
+            (Some("net"), Some(id)) => Some(id.to_string()),
+            _ => None,
+        }
+    }
+
     fn cleanup(&mut self, ctx: &mut <Self as Actor>::Context) {
         if let Some(instance_id) = self.instance_id.take() {
             log::trace!("[{:?}] cleanup connection", self.conn_info);
@@ -547,6 +567,37 @@ where
             .map(|_| ())
             .into_actor(self)
             .boxed_local()
+    }
+}
+
+impl<W, ConnInfo> Handler<GetNodeInfo> for Connection<W, ConnInfo>
+where
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    ConnInfo: Debug + Unpin + 'static,
+{
+    type Result = anyhow::Result<NodeInfo>;
+
+    fn handle(&mut self, _: GetNodeInfo, _ctx: &mut Self::Context) -> Self::Result {
+        let identities = self
+            .services
+            .iter()
+            .filter_map(|service| Self::parse_node_id(service))
+            .collect::<Vec<_>>();
+
+        let session_id = self
+            .instance_id
+            .as_ref()
+            .map(|id| format!("0x{}", hex::encode(id)))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let last_seen = self.last_packet.elapsed();
+
+        Ok(NodeInfo {
+            identities,
+            seen: format!("{}.{}s", last_seen.as_secs(), last_seen.subsec_millis()),
+            peer: format!("{:?}", self.conn_info),
+            session_id,
+        })
     }
 }
 

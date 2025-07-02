@@ -1,10 +1,12 @@
 use actix_web::http::header;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use futures::prelude::*;
+use serde::Serialize;
 use std::sync::Arc;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
 
+use crate::connection::{GetNodeInfo, NodeInfo};
 use crate::router::{AbstractRouter, NodeEvent};
 
 pub struct RestManager {
@@ -28,10 +30,10 @@ pub async fn events(rm: web::Data<Arc<RestManager>>) -> impl Responder {
     let events = futures::StreamExt::map(rm.events(), |event| {
         Ok::<_, actix_web::Error>(web::Bytes::from(match event {
             NodeEvent::New(node_id) => {
-                format!("event: new-node\ndata: {}\n\n", hex::encode(&node_id))
+                format!("event: new-node\ndata: 0x{}\n\n", hex::encode(&node_id))
             }
             NodeEvent::Lost(node_id) => {
-                format!("event: lost-node\ndata: {}\n\n", hex::encode(&node_id))
+                format!("event: lost-node\ndata: 0x{}\n\n", hex::encode(&node_id))
             }
             NodeEvent::Lag(n) => format!("event: drop\ndata: {}\n\n", n),
         }))
@@ -58,20 +60,28 @@ pub async fn health(rm: web::Data<Arc<RestManager>>) -> impl Responder {
     HttpResponse::Ok().json(response)
 }
 
+#[derive(Serialize)]
+struct NodesResponse {
+    nodes: Vec<NodeInfo>,
+    count: usize,
+}
+
 /// List all connected nodes
 pub async fn nodes(rm: web::Data<Arc<RestManager>>) -> impl Responder {
-    let nodes: Vec<String> = rm
-        .router
-        .registered_instance_ids()
-        .iter()
-        .map(|id| format!("0x{}", hex::encode(id)))
+    let recipients = rm.router.get_connection_recipients();
+    let mut futs = Vec::with_capacity(recipients.len());
+    for recipient in recipients {
+        futs.push(recipient.send(GetNodeInfo));
+    }
+    let results = futures::future::join_all(futs).await;
+    let nodes: Vec<NodeInfo> = results
+        .into_iter()
+        .filter_map(|res| res.ok().map(|res| res.ok()).flatten())
         .collect();
-
-    let response = serde_json::json!({
-        "nodes": nodes,
-        "count": nodes.len(),
-    });
-
+    let response = NodesResponse {
+        count: nodes.len(),
+        nodes,
+    };
     HttpResponse::Ok().json(response)
 }
 
