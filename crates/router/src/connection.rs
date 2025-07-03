@@ -51,7 +51,7 @@ pub struct NodeInfo {
     pub seen: String,
     pub peer: String,
     pub session_id: String,
-    pub default_id: Option<String>,
+    pub id: Option<String>,
 }
 
 #[derive(Message)]
@@ -608,7 +608,7 @@ where
             seen: format!("{}.{}s", last_seen.as_secs(), last_seen.subsec_millis()),
             peer: format!("{:?}", self.conn_info),
             session_id,
-            default_id: self.default_id.clone(),
+            id: self.default_id.clone(),
         })
     }
 }

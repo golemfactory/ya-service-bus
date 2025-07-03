@@ -93,9 +93,9 @@ async fn get_prefixed_nodes(
                     .any(|identity| identity.starts_with(prefix))
             })
         })
-        .filter(|node| node.default_id.is_some())
+        .filter(|node| node.id.is_some())
         .fold(HashMap::new(), |mut acc, node| {
-            let key = node.default_id.clone().unwrap();
+            let key = node.id.clone().unwrap();
             acc.entry(key).or_insert_with(Vec::new).push(node);
             acc
         });
