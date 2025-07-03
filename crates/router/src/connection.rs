@@ -12,6 +12,7 @@ use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
 use futures::prelude::*;
 use futures::FutureExt;
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -44,7 +45,7 @@ pub struct ForwardCallResponse {
 #[rtype("Result<NodeInfo, anyhow::Error>")]
 pub struct GetNodeInfo;
 
-#[derive(Clone, Debug, serde::Serialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct NodeInfo {
     pub identities: Vec<String>,
     pub seen: String,

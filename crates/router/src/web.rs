@@ -61,7 +61,7 @@ pub async fn health(rm: web::Data<Arc<RestManager>>) -> impl Responder {
     HttpResponse::Ok().json(response)
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct NodesResponse {
     #[serde(flatten)]
     nodes: HashMap<String, Vec<NodeInfo>>,
@@ -69,17 +69,10 @@ struct NodesResponse {
     count: usize,
 }
 
-#[derive(Deserialize)]
-pub struct NodesQuery {
+async fn get_prefixed_nodes(
+    rm: &Arc<RestManager>,
     prefix: Option<String>,
-}
-
-/// List connected nodes with optional prefix filtering
-pub async fn nodes(
-    rm: web::Data<Arc<RestManager>>,
-    query: web::Query<NodesQuery>,
-    path: Option<web::Path<String>>,
-) -> Result<impl Responder, actix_web::Error> {
+) -> Result<NodesResponse, actix_web::Error> {
     let recipients = rm.router.get_connection_recipients();
     let mut futs = Vec::with_capacity(recipients.len());
     for recipient in recipients {
@@ -88,7 +81,7 @@ pub async fn nodes(
     let results = futures::future::join_all(futs).await;
 
     let count = results.len();
-    let prefix = path.map(|p| p.into_inner()).or(query.prefix.clone());
+    let prefix = prefix.map(|p| format!("0x{}", p));
 
     let nodes: HashMap<String, Vec<NodeInfo>> = results
         .into_iter()
@@ -106,8 +99,24 @@ pub async fn nodes(
             acc.entry(key).or_insert_with(Vec::new).push(node);
             acc
         });
-    let response = NodesResponse { count, nodes };
-    Ok(HttpResponse::Ok().json(response))
+    Ok(NodesResponse { count, nodes })
+}
+
+/// List all connected nodes
+pub async fn nodes(rm: web::Data<Arc<RestManager>>) -> Result<impl Responder, actix_web::Error> {
+    get_prefixed_nodes(&rm, None)
+        .await
+        .map(|response| HttpResponse::Ok().json(response))
+}
+
+/// List connected nodes filtered by prefix
+pub async fn nodes_prefix(
+    rm: web::Data<Arc<RestManager>>,
+    path: web::Path<String>,
+) -> Result<impl Responder, actix_web::Error> {
+    get_prefixed_nodes(&rm, Some(path.into_inner()))
+        .await
+        .map(|response| HttpResponse::Ok().json(response))
 }
 
 impl RestManager {
@@ -117,7 +126,7 @@ impl RestManager {
             .route("/events", web::get().to(events))
             .route("/health", web::get().to(health))
             .route("/nodes", web::get().to(nodes))
-            .route("/nodes/{prefix}", web::get().to(nodes));
+            .route("/nodes/{prefix}", web::get().to(nodes_prefix));
     }
 
     /// Start the web server
