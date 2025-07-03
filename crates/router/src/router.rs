@@ -341,8 +341,8 @@ pub type IdBytes = Box<[u8]>;
 
 #[derive(Clone)]
 pub enum NodeEvent {
-    New(IdBytes),
-    Lost(IdBytes),
+    New(String),
+    Lost(String),
     Lag(u64),
 }
 
@@ -438,9 +438,6 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
                     .timeout(Duration::from_secs(10))
             });
 
-        // Send node event for new connection, which will be retrieved on REST API.
-        let _ = self.send_node_event(NodeEvent::New(instance_id));
-
         async move {
             if let Some(fut) = fut {
                 if let Err(_e) = fut.await {
@@ -459,8 +456,6 @@ impl<W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static, ConnInfo: Deb
             if prev_connection != *connection {
                 self.registered_instances
                     .insert(instance_id, prev_connection);
-            } else {
-                let _ = self.send_node_event(NodeEvent::Lost(instance_id));
             }
         }
     }

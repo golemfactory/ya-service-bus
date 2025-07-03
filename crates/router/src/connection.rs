@@ -23,7 +23,7 @@ use ya_sb_util::writer;
 use ya_sb_util::writer::EmptyBufferHandler;
 
 use crate::connection::reader::InputHandler;
-use crate::router::{IdBytes, InstanceConfig, RouterRef};
+use crate::router::{IdBytes, InstanceConfig, NodeEvent, RouterRef};
 
 mod reader;
 
@@ -157,6 +157,9 @@ where
                 router.unregister_service(&service_id, &addr);
             }
             router.remove_connection(instance_id, &addr);
+            if let Some(default_id) = self.default_id.clone() {
+                let _ = router.send_node_event(NodeEvent::Lost(default_id));
+            }
         }
     }
 
@@ -383,7 +386,8 @@ impl<
                     // Set default_id from first registered service if not already set
                     if self.default_id.is_none() {
                         if let Some(node_id) = Self::parse_node_id(&service_id) {
-                            self.default_id = Some(node_id);
+                            self.default_id = Some(node_id.clone());
+                            let _ = self.router.read().send_node_event(NodeEvent::New(node_id));
                         }
                     }
                 } else {

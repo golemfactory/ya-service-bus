@@ -31,10 +31,10 @@ pub async fn events(rm: web::Data<Arc<RestManager>>) -> impl Responder {
     let events = futures::StreamExt::map(rm.events(), |event| {
         Ok::<_, actix_web::Error>(web::Bytes::from(match event {
             NodeEvent::New(node_id) => {
-                format!("event: new-node\ndata: 0x{}\n\n", hex::encode(&node_id))
+                format!("event: new-node\ndata: {}\n\n", node_id)
             }
             NodeEvent::Lost(node_id) => {
-                format!("event: lost-node\ndata: 0x{}\n\n", hex::encode(&node_id))
+                format!("event: lost-node\ndata: {}\n\n", node_id)
             }
             NodeEvent::Lag(n) => format!("event: drop\ndata: {}\n\n", n),
         }))
