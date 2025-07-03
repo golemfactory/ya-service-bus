@@ -25,6 +25,7 @@ pub enum ProtocolError {
     MsgTooBig,
 }
 
+#[allow(unused)]
 trait Encodable {
     // This trait exists because prost::Message has template methods
 

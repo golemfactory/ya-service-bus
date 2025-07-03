@@ -5,7 +5,11 @@ use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
 use ya_sb_router::{InstanceConfig, RouterConfig};
 
 #[derive(Parser)]
-#[command(about = "Service Bus Router")]
+#[command(
+    about = "Service Bus Router with optional REST monitoring endpoints.\n\
+If --web-addr is provided, a REST API with SSE events will be started for monitoring node state changes.\n\
+If --web-addr is omitted, the REST API will not be started."
+)]
 struct Options {
     #[arg(short = 'l', env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
     gsb_url: url::Url,
@@ -28,6 +32,14 @@ struct Options {
     cert: Option<PathBuf>,
     #[arg(long, env = "YA_SB_KEY")]
     key: Option<PathBuf>,
+    /// Optional URL to bind REST monitoring API (e.g. http://127.0.0.1:8080). If not provided, REST API will not be started.
+    #[arg(
+        long = "web-addr",
+        env = "YA_SB_WEB_ADDR",
+        value_name = "URL",
+        help = "Optional URL to bind REST monitoring API (e.g. http://127.0.0.1:8080). If not provided, REST API will not be started."
+    )]
+    web_addr: Option<url::Url>,
 }
 
 #[cfg(feature = "tls")]
@@ -92,8 +104,9 @@ async fn main() -> anyhow::Result<()> {
     #[cfg(feature = "tls")]
     tls::add_config(&options, &mut config)?;
 
-    InstanceConfig::new(config)
-        .run_url(Some(options.gsb_url))
+    let instance_config = InstanceConfig::new(config);
+    instance_config
+        .run_router(Some(options.gsb_url), options.web_addr)
         .await?;
 
     Ok(())

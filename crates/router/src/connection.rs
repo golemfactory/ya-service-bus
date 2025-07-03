@@ -12,6 +12,7 @@ use futures::channel::oneshot;
 use futures::future::LocalBoxFuture;
 use futures::prelude::*;
 use futures::FutureExt;
+use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncRead, AsyncWrite};
 use tokio_stream::wrappers::UnboundedReceiverStream;
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -22,7 +23,7 @@ use ya_sb_util::writer;
 use ya_sb_util::writer::EmptyBufferHandler;
 
 use crate::connection::reader::InputHandler;
-use crate::router::{IdBytes, InstanceConfig, RouterRef};
+use crate::router::{IdBytes, InstanceConfig, NodeEvent, RouterRef};
 
 mod reader;
 
@@ -41,6 +42,19 @@ pub struct ForwardCallResponse {
 }
 
 #[derive(Message)]
+#[rtype("Result<NodeInfo, anyhow::Error>")]
+pub struct GetNodeInfo;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct NodeInfo {
+    pub identities: Vec<String>,
+    pub seen: String,
+    pub peer: String,
+    pub session_id: String,
+    pub id: Option<String>,
+}
+
+#[derive(Message)]
 #[rtype("Result<(), oneshot::Canceled>")]
 pub struct ForwardCallRequest {
     call_request: CallRequest,
@@ -52,6 +66,7 @@ pub struct Connection<
     ConnInfo: Debug + Unpin + 'static,
 > {
     config: Arc<InstanceConfig>,
+    default_id: Option<String>,
     instance_id: Option<IdBytes>,
     router: RouterRef<W, ConnInfo>,
     services: HashSet<String>,
@@ -125,6 +140,14 @@ where
     W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
     ConnInfo: Debug + Unpin + 'static,
 {
+    fn parse_node_id(service: &str) -> Option<String> {
+        let mut it = service.split('/').fuse().skip(1).peekable();
+        match (it.next(), it.next()) {
+            (Some("net"), Some(id)) => Some(id.to_string()),
+            _ => None,
+        }
+    }
+
     fn cleanup(&mut self, ctx: &mut <Self as Actor>::Context) {
         if let Some(instance_id) = self.instance_id.take() {
             log::trace!("[{:?}] cleanup connection", self.conn_info);
@@ -134,6 +157,9 @@ where
                 router.unregister_service(&service_id, &addr);
             }
             router.remove_connection(instance_id, &addr);
+            if let Some(default_id) = self.default_id.clone() {
+                let _ = router.send_node_event(NodeEvent::Lost(default_id));
+            }
         }
     }
 
@@ -283,6 +309,7 @@ pub fn connection<
             router,
             config,
             services: Default::default(),
+            default_id: None,
             hold_queue: Default::default(),
             reply_map: Default::default(),
             reply_to,
@@ -354,7 +381,15 @@ impl<
                 let registered = { self.router.write().register_service(service_id.clone(), me) };
                 let mut reply = RegisterReply::default();
                 if registered {
-                    self.services.insert(service_id);
+                    self.services.insert(service_id.clone());
+
+                    // Set default_id from first registered service if not already set
+                    if self.default_id.is_none() {
+                        if let Some(node_id) = Self::parse_node_id(&service_id) {
+                            self.default_id = Some(node_id.clone());
+                            let _ = self.router.read().send_node_event(NodeEvent::New(node_id));
+                        }
+                    }
                 } else {
                     reply.set_code(RegisterReplyCode::RegisterConflict);
                 }
@@ -547,6 +582,38 @@ where
             .map(|_| ())
             .into_actor(self)
             .boxed_local()
+    }
+}
+
+impl<W, ConnInfo> Handler<GetNodeInfo> for Connection<W, ConnInfo>
+where
+    W: Sink<GsbMessage, Error = ProtocolError> + Unpin + 'static,
+    ConnInfo: Debug + Unpin + 'static,
+{
+    type Result = anyhow::Result<NodeInfo>;
+
+    fn handle(&mut self, _: GetNodeInfo, _ctx: &mut Self::Context) -> Self::Result {
+        let identities = self
+            .services
+            .iter()
+            .filter_map(|service| Self::parse_node_id(service))
+            .collect::<Vec<_>>();
+
+        let session_id = self
+            .instance_id
+            .as_ref()
+            .map(|id| hex::encode(id))
+            .unwrap_or_else(|| "unknown".to_string());
+
+        let last_seen = self.last_packet.elapsed();
+
+        Ok(NodeInfo {
+            identities,
+            seen: format!("{}.{}s", last_seen.as_secs(), last_seen.subsec_millis()),
+            peer: format!("{:?}", self.conn_info),
+            session_id,
+            id: self.default_id.clone(),
+        })
     }
 }
 

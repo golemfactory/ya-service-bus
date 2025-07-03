@@ -34,7 +34,7 @@ jobs:
           components: rustfmt, clippy
 
       - name: Cache cargo registry
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         if: matrix.os != 'macos-latest'
         with:
           path: ~/.cargo/registry
@@ -43,7 +43,7 @@ jobs:
             ${{ runner.os }}-cargo-registry-
 
       - name: Cache cargo index
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         if: matrix.os != 'macos-latest'
         with:
           path: ~/.cargo/git
@@ -52,7 +52,7 @@ jobs:
             ${{ runner.os }}-cargo-index-
 
       - name: Cache cargo build
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         if: matrix.os != 'macos-latest'
         with:
           path: target
@@ -65,7 +65,7 @@ jobs:
           args: --all -- --check
 
       - name: Cache vcpkg's artifacts
-        uses: actions/cache@v1
+        uses: actions/cache@v4
         if: matrix.os == 'windows-latest'
         with:
           path: c:/vcpkg/installed

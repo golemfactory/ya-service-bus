@@ -5,6 +5,7 @@ use std::env::VarError;
 use std::time::Duration;
 
 /// Message router configuration.
+#[derive(Clone)]
 #[non_exhaustive]
 pub struct RouterConfig {
     /// How often to check for incoming traffic for a connection.
