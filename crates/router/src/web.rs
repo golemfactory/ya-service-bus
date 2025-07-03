@@ -1,7 +1,7 @@
 use actix_web::http::header;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use futures::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
@@ -63,26 +63,45 @@ pub async fn health(rm: web::Data<Arc<RestManager>>) -> impl Responder {
 #[derive(Serialize)]
 struct NodesResponse {
     nodes: Vec<NodeInfo>,
+    /// Number of nodes all Nodes registered on relay.
     count: usize,
 }
 
-/// List all connected nodes
-pub async fn nodes(rm: web::Data<Arc<RestManager>>) -> impl Responder {
+#[derive(Deserialize)]
+pub struct NodesQuery {
+    prefix: Option<String>,
+}
+
+/// List connected nodes with optional prefix filtering
+pub async fn nodes(
+    rm: web::Data<Arc<RestManager>>,
+    query: web::Query<NodesQuery>,
+    path: Option<web::Path<String>>,
+) -> Result<impl Responder, actix_web::Error> {
     let recipients = rm.router.get_connection_recipients();
     let mut futs = Vec::with_capacity(recipients.len());
     for recipient in recipients {
         futs.push(recipient.send(GetNodeInfo));
     }
     let results = futures::future::join_all(futs).await;
+
+    let count = results.len();
+    let prefix = path.map(|p| p.into_inner()).or(query.prefix.clone());
+
     let nodes: Vec<NodeInfo> = results
         .into_iter()
         .filter_map(|res| res.ok().map(|res| res.ok()).flatten())
+        .filter(|node| {
+            prefix.as_ref().map_or(true, |prefix| {
+                node.identities
+                    .iter()
+                    .any(|identity| identity.starts_with(prefix))
+            })
+        })
         .collect();
-    let response = NodesResponse {
-        count: nodes.len(),
-        nodes,
-    };
-    HttpResponse::Ok().json(response)
+
+    let response = NodesResponse { count, nodes };
+    Ok(HttpResponse::Ok().json(response))
 }
 
 impl RestManager {
@@ -91,7 +110,8 @@ impl RestManager {
         cfg.app_data(web::Data::new(self))
             .route("/events", web::get().to(events))
             .route("/health", web::get().to(health))
-            .route("/nodes", web::get().to(nodes));
+            .route("/nodes", web::get().to(nodes))
+            .route("/nodes/{prefix}", web::get().to(nodes));
     }
 
     /// Start the web server

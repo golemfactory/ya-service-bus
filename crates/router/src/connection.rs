@@ -50,6 +50,7 @@ pub struct NodeInfo {
     pub seen: String,
     pub peer: String,
     pub session_id: String,
+    pub default_id: Option<String>,
 }
 
 #[derive(Message)]
@@ -64,6 +65,7 @@ pub struct Connection<
     ConnInfo: Debug + Unpin + 'static,
 > {
     config: Arc<InstanceConfig>,
+    default_id: Option<String>,
     instance_id: Option<IdBytes>,
     router: RouterRef<W, ConnInfo>,
     services: HashSet<String>,
@@ -303,6 +305,7 @@ pub fn connection<
             router,
             config,
             services: Default::default(),
+            default_id: None,
             hold_queue: Default::default(),
             reply_map: Default::default(),
             reply_to,
@@ -374,7 +377,14 @@ impl<
                 let registered = { self.router.write().register_service(service_id.clone(), me) };
                 let mut reply = RegisterReply::default();
                 if registered {
-                    self.services.insert(service_id);
+                    self.services.insert(service_id.clone());
+
+                    // Set default_id from first registered service if not already set
+                    if self.default_id.is_none() {
+                        if let Some(node_id) = Self::parse_node_id(&service_id) {
+                            self.default_id = Some(node_id);
+                        }
+                    }
                 } else {
                     reply.set_code(RegisterReplyCode::RegisterConflict);
                 }
@@ -587,7 +597,7 @@ where
         let session_id = self
             .instance_id
             .as_ref()
-            .map(|id| format!("0x{}", hex::encode(id)))
+            .map(|id| hex::encode(id))
             .unwrap_or_else(|| "unknown".to_string());
 
         let last_seen = self.last_packet.elapsed();
@@ -597,6 +607,7 @@ where
             seen: format!("{}.{}s", last_seen.as_secs(), last_seen.subsec_millis()),
             peer: format!("{:?}", self.conn_info),
             session_id,
+            default_id: self.default_id.clone(),
         })
     }
 }
