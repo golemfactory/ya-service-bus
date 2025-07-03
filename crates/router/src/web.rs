@@ -2,6 +2,7 @@ use actix_web::http::header;
 use actix_web::{web, App, HttpResponse, HttpServer, Responder};
 use futures::prelude::*;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 use tokio_stream::wrappers::errors::BroadcastStreamRecvError;
 use tokio_stream::wrappers::BroadcastStream;
@@ -62,7 +63,8 @@ pub async fn health(rm: web::Data<Arc<RestManager>>) -> impl Responder {
 
 #[derive(Serialize)]
 struct NodesResponse {
-    nodes: Vec<NodeInfo>,
+    #[serde(flatten)]
+    nodes: HashMap<String, Vec<NodeInfo>>,
     /// Number of nodes all Nodes registered on relay.
     count: usize,
 }
@@ -88,7 +90,7 @@ pub async fn nodes(
     let count = results.len();
     let prefix = path.map(|p| p.into_inner()).or(query.prefix.clone());
 
-    let nodes: Vec<NodeInfo> = results
+    let nodes: HashMap<String, Vec<NodeInfo>> = results
         .into_iter()
         .filter_map(|res| res.ok().map(|res| res.ok()).flatten())
         .filter(|node| {
@@ -98,8 +100,12 @@ pub async fn nodes(
                     .any(|identity| identity.starts_with(prefix))
             })
         })
-        .collect();
-
+        .filter(|node| node.default_id.is_some())
+        .fold(HashMap::new(), |mut acc, node| {
+            let key = node.default_id.clone().unwrap();
+            acc.entry(key).or_insert_with(Vec::new).push(node);
+            acc
+        });
     let response = NodesResponse { count, nodes };
     Ok(HttpResponse::Ok().json(response))
 }
