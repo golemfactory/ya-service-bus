@@ -7,7 +7,7 @@
 //! async fn main() {
 //!     let mut config = RouterConfig::from_env();
 //!     config.gc_interval_secs(60);
-//!     InstanceConfig::new(config).run_url(None).await;
+//!     InstanceConfig::new(config).run_router(None, None).await;
 //! }
 //!
 //! ```

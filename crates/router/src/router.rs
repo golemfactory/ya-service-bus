@@ -1,4 +1,3 @@
-use futures::FutureExt;
 use std::collections::{hash_map, HashMap};
 use std::fmt::{Debug, Display};
 use std::future::Future;
