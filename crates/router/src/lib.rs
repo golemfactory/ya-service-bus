@@ -26,6 +26,8 @@ use ya_sb_proto::*;
 mod config;
 mod connection;
 mod router;
+#[cfg(unix)]
+mod unix_socket;
 mod web;
 
 /// Starts in background new server instance on given tcp address.

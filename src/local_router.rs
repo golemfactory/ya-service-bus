@@ -513,6 +513,35 @@ impl Router {
         Handle { _inner: () }
     }
 
+    /// Atomically binds a raw endpoint only when the exact address is free.
+    ///
+    /// Unlike [`Router::bind_raw`], this never replaces an existing handler.
+    pub fn try_bind_raw(
+        &mut self,
+        addr: &str,
+        endpoint: Recipient<RpcRawCall>,
+    ) -> Result<Handle, Error> {
+        if self.handlers.keys().any(|bound| bound == addr) {
+            return Err(Error::GsbAlreadyRegistered(addr.to_string()));
+        }
+
+        let slot = Slot::from_raw(endpoint);
+        log::debug!("binding raw {}", addr);
+        self.handlers.insert(addr.to_string(), slot);
+        RemoteRouter::from_registry().do_send(UpdateService::Add(addr.into()));
+        Ok(Handle { _inner: () })
+    }
+
+    /// Removes only the exact raw address instead of every child of a prefix.
+    pub fn unbind_exact(&mut self, addr: &str) -> bool {
+        let removed = self.handlers.remove(addr).is_some();
+        if removed {
+            log::debug!("unbinding exact raw endpoint {}", addr);
+            RemoteRouter::from_registry().do_send(UpdateService::Remove(addr.to_string()));
+        }
+        removed
+    }
+
     pub fn bind_raw_dual(
         &mut self,
         addr: &str,

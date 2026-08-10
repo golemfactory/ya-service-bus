@@ -221,6 +221,10 @@ impl InstanceConfig {
         use std::sync::atomic::{AtomicU64, Ordering};
         use tokio::net::UnixStream;
 
+        crate::unix_socket::prepare_for_bind(path).await?;
+        let listener = std::os::unix::net::UnixListener::bind(path)?;
+        crate::unix_socket::set_owner_only_permissions(path)?;
+
         let router = self.create_router_and_save();
         let instance_config = Arc::new(self);
         let router_status = router.clone();
@@ -235,7 +239,7 @@ impl InstanceConfig {
         }
 
         let server = actix_server::ServerBuilder::new()
-            .bind_uds("gsb", path, move || {
+            .listen_uds("gsb", listener, move || {
                 let router = router.clone();
                 let instance_config = instance_config.clone();
                 let request_counter = RefCell::new(0u64);
