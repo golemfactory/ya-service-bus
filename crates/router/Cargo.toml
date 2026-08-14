@@ -68,12 +68,15 @@ uuid = { version = "0.8.1", features = ["v4"] }
 ya-sb-proto = { version = "0.6", path = "../proto" }
 ya-sb-util = { version = "0.5.1", features = ["with-writer"], path="../util" }
 
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 ubyte = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 rustls = { workspace = true , features = ['ring']}
 env_logger="0"
+tempfile = "3"
 
 [package.metadata.deb]
 features = ["bin"]

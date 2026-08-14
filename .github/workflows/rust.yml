@@ -9,9 +9,6 @@ on:
       - main
       - release/*
 
-env:
-  rust_stable: 1.71.1
-
 jobs:
   build:
     name: Build
@@ -25,44 +22,26 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v1
+        uses: actions/checkout@v4
 
-      - name: Install Rust ${{ env.rust_stable }}
-        uses: actions-rs/toolchain@v1
+      - name: Install tools
+        uses: ./.github/actions/setup-tools
         with:
-          toolchain: ${{ env.rust_stable }}
-          components: rustfmt, clippy
+          tools: actionlint rust protoc
 
-      - name: Cache cargo registry
-        uses: actions/cache@v4
-        if: matrix.os != 'macos-latest'
+      - name: Restore Cargo cache
+        uses: Swatinem/rust-cache@v2
         with:
-          path: ~/.cargo/registry
-          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-registry-
+          shared-key: ci-${{ matrix.os }}
 
-      - name: Cache cargo index
-        uses: actions/cache@v4
-        if: matrix.os != 'macos-latest'
-        with:
-          path: ~/.cargo/git
-          key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-index-
+      - name: Check lockfile
+        run: mise run ci:lock
 
-      - name: Cache cargo build
-        uses: actions/cache@v4
-        if: matrix.os != 'macos-latest'
-        with:
-          path: target
-          key: ${{ runner.os }}-cargo-build-target1-${{ hashFiles('**/Cargo.lock') }}
+      - name: Validate workflows
+        run: mise run ci:workflows
 
-      - name: cargo fmt
-        uses: actions-rs/cargo@v1
-        with:
-          command: fmt
-          args: --all -- --check
+      - name: Check formatting
+        run: mise run ci:fmt
 
       - name: Cache vcpkg's artifacts
         uses: actions/cache@v4
@@ -73,20 +52,11 @@ jobs:
           restore-keys: |
             vcpkg-${{ runner.os }}-
 
-      - name: cargo test
-        uses: actions-rs/cargo@v1
-        with:
-          command: test
-          args: --workspace
+      - name: Run tests
+        run: mise run ci:test
 
-      - name: cargo build
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --workspace
+      - name: Build workspace
+        run: mise run ci:build
 
-      - name: cargo build router
-        uses: actions-rs/cargo@v1
-        with:
-          command: build
-          args: --manifest-path crates/router/Cargo.toml --bin ya-sb-router --features bin
+      - name: Build router
+        run: mise run ci:router

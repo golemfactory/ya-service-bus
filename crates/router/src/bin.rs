@@ -1,7 +1,7 @@
 use clap::Parser;
 use std::env;
 use std::path::PathBuf;
-use ya_sb_proto::{DEFAULT_GSB_URL, GSB_URL_ENV_VAR};
+use ya_sb_proto::{default_gsb_url, GSB_URL_ENV_VAR};
 use ya_sb_router::{InstanceConfig, RouterConfig};
 
 #[derive(Parser)]
@@ -11,8 +11,8 @@ If --web-addr is provided, a REST API with SSE events will be started for monito
 If --web-addr is omitted, the REST API will not be started."
 )]
 struct Options {
-    #[arg(short = 'l', env = GSB_URL_ENV_VAR, default_value = DEFAULT_GSB_URL)]
-    gsb_url: url::Url,
+    #[arg(short = 'l', env = GSB_URL_ENV_VAR)]
+    gsb_url: Option<url::Url>,
     #[arg(long, default_value = "info")]
     log_level: String,
     /// How often send pings if there is no incoming packets.
@@ -106,7 +106,10 @@ async fn main() -> anyhow::Result<()> {
 
     let instance_config = InstanceConfig::new(config);
     instance_config
-        .run_router(Some(options.gsb_url), options.web_addr)
+        .run_router(
+            Some(options.gsb_url.unwrap_or_else(default_gsb_url)),
+            options.web_addr,
+        )
         .await?;
 
     Ok(())

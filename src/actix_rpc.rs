@@ -24,6 +24,17 @@ pub fn bind_raw(addr: &str, actor: Recipient<RpcRawCall>) -> Handle {
     Handle { _inner: {} }
 }
 
+/// Binds a raw endpoint without replacing an existing handler registered at
+/// the same exact address.
+pub fn try_bind_raw(addr: &str, actor: Recipient<RpcRawCall>) -> Result<Handle, BusError> {
+    router().lock().unwrap().try_bind_raw(addr, actor)
+}
+
+/// Unbinds only the raw endpoint registered at the exact address.
+pub fn unbind_raw(addr: &str) -> bool {
+    router().lock().unwrap().unbind_exact(addr)
+}
+
 pub fn binds<M: RpcStreamMessage>(addr: &str, actor: Recipient<RpcStreamCall<M>>) -> Handle
 where
     Result<M::Item, M::Error>: Serialize + DeserializeOwned + Sync + Send,
@@ -88,5 +99,43 @@ impl Endpoint {
             .lock()
             .unwrap()
             .streaming_forward(&self.addr, msg)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use actix::{Actor, Context, Handler};
+
+    struct RawActor;
+
+    impl Actor for RawActor {
+        type Context = Context<Self>;
+    }
+
+    impl Handler<RpcRawCall> for RawActor {
+        type Result = Result<Vec<u8>, BusError>;
+
+        fn handle(&mut self, message: RpcRawCall, _ctx: &mut Self::Context) -> Self::Result {
+            Ok(message.body)
+        }
+    }
+
+    #[actix_rt::test]
+    async fn checked_raw_binding_never_replaces_and_exact_unbind_allows_rebind() {
+        let service = RawActor.start();
+        let address = format!("/local/test/{}", uuid::Uuid::new_v4());
+
+        try_bind_raw(&address, service.clone().recipient()).unwrap();
+        let error = match try_bind_raw(&address, service.clone().recipient()) {
+            Ok(_) => panic!("duplicate binding unexpectedly replaced the handler"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, BusError::GsbAlreadyRegistered(_)));
+
+        assert!(unbind_raw(&address));
+        try_bind_raw(&address, service.recipient()).unwrap();
+        assert!(unbind_raw(&address));
+        assert!(!unbind_raw(&address));
     }
 }
