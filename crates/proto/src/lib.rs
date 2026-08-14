@@ -1,7 +1,9 @@
 pub use gsb_api::*;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
-use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::path::Path;
+use std::path::PathBuf;
 use url::{ParseError, Url};
 
 mod gsb_api {
