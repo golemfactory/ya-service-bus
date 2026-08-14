@@ -67,7 +67,7 @@ impl<T> PrefixLookupBag<T> {
         self.dict.insert(key, v)
     }
 
-    pub fn entry(&mut self, key: String) -> Entry<String, T> {
+    pub fn entry(&mut self, key: String) -> Entry<'_, String, T> {
         if let Some(k) = RevPrefixes(&key).find(|&k| self.dict.contains_key(k)) {
             self.dict.entry(k.to_owned())
         } else {

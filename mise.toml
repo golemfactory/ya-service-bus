@@ -1,0 +1,31 @@
+[tools]
+actionlint = "1.7.7"
+protoc = "24.4"
+rust = { version = "1.97.0", components = ["rustfmt", "clippy"], profile = "minimal" }
+
+[settings.task]
+run_auto_install = false
+
+[tasks."ci:lock"]
+description = "Check that Cargo.lock is sufficient"
+run = "cargo tree --locked"
+
+[tasks."ci:fmt"]
+description = "Check Rust formatting"
+run = "cargo fmt --all -- --check"
+
+[tasks."ci:workflows"]
+description = "Validate the CI workflow"
+run = "actionlint .github/workflows/rust.yml"
+
+[tasks."ci:test"]
+description = "Run workspace tests"
+run = "cargo test --workspace --locked"
+
+[tasks."ci:build"]
+description = "Build the workspace"
+run = "cargo build --workspace --locked"
+
+[tasks."ci:router"]
+description = "Build the standalone router"
+run = "cargo build --manifest-path crates/router/Cargo.toml --bin ya-sb-router --features bin --locked"

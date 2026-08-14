@@ -1141,7 +1141,7 @@ mod unix {
     }
 
     impl Transport {
-        fn inner(self: Pin<&mut Self>) -> Pin<&mut (dyn ITransport)> {
+        fn inner(self: Pin<&mut Self>) -> Pin<&mut dyn ITransport> {
             match self.get_mut() {
                 Transport::Tcp(tcp_transport) => Pin::new(tcp_transport),
                 Transport::Unix(unix_transport) => Pin::new(unix_transport),
