@@ -96,8 +96,20 @@ pub fn linux_default_gsb_endpoint(
 }
 
 #[cfg(unix)]
-pub fn macos_default_gsb_endpoint(data_dir: &Path, temp_dir: &Path) -> DefaultUnixGsbEndpoint {
+pub fn macos_default_gsb_endpoint(
+    data_dir: &Path,
+    is_default_data_dir: bool,
+    temp_dir: &Path,
+) -> DefaultUnixGsbEndpoint {
     let app_dir = temp_dir.join(APP_DIR);
+    if is_default_data_dir {
+        return DefaultUnixGsbEndpoint {
+            socket_path: app_dir.join(SOCKET_NAME),
+            trusted_root: temp_dir.to_path_buf(),
+            private_dirs: vec![app_dir],
+        };
+    }
+
     let instance_dir = app_dir.join(data_dir_namespace(data_dir));
     DefaultUnixGsbEndpoint {
         socket_path: instance_dir.join(SOCKET_NAME),
@@ -109,7 +121,7 @@ pub fn macos_default_gsb_endpoint(data_dir: &Path, temp_dir: &Path) -> DefaultUn
 #[cfg(unix)]
 pub fn default_unix_gsb_endpoint(
     data_dir: &Path,
-    _is_default_data_dir: bool,
+    is_default_data_dir: bool,
 ) -> DefaultUnixGsbEndpoint {
     #[cfg(target_os = "linux")]
     {
@@ -117,17 +129,17 @@ pub fn default_unix_gsb_endpoint(
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .filter(|path| path.is_absolute());
-        linux_default_gsb_endpoint(data_dir, _is_default_data_dir, runtime_dir.as_deref())
+        linux_default_gsb_endpoint(data_dir, is_default_data_dir, runtime_dir.as_deref())
     }
 
     #[cfg(target_os = "macos")]
     {
-        macos_default_gsb_endpoint(data_dir, &std::env::temp_dir())
+        macos_default_gsb_endpoint(data_dir, is_default_data_dir, &std::env::temp_dir())
     }
 
     #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
     {
-        linux_default_gsb_endpoint(data_dir, _is_default_data_dir, None)
+        linux_default_gsb_endpoint(data_dir, is_default_data_dir, None)
     }
 }
 
@@ -285,6 +297,23 @@ mod tests {
         assert_ne!(first.socket_path, second.socket_path);
         assert!(first.socket_path.starts_with(runtime_dir.join(APP_DIR)));
         assert!(second.socket_path.starts_with(runtime_dir.join(APP_DIR)));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn macos_defaults_match_linux_runtime_layout() {
+        let temp_dir = Path::new("/var/folders/user/T");
+        let data_dir = Path::new("/Users/user/Library/Application Support/GolemFactory/yagna");
+
+        let default = macos_default_gsb_endpoint(data_dir, true, temp_dir);
+        assert_eq!(
+            default.socket_path,
+            PathBuf::from("/var/folders/user/T/yagna/gsb.sock")
+        );
+
+        let custom = macos_default_gsb_endpoint(Path::new("/data/custom"), false, temp_dir);
+        assert!(custom.socket_path.starts_with(temp_dir.join(APP_DIR)));
+        assert_ne!(custom.socket_path, default.socket_path);
     }
 
     #[cfg(not(unix))]
