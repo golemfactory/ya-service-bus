@@ -109,7 +109,7 @@ pub fn macos_default_gsb_endpoint(data_dir: &Path, temp_dir: &Path) -> DefaultUn
 #[cfg(unix)]
 pub fn default_unix_gsb_endpoint(
     data_dir: &Path,
-    is_default_data_dir: bool,
+    _is_default_data_dir: bool,
 ) -> DefaultUnixGsbEndpoint {
     #[cfg(target_os = "linux")]
     {
@@ -117,7 +117,7 @@ pub fn default_unix_gsb_endpoint(
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .filter(|path| path.is_absolute());
-        linux_default_gsb_endpoint(data_dir, is_default_data_dir, runtime_dir.as_deref())
+        linux_default_gsb_endpoint(data_dir, _is_default_data_dir, runtime_dir.as_deref())
     }
 
     #[cfg(target_os = "macos")]
@@ -127,7 +127,7 @@ pub fn default_unix_gsb_endpoint(
 
     #[cfg(all(unix, not(any(target_os = "linux", target_os = "macos"))))]
     {
-        linux_default_gsb_endpoint(data_dir, is_default_data_dir, None)
+        linux_default_gsb_endpoint(data_dir, _is_default_data_dir, None)
     }
 }
 
