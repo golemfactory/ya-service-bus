@@ -1,9 +1,7 @@
 pub use gsb_api::*;
 use std::convert::TryFrom;
 use std::fmt::{Debug, Display, Formatter};
-#[cfg(unix)]
-use std::path::Path;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use url::{ParseError, Url};
 
 mod gsb_api {
@@ -50,14 +48,10 @@ pub const DEFAULT_GSB_URL: &str = "unix:/tmp/yagna.sock";
 pub const DEFAULT_GSB_URL: &str = "tcp://127.0.0.1:7464";
 pub const DEFAULT_GSB_PORT: u16 = 7464;
 
-#[cfg(unix)]
 const APP_DIR: &str = "yagna";
-#[cfg(unix)]
 const RUN_DIR: &str = "run";
-#[cfg(unix)]
 const SOCKET_NAME: &str = "gsb.sock";
 
-#[cfg(unix)]
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct DefaultUnixGsbEndpoint {
     pub socket_path: PathBuf,
@@ -65,7 +59,6 @@ pub struct DefaultUnixGsbEndpoint {
     pub private_dirs: Vec<PathBuf>,
 }
 
-#[cfg(unix)]
 pub fn linux_default_gsb_endpoint(
     data_dir: &Path,
     is_default_data_dir: bool,
@@ -97,7 +90,6 @@ pub fn linux_default_gsb_endpoint(
     }
 }
 
-#[cfg(unix)]
 pub fn macos_default_gsb_endpoint(
     data_dir: &Path,
     is_default_data_dir: bool,
@@ -152,7 +144,6 @@ fn default_yagna_data_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("GolemFactory").join(APP_DIR))
 }
 
-#[cfg(unix)]
 fn data_dir_namespace(data_dir: &Path) -> String {
     // Stable filesystem namespacing only; this is not a security primitive.
     const OFFSET: u64 = 0xcbf29ce484222325;
@@ -167,48 +158,93 @@ fn data_dir_namespace(data_dir: &Path) -> String {
     format!("{hash:016x}")
 }
 
-pub fn default_gsb_url() -> Url {
-    #[cfg(unix)]
-    {
-        let endpoint = default_unix_gsb_endpoint(&default_yagna_data_dir(), true);
-        let file_url = Url::from_file_path(&endpoint.socket_path).unwrap_or_else(|_| {
-            panic!(
-                "cannot encode default GSB socket path {} as a URL; set {GSB_URL_ENV_VAR}",
-                endpoint.socket_path.display()
-            )
-        });
-        Url::parse(&format!("unix:{}", file_url.path()))
-            .expect("cannot encode default GSB socket URL")
-    }
-
-    #[cfg(not(unix))]
-    {
-        Url::parse(DEFAULT_GSB_URL).expect("invalid platform DEFAULT_GSB_URL")
-    }
-}
-
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum GsbAddr {
     Tcp(String),
     Unix(PathBuf),
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum GeneratedGsbEndpoint {
+    Tcp(String),
+    Unix(DefaultUnixGsbEndpoint),
+}
+
+impl GeneratedGsbEndpoint {
+    pub fn for_data_dir(data_dir: &Path, is_default_data_dir: bool) -> Self {
+        #[cfg(unix)]
+        {
+            Self::Unix(default_unix_gsb_endpoint(data_dir, is_default_data_dir))
+        }
+
+        #[cfg(not(unix))]
+        {
+            let _ = (data_dir, is_default_data_dir);
+            Self::Tcp(format!("127.0.0.1:{DEFAULT_GSB_PORT}"))
+        }
+    }
+
+    pub fn into_addr(self) -> GsbAddr {
+        match self {
+            Self::Tcp(addr) => GsbAddr::Tcp(addr),
+            Self::Unix(endpoint) => GsbAddr::Unix(endpoint.socket_path),
+        }
+    }
+
+    pub fn into_url(self) -> Url {
+        match self {
+            Self::Tcp(addr) => {
+                Url::parse(&format!("tcp://{addr}")).expect("invalid platform DEFAULT_GSB_URL")
+            }
+            Self::Unix(endpoint) => {
+                let file_url = Url::from_file_path(&endpoint.socket_path).unwrap_or_else(|_| {
+                    panic!(
+                        "cannot encode default GSB socket path {} as a URL; set {GSB_URL_ENV_VAR}",
+                        endpoint.socket_path.display()
+                    )
+                });
+                Url::parse(&format!("unix:{}", file_url.path()))
+                    .expect("cannot encode default GSB socket URL")
+            }
+        }
+    }
+}
+
+impl Default for GeneratedGsbEndpoint {
+    fn default() -> Self {
+        #[cfg(unix)]
+        {
+            Self::for_data_dir(&default_yagna_data_dir(), true)
+        }
+
+        #[cfg(not(unix))]
+        {
+            Self::Tcp(format!("127.0.0.1:{DEFAULT_GSB_PORT}"))
+        }
+    }
+}
+
+pub fn default_gsb_url() -> Url {
+    GeneratedGsbEndpoint::default().into_url()
+}
+
 impl GsbAddr {
     pub fn from_url(gsb_url: Option<Url>) -> Self {
-        let gsb_url = gsb_url.unwrap_or_else(|| {
-            std::env::var(GSB_URL_ENV_VAR).map_or_else(
-                |_| default_gsb_url(),
-                |url| {
-                    match Url::parse(&url) {
-                        Err(ParseError::RelativeUrlWithoutBase) => {
-                            Url::parse(&format!("tcp://{}", url))
-                        }
-                        parsed => parsed,
+        let gsb_url = gsb_url.or_else(|| {
+            std::env::var(GSB_URL_ENV_VAR).ok().map(|url| {
+                match Url::parse(&url) {
+                    Err(ParseError::RelativeUrlWithoutBase) => {
+                        Url::parse(&format!("tcp://{}", url))
                     }
-                    .expect("provide GSB URL in format tcp://<ip:port> or unix:<path>")
-                },
-            )
+                    parsed => parsed,
+                }
+                .expect("provide GSB URL in format tcp://<ip:port> or unix:<path>")
+            })
         });
+
+        let Some(gsb_url) = gsb_url else {
+            return GeneratedGsbEndpoint::default().into_addr();
+        };
 
         match gsb_url.scheme() {
             "tcp" => Self::Tcp(parse_tcp_url(gsb_url)),
@@ -260,6 +296,7 @@ mod tests {
     pub fn check_default_gsb_url() {
         std::env::remove_var(GSB_URL_ENV_VAR);
         let addr = GsbAddr::from_url(None);
+        assert_eq!(addr, GeneratedGsbEndpoint::default().into_addr());
         let path = match addr {
             GsbAddr::Unix(path) => path,
             _ => panic!("Not a UNIX addr"),
@@ -324,6 +361,7 @@ mod tests {
     pub fn check_default_gsb_url() {
         std::env::remove_var(GSB_URL_ENV_VAR);
         let addr = GsbAddr::from_url(None);
+        assert_eq!(addr, GeneratedGsbEndpoint::default().into_addr());
         let addr = match addr {
             GsbAddr::Tcp(addr) => addr,
             _ => panic!("Not a TCP addr"),
