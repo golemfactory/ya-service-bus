@@ -96,7 +96,11 @@ impl<T: RpcStreamMessage> RawEndpoint for Recipient<RpcStreamCall<T>> {
         &self,
         msg: RpcRawCall,
     ) -> Pin<Box<dyn Stream<Item = Result<ResponseChunk, Error>>>> {
-        let body: T = crate::serialization::from_slice(msg.body.as_slice()).unwrap();
+        let body: T =
+            match crate::serialization::from_slice(msg.body.as_slice()).map_err(Error::from) {
+                Ok(v) => v,
+                Err(e) => return Box::pin(stream::once(async { Err::<ResponseChunk, Error>(e) })),
+            };
         let (tx, rx) = futures::channel::mpsc::channel(16);
         let (txe, rxe) = futures::channel::oneshot::channel();
 

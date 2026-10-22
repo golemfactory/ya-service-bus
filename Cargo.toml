@@ -97,3 +97,7 @@ ya-packet-trace = "0.1.0"
 lto = true
 opt-level = 3
 codegen-units = 1
+
+# Keep zlib (de)compression tests fast in debug builds.
+[profile.dev.package.miniz_oxide]
+opt-level = 3
